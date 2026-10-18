@@ -171,3 +171,8 @@ dialog{padding:20px}
 #memory-sources { margin-top: 28px; }
 #memory-form textarea { width: 100%; }
 #memory-status { overflow-wrap: anywhere; }
+
+.login-page { display: block; min-width: 0; }
+.login-main { margin: 0 auto; padding: 12vh 24px 32px; width: min(100%, 520px); }
+.login-main h1 { margin: 8px 0 16px; }
+.login-main .field { margin: 24px 0 16px; }

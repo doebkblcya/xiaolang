@@ -1,11 +1,13 @@
 import { createServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { readFile } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createAccess, readAuth, readTls } from './security.mjs';
 
 export const name = 'xiaolang-panel';
 export const xiaolangApiVersion = 1;
 export const inject = ['inspection'];
-const assets = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
+const assets = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/login.js': ['login.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
 const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
@@ -30,19 +32,25 @@ export function createHandler(inspection, configuration, options = {}) {
   const allowedHosts = options.allowedHosts ?? [];
   if (!Array.isArray(allowedHosts) || allowedHosts.some(host => typeof host !== 'string' || !/^[a-zA-Z0-9.-]+(?::[0-9]{1,5})?$/.test(host))) throw new Error('invalid_panel_config');
   const writeToken = randomBytes(24).toString('hex');
-  return async (request, response) => {
-    const send = (status, value, type = 'application/json; charset=utf-8') => {
-      response.writeHead(status, { ...headers, 'Content-Type': type });
+  const access = createAccess(options.auth);
+  const handler = async (request, response) => {
+    const send = (status, value, type = 'application/json; charset=utf-8', extra = {}) => {
+      response.writeHead(status, { ...headers, 'Content-Type': type, ...extra });
       response.end(type.startsWith('application/json') ? JSON.stringify(value) : value);
     };
     const host = request.headers.host ?? '';
+    const origin = `${request.socket?.encrypted ? 'https' : 'http'}://${host}`;
     if (!/^(?:127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{1,5})?$/.test(host) && !allowedHosts.includes(host)) return send(403, { error: 'local_access_only' });
-    if ((request.headers.origin && request.headers.origin !== `http://${host}`)
+    if ((request.headers.origin && request.headers.origin !== origin)
       || (request.url?.startsWith('/api/') && request.headers['sec-fetch-site'] === 'cross-site')) return send(403, { error: 'same_origin_required' });
-    if (!request.url || request.url.length > 2048) return send(400, { error: 'invalid_request' });
+    if (!request.url?.startsWith('/') || request.url.startsWith('//') || request.url.length > 2048) return send(400, { error: 'invalid_request' });
     let url;
-    try { url = new URL(request.url, `http://${host}`); } catch { return send(400, { error: 'invalid_request' }); }
+    try { url = new URL(request.url, origin); } catch { return send(400, { error: 'invalid_request' }); }
     try {
+      const handled = await access?.handle(request, url, send, readJson);
+      if (handled === 'login') return send(200, await readFile(new URL('login.html', import.meta.url)), 'text/html; charset=utf-8');
+      if (handled) return;
+      if (!access && url.pathname === '/api/auth/session' && request.method === 'GET') return send(200, { enabled: false, authenticated: true });
       const writeRoute = /^\/api\/settings\/(model|qq|trigger|apply)$/.exec(url.pathname);
       const memoryRoute = /^\/api\/memory(?:\/(status|action|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const recallRoute = /^\/api\/memory-recalls\/([a-f0-9-]{36})$/.exec(url.pathname);
@@ -50,7 +58,7 @@ export function createHandler(inspection, configuration, options = {}) {
       if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute)) {
         if (!configuration) return send(503, { error: 'configuration_unavailable' });
         const token = request.headers['x-xiaolang-token'];
-        if (request.headers.origin !== `http://${host}` || typeof token !== 'string'
+        if (request.headers.origin !== origin || typeof token !== 'string'
           || !/^[a-f0-9]{48}$/.test(token) || !timingSafeEqual(Buffer.from(token), Buffer.from(writeToken))) {
           request.resume?.(); return send(403, { error: 'write_authorization_required' });
         }
@@ -120,22 +128,44 @@ export function createHandler(inspection, configuration, options = {}) {
         { error: error.message === 'invalid_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' ? 'invalid_query' : 'panel_query_failed' });
     }
   };
+  handler.close = () => access?.close();
+  return handler;
 }
 export async function apply(ctx, config = {}) {
   const host = config.host ?? '127.0.0.1';
   const port = config.port ?? 18080;
   if (!['127.0.0.1', '0.0.0.0'].includes(host) || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error('invalid_panel_config');
-  const server = createServer({ maxHeaderSize: 8192 }, createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts,
-    memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills') }));
+  if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
+  const auth = await readAuth(config.auth);
+  let tls = config.tls ? await readTls(config.tls) : undefined;
+  const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth,
+    memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills') });
+  const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   server.requestTimeout = 10000;
   server.headersTimeout = 10000;
   server.keepAliveTimeout = 5000;
   server.maxConnections = 32;
-  ctx.effect(() => () => new Promise(resolve => { server.close(() => resolve()); server.closeAllConnections(); }));
+  let timer, reloading = false, reloadFailed = false;
+  ctx.effect(() => () => new Promise(resolve => { clearInterval(timer); handler.close(); server.close(() => resolve()); server.closeAllConnections(); }));
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => { server.off('error', reject); resolve(); });
   });
+  if (tls) {
+    timer = setInterval(async () => {
+      if (reloading) return;
+      reloading = true;
+      try {
+        const next = await readTls(config.tls);
+        if (next.digest !== tls.digest) { server.setSecureContext(next.options); tls = next; ctx.emit('xiaolang/log', { code: 'panel_tls_reloaded', plugin: 'panel' }); }
+        reloadFailed = false;
+      } catch {
+        if (!reloadFailed) ctx.emit('xiaolang/log', { code: 'panel_tls_reload_failed', plugin: 'panel' });
+        reloadFailed = true;
+      } finally { reloading = false; }
+    }, 60000);
+    timer.unref();
+  }
   server.on('error', () => ctx.emit('xiaolang/log', { code: 'panel_server_error', plugin: 'panel' }));
   ctx.emit('xiaolang/log', { code: 'panel_listening', plugin: 'panel' });
 }

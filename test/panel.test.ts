@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { createApp } from '../src/app.js';
 import { emitLog } from '../src/contracts.js';
 import { Failure } from '../src/errors.js';
@@ -99,4 +101,66 @@ test('panel handler enforces local Host, same-origin, read-only methods and boun
   assert.ok(page.text.includes('小狼'));
   assert.equal((await request('/app.js')).status, 200);
   assert.equal((await request('/style.css')).status, 200);
+});
+
+test('panel Key protects pages and APIs, uses an opaque HTTPS session and revokes it on logout', async () => {
+  const module = await import(pathToFileURL(resolve('examples/plugins/panel/index.mjs')).href);
+  const key = 'a'.repeat(64), host = 'nas.example.com:48393';
+  let writes = 0;
+  const handle = module.createHandler({ status: () => ({ state: 'ready' }) }, {
+    view: () => ({ revision: 'one' }), save: () => { writes++; return { revision: 'two' }; },
+  }, { allowedHosts: [host], auth: { keyHash: createHash('sha256').update(key).digest('hex') } });
+  async function request(url: string, method = 'GET', body?: unknown, headers: Record<string, string> = {}, encrypted = true) {
+    let status = 0, text = '', outputHeaders: Record<string, string> = {};
+    const req = Object.assign(Readable.from(body === undefined ? [] : [JSON.stringify(body)]), {
+      url, method, headers: { host, ...headers }, socket: { encrypted, remoteAddress: 'test' },
+    });
+    await handle(req, { writeHead(code: number, values: Record<string, string>) { status = code; outputHeaders = values; }, end(value: string) { text = String(value); } });
+    return { status, text, headers: outputHeaders, json: () => JSON.parse(text) };
+  }
+  assert.ok((await request('/')).text.includes('访问验证'));
+  for (const path of ['/api/status', '/api/settings', '/api/turns', '/api/memory', '/app.js']) assert.equal((await request(path)).status, 401);
+  const post = { origin: `https://${host}`, 'content-type': 'application/json' };
+  assert.equal((await request('/api/auth/session', 'POST', { key }, { ...post, origin: 'https://evil.example' })).status, 403);
+  assert.equal((await request('/api/auth/session', 'POST', { key }, post, false)).status, 403);
+  assert.equal((await request('/api/status', 'GET', undefined, { 'x-forwarded-proto': 'https' }, false)).status, 426);
+  assert.equal((await request('/api/auth/session', 'POST', { key: 'wrong'.repeat(10) }, post)).status, 401);
+  const login = await request('/api/auth/session', 'POST', { key }, post);
+  assert.equal(login.status, 200);
+  assert.match(login.headers['Set-Cookie']!, /HttpOnly; Secure; SameSite=Strict/);
+  assert.ok(!login.text.includes(key) && !login.headers['Set-Cookie']!.includes(key));
+  const cookie = login.headers['Set-Cookie']!.split(';')[0]!;
+  assert.equal((await request('/api/status', 'GET', undefined, { cookie })).status, 200);
+  assert.ok((await request('/', 'GET', undefined, { cookie })).text.includes('运行概览'));
+  const settings = (await request('/api/settings', 'GET', undefined, { cookie })).json();
+  assert.equal((await request('/api/settings/model', 'POST', {}, { ...post, cookie })).status, 403);
+  assert.equal((await request('/api/settings/model', 'POST', {}, { ...post, cookie, 'x-xiaolang-token': settings.writeToken })).status, 200);
+  assert.equal(writes, 1);
+  assert.equal((await request('/api/auth/logout', 'POST', {}, { ...post, cookie })).status, 200);
+  assert.equal((await request('/api/status', 'GET', undefined, { cookie })).status, 401);
+  handle.close();
+});
+
+test('panel sessions expire and repeated invalid Keys are rate limited without trusting forwarded addresses', async () => {
+  const module = await import(pathToFileURL(resolve('examples/plugins/panel/security.mjs')).href);
+  const key = 'b'.repeat(64), hash = createHash('sha256').update(key).digest('hex');
+  let clock = 1000;
+  const access = module.createAccess({ keyHash: hash, sessionHours: 1 }, () => clock);
+  async function request(path: string, body?: unknown, cookie?: string) {
+    let status = 0, headers: Record<string, string> = {}, data: unknown;
+    await access.handle({ method: body ? 'POST' : 'GET', headers: { host: 'nas:1234', origin: 'https://nas:1234', 'content-type': 'application/json', cookie, 'x-forwarded-for': String(clock) }, socket: { encrypted: true, remoteAddress: 'same-peer' }, resume() {} },
+      new URL(path, 'https://nas:1234'), (code: number, value: unknown, _type: unknown, extra: Record<string, string> = {}) => { status = code; data = value; headers = extra; }, async () => body);
+    return { status, data, headers };
+  }
+  const login = await request('/api/auth/session', { key });
+  const cookie = login.headers['Set-Cookie']!.split(';')[0];
+  assert.equal((await request('/api/status', undefined, cookie)).status, 0);
+  clock += 3600001;
+  assert.equal((await request('/api/status', undefined, cookie)).status, 401);
+  for (let n = 0; n < 10; n++) assert.equal((await request('/api/auth/session', { key: 'bad' })).status, 401);
+  const limited = await request('/api/auth/session', { key });
+  assert.equal(limited.status, 429); assert.equal(limited.headers['Retry-After'], '900');
+  clock += 900001;
+  assert.equal((await request('/api/auth/session', { key })).status, 200);
+  access.close();
 });

@@ -15,6 +15,7 @@ const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什�
 Object.assign(descriptions, { tooling: ['工具与行动', '查看工具、连接和权限，按插件扩展能力。'] });
 Object.assign(stages, { mcp_connected: 'MCP 已连接', mcp_connection_failed: 'MCP 连接失败', mcp_tool_rejected: 'MCP 工具注册失败' });
 Object.assign(stages, { proactive_state: '插话状态更新', proactive_observing: '收集待判断消息', proactive_judge_started: '判断是否接话', proactive_decided: '接话判断完成', proactive_skipped: '本次未接话', proactive_judge_failed: '接话判断失败，保持沉默' });
+Object.assign(stages, { panel_tls_reloaded: '面板证书已重新加载', panel_tls_reload_failed: '面板新证书暂时无法加载，保留原证书' });
 Object.assign(reasons, { proactive: '主动插话', no_trigger: '未命中直接触发条件' });
 const dateFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const timeFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -29,7 +30,11 @@ function time(value, full = false) { const date = new Date(value); return Number
 function tone(state) { return ['completed', 'connected', 'active', 'sent', 'succeeded', 'ready'].includes(state) ? 'good' : ['failed', 'error', 'unknown'].includes(state) ? 'bad' : ['queued', 'running', 'sending', 'pending', 'starting'].includes(state) ? 'waiting' : 'neutral'; }
 function badge(state) { return element('span', `badge ${tone(state)}`, words[state] ?? state); }
 function notice(text) { $('notice').textContent = text; $('notice').hidden = !text; }
-async function get(path) { const response = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(7000) }); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
+let authenticationLost = false;
+function checkAccess(response) {
+  if (response.status === 401 && !authenticationLost) { authenticationLost = true; location.reload(); }
+}
+async function get(path) { const response = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(7000) }); checkAccess(response); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
 function showView(view) {
   for (const section of document.querySelectorAll('.view')) section.hidden = section.id !== view;
   for (const button of document.querySelectorAll('.nav')) { button.classList.toggle('active', button.dataset.view === view); if (button.dataset.view === view) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current'); }
@@ -176,7 +181,7 @@ async function poll() {
     $('connection').textContent = '面板在线'; $('connection').className = 'badge good'; $('synced').textContent = time(Date.now()); notice('');
     if (!before && !$('chats').hidden) await refreshTurns();
     if (!$('tooling').hidden) await refreshTools();
-  } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('无法连接面板，当前保留上次显示的数据。请检查 SSH 隧道，连接恢复后会自动更新。'); }
+  } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('无法连接面板，当前保留上次显示的数据。请检查网络和访问地址，连接恢复后会自动更新。'); }
   finally { busy = false; }
 }
 
@@ -194,6 +199,7 @@ const settingsErrors = {
 async function settingsRequest(path, body) {
   const response = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(7000),
     ...(body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Xiaolang-Token': settings.writeToken }, body: JSON.stringify(body) }) });
+  checkAccess(response);
   const result = await response.json();
   if (!response.ok) throw new Error(settingsErrors[result.error] ?? '操作未完成，请稍后重试。');
   return result;
@@ -381,6 +387,13 @@ function renderPlugin(detail) {
 $('close-plugin').addEventListener('click', () => $('plugin-detail').close());
 $('plugin-detail').addEventListener('close', () => { parkTriggerForm(); pluginDetails = undefined; pluginDirty = false; });
 
+get('/api/auth/session').then(auth => { $('logout').hidden = !auth.enabled; }).catch(() => {});
+$('logout').addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(7000) });
+    if (response.ok) location.reload(); else notice('退出未完成，请重试。');
+  } catch { notice('退出未完成，请检查连接后重试。'); }
+});
 poll();
 loadSettings();
 const timer = setInterval(poll, 2000);
