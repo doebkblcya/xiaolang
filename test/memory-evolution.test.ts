@@ -87,6 +87,7 @@ test('one extraction call per batch handles state changes and ignores duplicates
       app.ctx.intake.receive(event(text, i + 1)); await memory.process();
       assert.equal(memory.status().extractionError, null);
     }
+    assert.ok(background.options.every(value => value?.thinking === true && value.reasoningEffort === 'low' && value.maxOutputTokens === 8192));
     assert.equal(background.requests.length, 3); assert.equal(embedded.length, 2);
     const item = (memory.list('').items as MemoryItem[])[0]!;
     assert.equal(item.version, 2); assert.deepEqual(item.sources, [2]);

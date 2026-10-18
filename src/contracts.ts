@@ -44,7 +44,7 @@ export interface Model {
   stream?(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>): Promise<ModelMessage>;
   complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage>;
 }
-export interface ModelOptions { thinking?: boolean; maxOutputTokens?: number; retries?: number; temperature?: number; stop?: string[] }
+export interface ModelOptions { thinking?: boolean; reasoningEffort?: 'low' | 'high' | 'max'; maxOutputTokens?: number; retries?: number; temperature?: number; stop?: string[] }
 export interface Adapter {
   platform: string;
   account: string;

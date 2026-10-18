@@ -37,3 +37,21 @@ test('configuration rejects empty trigger words and embedded credentials', () =>
   value.model.baseUrl = 'https://user:password@example.com';
   assert.throws(() => validateConfig(value), { code: 'invalid_url' });
 });
+
+
+test('per-request low-effort thinking expands the extraction budget without changing other requests', async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const settings = config().model; settings.thinking = false; settings.reasoningEffort = 'high';
+  const model = new DeepSeekModel(settings, 'fake', (async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '{}' } }] });
+  }) as typeof fetch);
+  const signal = new AbortController().signal;
+  await model.complete([], [], signal, { thinking: true, reasoningEffort: 'low', maxOutputTokens: 8192 });
+  await model.complete([], [], signal);
+  assert.deepEqual(bodies[0]?.thinking, { type: 'enabled' });
+  assert.equal(bodies[0]?.reasoning_effort, 'low'); assert.equal(bodies[0]?.max_tokens, 8192);
+  assert.deepEqual(bodies[1]?.thinking, { type: 'disabled' });
+  assert.equal(bodies[1]?.reasoning_effort, undefined); assert.equal(bodies[1]?.max_tokens, settings.maxOutputTokens);
+  assert.equal(settings.thinking, false); assert.equal(settings.reasoningEffort, 'high');
+});

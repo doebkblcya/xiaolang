@@ -30,6 +30,7 @@ test('learning is a separate batch request; anchor stays fixed and grounded refe
   try {
     s.addPairs(); await s.learning.learn();
     assert.equal(model.requests.length, 1);
+    assert.deepEqual(model.options[0], { thinking: true, reasoningEffort: 'low', maxOutputTokens: 8192, retries: 0, stop: [] });
     const data = s.learning.list() as { items: { id: string; version: number }[] };
     assert.equal(data.items.length, 1);
     const prompt = s.learning.prompt(s.store.record(1)!.message);

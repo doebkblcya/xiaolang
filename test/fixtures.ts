@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { validateConfig } from '../src/config.js';
 import type { Config } from '../src/config.js';
 import { toolingDefaults } from '../src/tooling-config.js';
-import type { Adapter, IncomingMessage, Message, Model, ModelMessage, ToolSchema } from '../src/contracts.js';
+import type { Adapter, IncomingMessage, Message, Model, ModelMessage, ModelOptions, ToolSchema } from '../src/contracts.js';
 
 export function config(): Config {
   const value = validateConfig(JSON.parse(readFileSync('config.example.json', 'utf8')));
@@ -33,9 +33,11 @@ export class FakeAdapter implements Adapter {
 }
 export class FakeModel implements Model {
   requests: ModelMessage[][] = [];
+  options: (ModelOptions | undefined)[] = [];
   constructor(private reply: (messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal) => Promise<ModelMessage> = async () => ({ role: 'assistant', content: '收到。' })) {}
-  async complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal): Promise<ModelMessage> {
+  async complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage> {
     this.requests.push(structuredClone(messages));
+    this.options.push(structuredClone(options));
     return this.reply(messages, tools, signal);
   }
 }
