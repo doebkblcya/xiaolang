@@ -52,6 +52,7 @@
     "learningEnabled": true,
     "batchSize": 100,
     "intervalMinutes": 30,
-    "maxDailyCalls": 12
+    "maxDailyCalls": 12,
+    "learningThinking": "low"
   }
 }

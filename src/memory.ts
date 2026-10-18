@@ -247,10 +247,11 @@ export class ChatMemory implements Memory {
       });
       let conversationBudget = 12000;
       const boundedConversation = conversation.filter(row => { conversationBudget -= JSON.stringify(row).length; return conversationBudget >= 0; });
+      const effort = this.settings.extractionThinking ?? 'low';
       const response = await this.background.complete([{ role: 'system', content: instruction }, { role: 'user', content: JSON.stringify({
         now: new Date().toISOString(), existing, conversation: boundedConversation, note: 'conversation为理解对话提供背景，包括已确认发出的机器人回复；sources只能引用下面messages中的用户原文seq。',
         messages: sources.map(row => ({ ...publicSource(row), text: row.text.slice(0, Math.min(2500, Math.floor(20000 / sources.length))) + this.images.text(row.message) })),
-      }) }], [], signal, { thinking: true, reasoningEffort: 'low', maxOutputTokens: 8192 });
+      }) }], [], signal, { thinking: effort !== 'off', ...(effort === 'off' ? {} : { reasoningEffort: effort }), maxOutputTokens: 8192 });
       check(signal);
       const data = object(parseJson(response.content));
       if (!data || !Array.isArray(data.memories) || data.memories.length > 12) throw new Failure('memory_invalid_model_response');

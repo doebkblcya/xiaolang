@@ -358,7 +358,9 @@ function renderPlugin(detail) {
     if (definition.enum) {
       input = element('select');
       if (!required) { const option = element('option', '', '默认'); option.value = ''; input.append(option); }
-      for (const item of definition.enum) { const option = element('option', '', detail.id === 'xiaolang-output' ? ({ normal: '普通输出', streaming: '流式输出' }[item] ?? String(item)) : String(item)); option.value = String(item); input.append(option); }
+      const labels = detail.id === 'xiaolang-output' ? { normal: '普通输出', streaming: '流式输出' }
+        : (detail.id === 'xiaolang-memory' && name === 'extractionThinking') || (detail.id === 'xiaolang-persona' && name === 'learningThinking') ? { off: '关闭思考', low: '低 · low', high: '高 · high', max: '最高 · max' } : {};
+      for (const item of definition.enum) { const option = element('option', '', labels[item] ?? String(item)); option.value = String(item); input.append(option); }
     } else if (definition.type === 'array' || (definition.type === 'string' && definition.maxLength > 4096)) { input = element('textarea'); input.rows = definition.type === 'array' ? 3 : 8; }
     else { input = element('input'); input.type = definition.writeOnly ? 'password' : definition.type === 'boolean' ? 'checkbox' : ['number', 'integer'].includes(definition.type) ? 'number' : 'text'; }
     input.name = name;

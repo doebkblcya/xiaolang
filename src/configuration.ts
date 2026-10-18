@@ -23,7 +23,7 @@ function keys(value: Record<string, unknown>, allowed: string[]): boolean { retu
 function revision(text: string): string { return createHash('sha256').update(text).digest('hex'); }
 function snapshot(config: Config): Settings {
   const qq = config.adapter.module === 'builtin:qq-official' ? validateQQConfig(config.adapter.config) : undefined;
-  return { character: structuredClone(personaSettings(config)), tooling: structuredClone(config.tooling ?? toolingDefaults), memory: structuredClone(config.memory ?? memoryDefaults), model: structuredClone(config.model), ...(qq ? { qq: {
+  return { character: structuredClone(personaSettings(config)), tooling: structuredClone(config.tooling ?? toolingDefaults), memory: structuredClone({ ...memoryDefaults, ...config.memory }), model: structuredClone(config.model), ...(qq ? { qq: {
     appId: qq.appId, environment: qq.environment, groupMessages: qq.groupMessages,
     connectTimeoutMs: qq.connectTimeoutMs, groupIds: [...config.groupIds],
   } } : {}), trigger: triggerSettings(config), output: config.output ?? { mode: 'normal' }, secrets: {} };
@@ -181,7 +181,7 @@ export class ConfigurationStore implements Configuration {
     const config = combine(this.base, settings);
     const info = this.catalog().find(plugin => plugin.id === id);
     if (!info) throw new Failure('plugin_not_found');
-    const entry = id === 'xiaolang-memory' ? { id, module: 'builtin', config: { ...config.memory, apiKey: settings.secrets.embedding ?? this.environment.BAILIAN_API_KEY ?? '' } as Fields }
+    const entry = id === 'xiaolang-memory' ? { id, module: 'builtin', config: { extractionThinking: 'low', ...config.memory, apiKey: settings.secrets.embedding ?? this.environment.BAILIAN_API_KEY ?? '' } as Fields }
       : id === 'xiaolang-persona' ? { id, module: 'builtin', config: personaSettings(config) as unknown as Fields }
       : id === 'xiaolang-output' ? { id, module: 'builtin', config: config.output as unknown as Fields }
       : toolingSections[id] ? { id, module: 'builtin', config: (config.tooling ?? toolingDefaults)[toolingSections[id]!] as unknown as Fields }

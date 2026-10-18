@@ -1,5 +1,6 @@
 import type { Context } from 'cordis';
 
+export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
 export type Fields = Record<string, unknown>;
 export type Segment =
   | { type: 'text'; text: string }

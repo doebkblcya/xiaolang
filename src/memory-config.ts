@@ -1,7 +1,8 @@
-import type { Fields } from './contracts.js';
+import type { Fields, ThinkingLevel } from './contracts.js';
 
 export interface MemoryConfig {
   enabled: boolean;
+  extractionThinking?: ThinkingLevel;
   embeddingBaseUrl: string;
   embeddingModel: string;
   embeddingDimensions: number;
@@ -14,7 +15,7 @@ export interface MemoryConfig {
   maxImages: number;
 }
 export const memoryDefaults: MemoryConfig = {
-  enabled: false, embeddingBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  enabled: false, extractionThinking: 'low', embeddingBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   embeddingModel: 'text-embedding-v4', embeddingDimensions: 1024,
   recentMessages: 100, recallLimit: 8, contextChars: 5000, batchSize: 20, batchSeconds: 60, images: true, maxImages: 3,
 };
@@ -28,6 +29,7 @@ export const memoryProperties = {
   contextChars: { type: 'integer', title: '记忆与摘要字数预算', minimum: 500, maximum: 12000 },
   batchSize: { type: 'integer', title: '每批整理聊天条数', minimum: 1, maximum: 50 },
   batchSeconds: { type: 'integer', title: '后台整理间隔（秒）', minimum: 15, maximum: 3600 },
+  extractionThinking: { type: 'string', title: '记忆提炼思考档位', enum: ['off', 'low', 'high', 'max'], default: 'low', description: '只影响记忆提炼，不影响图片、摘要或聊天回复。思考与结果共享 8192 Token 上限，每次请求限时 60 秒。高档更耗时，可能触及上限。' },
   images: { type: 'boolean', title: '理解聊天图片' },
   maxImages: { type: 'integer', title: '单轮最多图片数', minimum: 1, maximum: 5 },
 };

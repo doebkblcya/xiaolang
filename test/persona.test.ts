@@ -9,12 +9,12 @@ import { personaDefaults, personaSchema } from '../src/persona-config.js';
 import { ConfigurationStore } from '../src/configuration.js';
 import { SqliteStore } from '../src/store.js';
 import { createApp } from '../src/app.js';
-import type { Message } from '../src/contracts.js';
+import type { Message, ThinkingLevel } from '../src/contracts.js';
 import { config, event, FakeAdapter, FakeModel, deferred } from './fixtures.js';
 import { writeFile, rm } from 'node:fs/promises';
 
-function setup(model = new FakeModel(), path = ':memory:') {
-  const cfg = config(); cfg.database = path; cfg.character = structuredClone(personaDefaults);
+function setup(model = new FakeModel(), path = ':memory:', level: ThinkingLevel = 'low') {
+  const cfg = config(); cfg.database = path; cfg.character = { ...personaDefaults, learningThinking: level };
   const ctx = new Context(), store = new SqliteStore(path); ctx.provide('store', store);
   let now = 1800000000000;
   const learning = new PersonaLearning(ctx, cfg, model, () => now);
@@ -119,4 +119,17 @@ test('one weak candidate does not discard grounded candidates or cause another b
   const s = setup(model);
   try { s.addPairs(); await s.learning.learn(); assert.equal((s.learning.list() as { items: unknown[] }).items.length, 1); assert.equal(s.learning.status().cursor, 4); assert.equal(model.requests.length, 1); }
   finally { await s.close(); }
+});
+
+
+test('expression learning honors its own off/high/max setting while keeping the shared output budget', async () => {
+  for (const level of ['off', 'high', 'max'] as const) {
+    const model = new FakeModel(async () => answer([])), s = setup(model, ':memory:', level);
+    try {
+      s.addPairs(); await s.learning.learn();
+      assert.equal(model.options[0]?.thinking, level !== 'off');
+      assert.equal(model.options[0]?.reasoningEffort, level === 'off' ? undefined : level);
+      assert.equal(model.options[0]?.maxOutputTokens, 8192);
+    } finally { await s.close(); }
+  }
 });

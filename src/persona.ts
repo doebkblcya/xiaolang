@@ -139,10 +139,11 @@ export class PersonaLearning implements Persona {
     this.controller = new AbortController();
     const signal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(60_000)]);
     log(this.ctx, 'persona_learning_started', undefined, 'persona', { plugin: 'xiaolang-persona', preview: `分析 ${incoming} 条用户消息` });
+    const effort = this.settings.learningThinking ?? 'low';
     const response = await abortable(this.model.complete([{ role: 'system', content: instruction }, { role: 'user', content: JSON.stringify({
       anchor: this.settings.anchor, replyStyle: this.settings.replyStyle,
       existing: this.styles().map(({ id, version, scene, rule, enabled }) => ({ id, version, scene, rule, enabled })), conversation: material,
-    }) }], [], signal, { thinking: true, reasoningEffort: 'low', maxOutputTokens: 8192, retries: 0, stop: [] }), signal);
+    }) }], [], signal, { thinking: effort !== 'off', ...(effort === 'off' ? {} : { reasoningEffort: effort }), maxOutputTokens: 8192, retries: 0, stop: [] }), signal);
     if (response.role !== 'assistant' || response.tool_calls?.length) throw new Failure('invalid_persona_result');
     const current = this.state(); if (current.revision !== state.revision) throw new Failure('persona_conflict');
     let result: unknown; try { result = JSON.parse((response.content ?? '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new Failure('invalid_persona_result'); }

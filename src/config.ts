@@ -52,7 +52,7 @@ const schema = {
   properties: {
     adapter: { type: 'object', additionalProperties: false, required: ['module'], properties: { module: text, config: { type: 'object' } } },
     database: text, persona: text,
-    character: { type: 'object', additionalProperties: false, required: Object.keys(personaProperties), properties: personaProperties },
+    character: { type: 'object', additionalProperties: false, required: Object.keys(personaProperties).filter(key => key !== 'learningThinking'), properties: personaProperties },
     triggerWords: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 100 } },
     groupIds: { type: 'array', maxItems: 1000, uniqueItems: true, items: identifier }, chatEnabled: { type: 'boolean' },
     trigger: { type: 'object', additionalProperties: false, required: ['privateReply', 'groupMention', 'groupKeywords', 'words'], properties: {
@@ -61,7 +61,7 @@ const schema = {
       proactive: proactiveSchema,
     } },
     output: { type: 'object', additionalProperties: false, required: ['mode'], properties: { mode: { enum: ['normal', 'streaming'] } } },
-    memory: { type: 'object', additionalProperties: false, required: Object.keys(memoryProperties), properties: memoryProperties },
+    memory: { type: 'object', additionalProperties: false, required: Object.keys(memoryProperties).filter(key => key !== 'extractionThinking'), properties: memoryProperties },
     tooling: { type: 'object', additionalProperties: false, required: Object.keys(toolingSchemas), properties: toolingSchemas },
     failureFeedback: { type: 'object', additionalProperties: false, required: ['enabled'], properties: { enabled: { type: 'boolean' } } },
     logging: { type: 'object', additionalProperties: false, properties: {

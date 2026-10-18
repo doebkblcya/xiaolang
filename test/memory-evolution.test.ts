@@ -122,3 +122,20 @@ test('two operations against one old memory abort the whole batch and leave the 
     assert.equal(memory.status().processedThrough, 1); assert.equal(memory.repository.get(first.item.id)?.version, 1);
   } finally { await app.stop(); }
 });
+
+
+test('memory extraction honors its own off/high/max setting independently of the chat model', async () => {
+  for (const level of ['off', 'high', 'max'] as const) {
+    const cfg = config(); cfg.chatEnabled = false;
+    cfg.memory = { ...settings, enabled: true, images: false, extractionThinking: level };
+    const model = new FakeModel(), background = new FakeModel(async () => ({ role: 'assistant', content: '{"memories":[]}' }));
+    const app = await createApp(cfg, { adapter: new FakeAdapter(), model, memoryModel: background });
+    try {
+      app.ctx.intake.receive(event('今天不错')); await (app.ctx.memory as ChatMemory).process();
+      assert.equal(background.requests.length, 1); assert.equal(model.requests.length, 0);
+      assert.equal(background.options[0]?.thinking, level !== 'off');
+      assert.equal(background.options[0]?.reasoningEffort, level === 'off' ? undefined : level);
+      assert.equal(background.options[0]?.maxOutputTokens, 8192);
+    } finally { await app.stop(); }
+  }
+});
