@@ -149,7 +149,9 @@ export class PersonaLearning implements Persona {
     const raw = object(result);
     if (!raw || !only(raw, ['styles']) || !Array.isArray(raw.styles) || raw.styles.length > 3) throw new Failure('invalid_persona_result');
     const known = this.styles(), used = new Set<string>();
-    const updates: Style[] = raw.styles.map(value => {
+    let discarded = 0, added = 0;
+    const updates: Style[] = raw.styles.flatMap(value => {
+      try {
       const item = object(value);
       if (!item || !only(item, ['id', 'version', 'scene', 'rule', 'keywords', 'examples']) || !bounded(item.scene, 80) || !bounded(item.rule, 200)
         || !Array.isArray(item.keywords) || item.keywords.length > 8 || !item.keywords.every(k => bounded(k, 30))
@@ -167,11 +169,15 @@ export class PersonaLearning implements Persona {
       const fingerprint = item.rule.trim().replace(/\s+/g, '');
       if (known.some(s => s.id !== old?.id && s.rule.replace(/\s+/g, '') === fingerprint) || used.has(old?.id ?? fingerprint)) throw new Failure('invalid_persona_result');
       used.add(old?.id ?? fingerprint);
-      return { id: old?.id ?? randomUUID(), version: (old?.version ?? 0) + 1, scene: item.scene.trim(), rule: item.rule.trim(), keywords: item.keywords as string[], examples, enabled: true, updated: now };
+      if (!old) { if (known.length + added >= 30) { discarded++; return []; } added++; }
+      return [{ id: old?.id ?? randomUUID(), version: (old?.version ?? 0) + 1, scene: item.scene.trim(), rule: item.rule.trim(), keywords: item.keywords as string[], examples, enabled: true, updated: now }];
+      } catch (error) {
+        if (error instanceof Failure && error.code === 'invalid_persona_result') { discarded++; return []; }
+        throw error;
+      }
     });
-    if (known.length + updates.filter(x => !known.some(k => k.id === x.id)).length > 30) throw new Failure('persona_catalog_full');
     this.transaction(() => { for (const style of updates) this.write(style, 'learn'); current.cursor = rows.at(-1)!.seq; current.error = undefined; this.setState(current); });
-    log(this.ctx, 'persona_learning_completed', undefined, 'persona', { plugin: 'xiaolang-persona', preview: `学习 ${updates.length} 条表达习惯` });
+    log(this.ctx, 'persona_learning_completed', undefined, 'persona', { plugin: 'xiaolang-persona', preview: `学习 ${updates.length} 条表达习惯${discarded ? `，跳过 ${discarded} 条不合格候选` : ''}` });
     return this.status();
   }
   async stop() { this.stopped = true; clearInterval(this.timer); this.controller?.abort(); await this.working?.catch(() => {}); }

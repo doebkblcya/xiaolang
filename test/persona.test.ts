@@ -39,13 +39,13 @@ test('learning is a separate batch request; anchor stays fixed and grounded refe
   } finally { await s.close(); }
 });
 
-test('bot replies cannot be learned as human examples; malformed results keep the cursor and consume only their own quota', async () => {
+test('bot replies cannot be learned as human examples; invalid candidates are discarded and consume only their own quota', async () => {
   const model = new FakeModel(async () => answer([style(1, 2, 3, 5)])), s = setup(model);
   try {
     s.addPairs(); const turn = s.store.createTurn(s.store.record(3)!.message, 'keyword');
     s.store.delivered(turn, '机器人自己的措辞', [], ['r']);
-    await assert.rejects(s.learning.learn(), { code: 'invalid_persona_result' });
-    assert.equal(s.learning.status().cursor, 0); assert.equal(s.learning.status().dailyCalls, 1);
+    await s.learning.learn();
+    assert.equal(s.learning.status().cursor, 5); assert.equal(s.learning.status().dailyCalls, 1);
     assert.equal((s.learning.list() as { items: unknown[] }).items.length, 0);
     await assert.rejects(s.learning.learn(), { code: 'persona_rate_limited' });
     assert.equal(model.requests.length, 1);
@@ -79,7 +79,8 @@ test('quota, cursor and disabled styles survive reopening; suppressed evidence i
     await s.close();
     const model = new FakeModel(async () => answer([{ ...style(5, 6, 7, 8), id: item.id, version: 2 }]));
     s = setup(model, path); assert.equal(s.learning.status().dailyCalls, 1); assert.equal(s.learning.status().cursor, 4);
-    s.addPairs(); s.advance(); await assert.rejects(s.learning.learn(), { code: 'invalid_persona_result' });
+    s.addPairs(); s.advance(); await s.learning.learn();
+    assert.equal((s.learning.detail(item.id) as { enabled: boolean }).enabled, false);
     s.learning.mutate({ action: 'rollback', id: item.id, version: 2, targetVersion: 1 });
     s.ctx.provide('memory', { sourceAllowed: () => false } as never);
     assert.doesNotMatch(s.learning.prompt(s.store.record(1)!.message), /短句接住夸奖/);
@@ -110,4 +111,11 @@ test('persona plugin settings persist through the existing apply workflow and pr
     const next = await ConfigurationStore.load(path, () => {}, () => true, {});
     assert.equal(next.config.character?.anchor, personaDefaults.anchor); assert.equal(next.config.character?.learningEnabled, true);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('one weak candidate does not discard grounded candidates or cause another batch call', async () => {
+  const model = new FakeModel(async () => answer([style(), { ...style(), rule: '证据不足', examples: [{ prompt: 1, reply: 2 }] }]));
+  const s = setup(model);
+  try { s.addPairs(); await s.learning.learn(); assert.equal((s.learning.list() as { items: unknown[] }).items.length, 1); assert.equal(s.learning.status().cursor, 4); assert.equal(model.requests.length, 1); }
+  finally { await s.close(); }
 });
