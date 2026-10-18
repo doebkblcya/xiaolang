@@ -2,7 +2,7 @@ import { Ajv } from 'ajv';
 import type { Context } from 'cordis';
 import { ApiError, QQBot } from '@tencent-connect/qqbot-nodejs';
 import type { QQBotInboundMessage, QQBotOptions } from '@tencent-connect/qqbot-nodejs';
-import type { Adapter, IncomingMessage, Message, Segment } from '../contracts.js';
+import type { Adapter, IncomingMessage, Message, PushTarget, Segment } from '../contracts.js';
 import { id, log } from '../contracts.js';
 import { abortable, check, Failure } from '../errors.js';
 
@@ -157,6 +157,28 @@ export class QQOfficialAdapter implements Adapter {
         throw new Failure('qq_api_rejected');
       }
       // HTTP transport failure/cancellation can happen after QQ accepted the message.
+      throw new Failure(signal.aborted ? 'qq_send_cancelled' : 'qq_send_unknown', true);
+    }
+  }
+  async push(target: PushTarget, text: string, sequence: number, signal: AbortSignal): Promise<{ id: string }> {
+    check(signal);
+    if (!this.ready) throw new Failure('qq_not_ready');
+    if (target.platform !== this.platform || target.account !== this.account || !id(target.recipient)
+      || !['private', 'group'].includes(target.scope)) throw new Failure('adapter_target_mismatch');
+    if (!text.trim() || Array.from(text).length > this.capabilities.maxTextChars || !Number.isSafeInteger(sequence) || sequence < 1) throw new Failure('invalid_push_message');
+    try {
+      const response = await abortable(this.client.messageApi.sendRaw(target.scope === 'group' ? 'group' : 'c2c', target.recipient, this.client.getCredentials(), {
+        content: text, msg_type: 0, msg_seq: sequence,
+      }), signal);
+      if (!id(response.id)) throw new Failure('send_invalid_receipt', true);
+      return { id: response.id };
+    } catch (error) {
+      if (error instanceof Failure && error.unknownOutcome) throw error;
+      if (error instanceof ApiError && error.httpStatus >= 400 && error.httpStatus < 500 && ![408, 409].includes(error.httpStatus)) {
+        const failure = error.bizCode === 40034105 ? 'qq_push_permission_denied' : error.bizCode === 40034100 ? 'qq_push_rate_limited'
+          : error.bizCode === 40054013 ? 'qq_push_refused' : 'qq_push_rejected';
+        throw new Failure(failure);
+      }
       throw new Failure(signal.aborted ? 'qq_send_cancelled' : 'qq_send_unknown', true);
     }
   }

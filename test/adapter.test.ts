@@ -211,3 +211,19 @@ test('QQ private native stream uses one sequence and reuses the first bubble ID'
   ]);
   await assert.rejects(qq.streamReply({ ...input, group: 'group' }, 'text', 0, false, undefined, new AbortController().signal), { code: 'qq_stream_private_only' });
 });
+
+test('scheduled QQ push uses the active message body, validates its real target and distinguishes rejection from uncertainty', async t => {
+  const client = new MockQQ(), transport = adapter(client), signal = new AbortController().signal;
+  t.after(() => transport.stop()); await transport.start(() => {});
+  const target = { platform: transport.platform, account: transport.account, scope: 'private' as const, recipient: 'user-openid' };
+  await transport.push(target, '⏰ 提醒你：喝水', 42, signal);
+  await transport.push({ ...target, scope: 'group', recipient: 'group-openid' }, '提醒', 43, signal);
+  assert.deepEqual(client.sent.map(item => [item.scope, item.target]), [['c2c', 'user-openid'], ['group', 'group-openid']]);
+  assert.deepEqual(client.sent[0]?.body, { content: '⏰ 提醒你：喝水', msg_type: 0, msg_seq: 42 });
+  await assert.rejects(transport.push({ ...target, account: 'another-app' }, '提醒', 44, signal), { code: 'adapter_target_mismatch' });
+  assert.equal(client.sent.length, 2);
+  client.failure = new ApiError('denied', 403, '/test', 40034105);
+  await assert.rejects(transport.push(target, '提醒', 44, signal), { code: 'qq_push_permission_denied', unknownOutcome: false });
+  client.failure = new ApiError('server error', 503, '/test');
+  await assert.rejects(transport.push(target, '提醒', 45, signal), { code: 'qq_send_unknown', unknownOutcome: true });
+});

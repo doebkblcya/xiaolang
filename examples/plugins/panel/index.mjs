@@ -55,7 +55,8 @@ export function createHandler(inspection, configuration, options = {}) {
       const memoryRoute = /^\/api\/memory(?:\/(status|action|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const recallRoute = /^\/api\/memory-recalls\/([a-f0-9-]{36})$/.exec(url.pathname);
       const pluginRoute = /^\/api\/plugins\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname);
-      if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute)) {
+      const cancelReminder = url.pathname === '/api/reminders/cancel';
+      if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute || cancelReminder)) {
         if (!configuration) return send(503, { error: 'configuration_unavailable' });
         const token = request.headers['x-xiaolang-token'];
         if (request.headers.origin !== origin || typeof token !== 'string'
@@ -64,6 +65,11 @@ export function createHandler(inspection, configuration, options = {}) {
         }
         if (request.headers['content-type'] !== 'application/json') { request.resume?.(); return send(415, { error: 'json_required' }); }
         const input = await readJson(request, pluginRoute?.[1] === 'xiaolang-mcp' ? 131072 : 16384);
+        if (cancelReminder) {
+          if (!options.reminders) return send(503, { error: 'reminders_unavailable' });
+          if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 1) throw new Error('invalid_reminder_request');
+          return send(200, options.reminders.cancel(input.id));
+        }
         if (memoryRoute) {
           if (!options.memory) return send(503, { error: 'memory_unavailable' });
           if (memoryRoute[1] === 'mutate') return send(200, await options.memory.mutate(input));
@@ -78,6 +84,7 @@ export function createHandler(inspection, configuration, options = {}) {
         return send(200, { ...await configuration.save(writeRoute[1], input), writeToken });
       }
       if (request.method !== 'GET') { request.resume?.(); return send(405, { error: 'method_not_allowed' }); }
+      if (url.pathname === '/api/reminders') return options.reminders ? send(200, options.reminders.list()) : send(503, { error: 'reminders_unavailable' });
       if (recallRoute) return options.memory ? send(200, options.memory.recalled(recallRoute[1])) : send(503, { error: 'memory_unavailable' });
       if (memoryRoute) {
         if (!options.memory) return send(503, { error: 'memory_unavailable' });
@@ -113,6 +120,8 @@ export function createHandler(inspection, configuration, options = {}) {
       return send(404, { error: 'not_found' });
     } catch (error) {
       const failure = error.code ?? error.message;
+      if (failure === 'invalid_reminder_request') return send(400, { error: failure });
+      if (failure === 'reminder_not_found') return send(404, { error: failure });
       if (['invalid_memory_request', 'invalid_memory_source'].includes(failure)) return send(400, { error: failure });
       if (['memory_conflict', 'memory_disabled'].includes(failure)) return send(409, { error: failure });
       if (failure === 'memory_not_found') return send(404, { error: failure });
@@ -139,7 +148,7 @@ export async function apply(ctx, config = {}) {
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
   const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth,
-    memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills') });
+    memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   server.requestTimeout = 10000;
   server.headersTimeout = 10000;

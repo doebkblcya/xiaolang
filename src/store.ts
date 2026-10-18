@@ -54,6 +54,10 @@ export class SqliteStore implements Store {
       const source = row.direction === 'in' ? row : this.db.prepare('SELECT payload FROM messages WHERE seq=?').get(Number(row.source_seq));
       if (!source) return [];
       const message = JSON.parse(String(source.payload)) as Message;
+      if (row.direction === 'out') {
+        const sentAt = (JSON.parse(String(row.payload)) as { sentAt?: number }).sentAt;
+        if (typeof sentAt === 'number') message.time = sentAt;
+      }
       message.seq = row.direction === 'in' ? Number(row.seq) : Number(row.source_seq);
       return [{ seq: Number(row.seq), direction: row.direction as 'in' | 'out', session: String(row.session), message,
         text: row.direction === 'in' ? render(message) : String((JSON.parse(String(row.payload)) as { text: string }).text) }];
@@ -110,6 +114,12 @@ export class SqliteStore implements Store {
   delivered(turn: Turn, text: string, protocol: ModelMessage[], platformIds: string[]): void {
     this.db.prepare('INSERT INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,\'out\',?,?) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload')
       .run(`reply:${turn.id}`, turn.message.session, turn.message.seq, JSON.stringify({ text, protocol, platformIds }));
+  }
+  pushDelivered(source: number, execution: string, text: string, receipt: string, time: number): void {
+    const row = this.db.prepare("SELECT session FROM messages WHERE seq=? AND direction='in'").get(source);
+    if (!row) throw new Failure('reminder_source_missing');
+    this.db.prepare("INSERT OR IGNORE INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,'out',?,?)")
+      .run(`reminder:${execution}`, String(row.session), source, JSON.stringify({ text, protocol: [{ role: 'assistant', content: text }], platformIds: [receipt], sentAt: time }));
   }
   confirmSend(turn: Turn, part: number, platformId: string, text: string, protocol: ModelMessage[], platformIds: string[]): void {
     this.db.exec('BEGIN IMMEDIATE');

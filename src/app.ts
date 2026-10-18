@@ -21,6 +21,7 @@ import { webToolsPlugin } from './web-tools.js';
 import { mcpPlugin } from './mcp.js';
 import { skillsPlugin } from './skills.js';
 import { basicToolsPlugin } from './basic-tools.js';
+import { remindersPlugin } from './reminders.js';
 import { Sender, outputSchema } from './output.js';
 import { memoryPlugin } from './memory.js';
 import type { Embeddings } from './embedding.js';
@@ -112,6 +113,7 @@ export async function createApp(config: Config, options: AppOptions) {
     'xiaolang-memory': ['聊天与记忆', 'src/memory.ts'],
     'xiaolang-web': ['网页搜索与阅读', 'src/web-tools.ts'], 'xiaolang-mcp': ['MCP 接入', 'src/mcp.ts'],
     'xiaolang-skills': ['Skills 接入', 'src/skills.ts'], 'xiaolang-basic-tools': ['基础计算工具', 'src/basic-tools.ts'],
+    'xiaolang-reminders': ['定时提醒', 'src/reminders.ts'],
     'xiaolang-injected-adapter': ['接入服务（测试注入）', 'injected'],
   };
   const stateName = (fiber?: Fiber) => fiber?.state === FiberState.ACTIVE ? 'active' : fiber?.state === FiberState.FAILED ? 'failed'
@@ -148,7 +150,7 @@ export async function createApp(config: Config, options: AppOptions) {
     state = 'stopped';
     beforeReady.length = 0;
     const active = ctx.get('chat');
-    try { if (typeof active?.stop === 'function') await active.stop(); }
+    try { await Promise.all([active?.stop(), ctx.get('reminders')?.stop()]); }
     finally {
       try { if (typeof adapter?.stop === 'function') await adapter.stop(); }
       finally {
@@ -176,6 +178,7 @@ export async function createApp(config: Config, options: AppOptions) {
     await mount(webToolsPlugin, { config, apiKey: options.apiKey, fetcher: options.webFetch });
     await mount(mcpPlugin, config);
     await mount(skillsPlugin, config);
+    await mount(remindersPlugin, config);
     await mount(intakePlugin, config);
     await mount(memoryPlugin, { config, apiKey: options.apiKey, embeddingKey: options.embeddingKey, model: options.memoryModel, embeddings: options.embeddings, imageFetch: options.imageFetch });
     await mount(outputPlugin, config);
@@ -223,6 +226,7 @@ export async function createApp(config: Config, options: AppOptions) {
     else await starting;
     state = 'running';
     log(ctx, 'application_ready', undefined, 'lifecycle');
+    ctx.reminders.start();
     for (const message of beforeReady.splice(0)) ctx.intake.receive(message);
     return { ctx, plugins: plugins.filter(plugin => plugin.id !== 'xiaolang-adapter'), stop, stopChat: async () => {
       try { await ctx.get('chat')?.stop(); }

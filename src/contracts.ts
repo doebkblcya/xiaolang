@@ -53,11 +53,14 @@ export interface Adapter {
   stop(): Promise<void> | void;
   streamReply?(message: Message, text: string, index: number, done: boolean, streamId: string | undefined, signal: AbortSignal): Promise<{ id: string }>;
   reply(message: Message, text: string, part: number, signal: AbortSignal): Promise<{ id: string }>;
+  push?(target: PushTarget, text: string, sequence: number, signal: AbortSignal): Promise<{ id: string }>;
 }
+export interface PushTarget { platform: string; account: string; scope: 'private' | 'group'; recipient: string }
 export type TurnState = 'queued' | 'running' | 'sending' | 'completed' | 'failed' | 'cancelled' | 'unknown' | 'expired';
 export interface Turn { id: string; message: Message; reason: string }
 export interface SendRecord { part: number; text: string; state: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown'; platformId?: string }
 export interface Store {
+  pushDelivered?(source: number, execution: string, text: string, receipt: string, time: number): void;
   records(query: { after?: number; before?: number; fence?: number; session?: string; limit: number; incoming?: boolean }): ChatRecord[];
   record(seq: number): ChatRecord | undefined;
   admit(message: Message): Message | undefined;
@@ -75,6 +78,14 @@ export interface Store {
   prepareFeedback(turn: string, text: string): boolean;
 }
 export interface ChatRecord { seq: number; session: string; direction: 'in' | 'out'; message: Message; text: string }
+export interface Reminders {
+  start(): void;
+  stop(): Promise<void>;
+  idle(): Promise<void>;
+  list(message?: Message, includeFinished?: boolean): Record<string, unknown>;
+  create(input: unknown, message: Message): Record<string, unknown>;
+  cancel(id: unknown, message?: Message): Record<string, unknown>;
+}
 export interface Memory {
   imageContext?(message: Message): string;
   prepare(turn: Turn, signal: AbortSignal): Promise<{ history: ModelMessage[]; context: string; images: { url: string }[] } | undefined>;
@@ -130,7 +141,7 @@ export interface Chat { idle(): Promise<void>; stop(): Promise<void> }
 export interface Log {
   code: string; time?: string; level?: 'info' | 'warn' | 'error';
   turn?: string; stage?: string; plugin?: string; dependencies?: string[];
-  messageId?: string; scope?: 'private' | 'group'; sender?: string; group?: string;
+  messageId?: string; taskId?: string; scope?: 'private' | 'group'; sender?: string; group?: string;
   preview?: string; reason?: string; model?: string; step?: number; tool?: string;
   part?: number; parts?: number; toolCalls?: number; durationMs?: number; waitMs?: number;
   state?: string; errorCode?: string; receipt?: string;
@@ -189,6 +200,7 @@ declare module 'cordis' {
     memory: Memory;
     mcp: { status(): unknown[] };
     skills: { status(): unknown[] };
+    reminders: Reminders;
   }
   interface Events {
     'xiaolang/message'(message: Message): void;

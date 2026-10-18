@@ -2,7 +2,7 @@ import type { Plugin } from 'cordis';
 import type { Config } from './config.js';
 import type { Log } from './contracts.js';
 
-const strings = ['code', 'time', 'turn', 'stage', 'plugin', 'messageId', 'scope', 'sender', 'group',
+const strings = ['code', 'time', 'turn', 'stage', 'plugin', 'messageId', 'taskId', 'scope', 'sender', 'group',
   'reason', 'model', 'tool', 'state', 'errorCode', 'receipt'] as const;
 const numbers = ['step', 'part', 'parts', 'toolCalls', 'durationMs', 'waitMs'] as const;
 

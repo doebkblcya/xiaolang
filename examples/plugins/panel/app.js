@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const words = { connected: '已连接', disconnected: '已断开', starting: '启动中', ready: '已就绪', stopping: '停止中', failed: '失败', error: '连接异常',
   completed: '已完成', queued: '等待处理', running: '处理中', sending: '发送中', unknown: '结果未知', expired: '已过期', cancelled: '已取消',
-  active: '已启用', disabled: '已停用', pending: '等待激活', sent: '已确认发送', succeeded: '已成功', private: '私聊', mention: '@机器人', keyword: '触发词' };
+  active: '已启用', disabled: '已停用', pending: '等待激活', scheduled: '等待到点', sent: '已确认发送', succeeded: '已成功', private: '私聊', mention: '@机器人', keyword: '触发词' };
 const stages = { application_ready: '小狼已就绪', application_stopping: '小狼正在停止', application_failed: '启动失败', qq_connected: 'QQ 已连接', qq_disconnected: 'QQ 已断开',
   qq_connection_error: 'QQ 连接异常', qq_connection_failed: 'QQ 连接失败', adapter_group_messages_limited: '非 @ 群消息推送权限待验证', panel_listening: '面板已启动', feedback_started: '发送故障提示', feedback_sent: '故障提示已确认发送', feedback_failed: '故障提示发送失败', feedback_unknown: '故障提示结果未知', feedback_skipped: '未追加故障提示',
   message_received: '收到消息', message_ignored: '忽略消息', trigger_matched: '触发回复', turn_queued: '等待调度', turn_started: '开始处理',
@@ -13,6 +13,8 @@ Object.assign(stages, { memory_recalled: '读取聊天与记忆', memory_process
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
 const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什么，也可以帮它纠正。'], overview: ['运行概览', '看看小狼现在怎么样。'], chats: ['最近聊天', '收到的消息、生成的回复，以及每一轮的处理结果。'], logs: ['过程日志', '从收到消息到发送回复，跟着每一步看。'], plugins: ['插件列表', '查看当前的小狼由哪些插件组成。'], 'model-settings': ['回复模型', '配置模型连接与生成方式。'], 'qq-settings': ['QQ 接入', '配置小狼连接的机器人与消息范围。'] };
 Object.assign(descriptions, { tooling: ['工具与行动', '查看工具、连接和权限，按插件扩展能力。'] });
+Object.assign(descriptions, { reminders: ['定时提醒', '查看提醒时间、执行结果，也可以取消任务。'] });
+Object.assign(stages, { reminder_created: '已创建提醒', reminder_cancelled: '已取消提醒', reminder_queued: '提醒等待发送', reminder_send_started: '开始发送提醒', reminder_sent: '提醒已确认发送', reminder_failed: '提醒发送失败', reminder_unknown: '提醒发送结果未知', reminder_scheduler_failed: '提醒调度异常', reminder_history_failed: '提醒已发出，聊天记录写入失败' });
 Object.assign(stages, { mcp_connected: 'MCP 已连接', mcp_connection_failed: 'MCP 连接失败', mcp_tool_rejected: 'MCP 工具注册失败' });
 Object.assign(stages, { proactive_state: '插话状态更新', proactive_observing: '收集待判断消息', proactive_judge_started: '判断是否接话', proactive_decided: '接话判断完成', proactive_skipped: '本次未接话', proactive_judge_failed: '接话判断失败，保持沉默' });
 Object.assign(stages, { panel_tls_reloaded: '面板证书已重新加载', panel_tls_reload_failed: '面板新证书暂时无法加载，保留原证书' });
@@ -42,6 +44,7 @@ function showView(view) {
   if (view === 'chats') refreshTurns();
   if (view === 'memories') refreshMemory();
   if (view === 'tooling') refreshTools();
+  if (view === 'reminders') refreshReminders();
   if (view === 'logs') renderLogs();
   if (view.endsWith('-settings') && !settings) loadSettings();
 }
@@ -86,6 +89,7 @@ function logMeta(entry) {
   if (entry.part) values.push(`第 ${entry.part}/${entry.parts} 段`);
   if (entry.errorCode) values.push(entry.errorCode);
   if (entry.turn) values.push(`turn=${entry.turn}`);
+  if (entry.taskId) values.push(`提醒 ${entry.taskId}`);
   return values.join(' · ');
 }
 function renderLogs() {
@@ -181,11 +185,13 @@ async function poll() {
     $('connection').textContent = '面板在线'; $('connection').className = 'badge good'; $('synced').textContent = time(Date.now()); notice('');
     if (!before && !$('chats').hidden) await refreshTurns();
     if (!$('tooling').hidden) await refreshTools();
+    if (!$('reminders').hidden) await refreshReminders();
   } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('无法连接面板，当前保留上次显示的数据。请检查网络和访问地址，连接恢复后会自动更新。'); }
   finally { busy = false; }
 }
 
 const settingsErrors = {
+  reminder_not_found: '这条提醒已不存在，请刷新列表。', invalid_reminder_request: '提醒参数不正确。', reminders_unavailable: '定时提醒服务暂时不可用。',
   memory_conflict: '记忆已更新，请关闭详情重新读取后再修改。', invalid_memory_request: '记忆字段填写不正确，请检查内容、用户ID或有效期。', memory_not_found: '这条记忆已不存在。', memory_disabled: '记忆功能尚未启用，请先在插件配置中开启并应用。', embedding_key_missing: '尚未配置百炼 API Key。', embedding_http_401: '百炼鉴权失败，请检查 API Key 和业务空间地址。', embedding_http_403: '百炼未授权此模型，请检查模型权限和地址。', embedding_http_404: '百炼地址或模型标识不正确。', embedding_network: '向量服务暂时无法连接或请求超时。', settings_conflict: '配置已被其他页面修改，请重新读取后再保存。', settings_busy: '配置正在保存或应用，请稍后重试。',
   chat_busy: '小狼正在处理消息，请等回复结束后再应用。已保存的配置不会丢失。', no_pending_settings: '没有需要应用的新配置。',
   invalid_config: '参数不符合范围，请检查表单。', invalid_qq_config: 'QQ 配置不完整或超出范围，请检查。',
@@ -321,6 +327,10 @@ function renderPlugin(detail) {
   meta.append(badge(detail.state), element('span', '', detail.kind === 'builtin' ? '内置 · 镜像内' : '外挂 · 挂载加载'));
   body.replaceChildren(meta, element('p', 'mono', `${detail.id} · ${detail.module}`),
     detailSection('依赖服务', detail.dependencies.join('、') || '无'), detailSection('提供服务', detail.provides.join('、') || '无'));
+  if (detail.id === 'xiaolang-reminders') {
+    const button = element('button', 'secondary detail-log-button', '查看定时提醒'); button.type = 'button';
+    button.addEventListener('click', () => { $('plugin-detail').close(); showView('reminders'); }); body.append(button);
+  }
   if (detail.settingsPage && detail.settingsPage !== 'trigger-settings') {
     const button = element('button', 'secondary detail-log-button', '打开插件配置');
     button.type = 'button'; button.addEventListener('click', () => { $('plugin-detail').close(); showView(detail.settingsPage); }); body.append(button);
@@ -394,6 +404,36 @@ $('logout').addEventListener('click', async () => {
     if (response.ok) location.reload(); else notice('退出未完成，请重试。');
   } catch { notice('退出未完成，请检查连接后重试。'); }
 });
+async function refreshReminders() {
+  try {
+    const data = await get('/api/reminders');
+    $('reminder-summary').textContent = `待执行 ${data.active} 个 · 共 ${data.total} 个${data.total > 100 ? '，显示前 100 个' : ''}`;
+    $('reminder-empty').hidden = data.items.length > 0;
+    $('reminder-rows').replaceChildren(...data.items.map(task => {
+      const row = element('tr'), content = element('td'), schedule = element('td'), state = element('td'), actions = element('td');
+      content.append(element('div', 'snippet', task.text), element('div', 'module', `${task.scope === 'group' ? '群聊' : '私聊'} ${task.recipient} · ${task.ownerName}`), element('div', 'module', task.id));
+      schedule.append(element('div', '', task.nextAtBeijing), element('div', 'muted', ({ once: '一次性', daily: '每天', weekly: '每周' })[task.repeat]));
+      state.append(badge(task.state));
+      if (task.lastRun) state.append(element('div', 'module', `最近执行 ${time(task.lastRun.time, true)} · ${words[task.lastRun.state] ?? task.lastRun.state}`));
+      if (task.lastRun?.receipt) state.append(element('div', 'module', `回执 ${task.lastRun.receipt}`));
+      if (task.errorCode) state.append(element('div', 'form-error', ({ qq_push_permission_denied: '没有主动发送权限', qq_push_rate_limited: 'QQ 主动发送额度或频率限制', qq_push_refused: '对方不允许主动消息', qq_not_ready: 'QQ 连接未就绪，稍后重试', process_interrupted: '发送时服务重启，请核对是否已收到', qq_send_unknown: '发送结果不明，请核对是否已收到' })[task.errorCode] ?? task.errorCode));
+      if (['scheduled', 'queued', 'sending', 'failed', 'unknown'].includes(task.state)) {
+        const cancel = element('button', 'secondary', '取消'); cancel.type = 'button';
+        cancel.addEventListener('click', async () => {
+          cancel.disabled = true;
+          try {
+            if (!settings) await loadSettings();
+            const result = await settingsRequest('/api/reminders/cancel', { id: task.id });
+            if (result.inFlight) alert(result.note);
+            await refreshReminders();
+          } catch (error) { alert(error.message); cancel.disabled = false; }
+        }); actions.append(cancel);
+      }
+      row.append(content, schedule, state, actions); return row;
+    }));
+  } catch { $('reminder-summary').textContent = '暂时无法读取提醒，请稍后刷新。'; }
+}
+$('refresh-reminders').addEventListener('click', refreshReminders);
 poll();
 loadSettings();
 const timer = setInterval(poll, 2000);

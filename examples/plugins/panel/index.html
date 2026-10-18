@@ -12,6 +12,7 @@
       <button class="nav" data-view="qq-settings"><span>↔</span>QQ 接入</button>
       <button class="nav" data-view="memories"><span>◇</span>聊天与记忆</button>
       <button class="nav" data-view="tooling"><span>⚒</span>工具与行动</button>
+      <button class="nav" data-view="reminders"><span>◷</span>定时提醒</button>
       <button class="nav" data-view="plugins"><span>⊞</span>插件列表</button>
     </nav>
     <div class="sidebar-bottom"><span class="dot"></span> 小狼控制台<small>仅向可信设备开放访问</small><button id="logout" type="button" class="link" hidden>退出访问</button></div>
@@ -31,6 +32,14 @@
         <article class="panel"><div class="panel-title"><h2>最近动态</h2><button class="link" data-view="logs">查看日志 →</button></div><div id="recent-events" class="recent-events"><p class="empty">等待小狼的第一条动态</p></div></article>
         <article class="panel"><h2>运行摘要</h2><dl class="summary"><div><dt>应用状态</dt><dd id="app-state">—</dd></div><div><dt>异常轮次</dt><dd id="failures">—</dd></div><div><dt>启用插件</dt><dd id="plugin-count">—</dd></div><div><dt>最近收到消息</dt><dd id="last-message">—</dd></div></dl><p class="muted">这里只查看运行情况。聊天记录会保留，过程日志显示本次启动的最近 500 条。</p></article>
       </div>
+    </section>
+    <section id="reminders" class="view" hidden>
+      <article class="panel"><div class="panel-title"><div><h2>定时提醒</h2><p class="muted">在 QQ 里告诉小狼何时提醒、提醒什么；到点发回创建任务的聊天。支持一次性、每天和每周。</p></div><button id="refresh-reminders" class="secondary" type="button">刷新</button></div>
+        <p id="reminder-summary" class="muted">正在读取…</p>
+        <div class="table-wrap"><table><thead><tr><th>提醒内容 / 来源</th><th>时间（北京）/ 重复</th><th>执行情况</th><th>操作</th></tr></thead><tbody id="reminder-rows"></tbody></table></div>
+        <p id="reminder-empty" class="empty" hidden>还没有提醒。试试对小狼说：“一分钟后提醒我喝水”。</p>
+        <p class="muted">QQ 需允许机器人主动发送。发送失败或结果未知时会暂停任务，请核对后取消并重新创建。取消已开始发送的任务，仍可能收到本次提醒。</p>
+      </article>
     </section>
     <section id="chats" class="view" hidden>
       <article class="panel"><div class="panel-title"><div><h2>最近聊天</h2><p class="muted">展示已触发处理的对话轮次，点击查看回复、发送状态和失败原因。</p></div><label class="filter"><input id="failures-only" type="checkbox">只看异常</label></div>
