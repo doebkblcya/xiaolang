@@ -12,7 +12,7 @@ const stages = { application_ready: '小狼已就绪', application_stopping: '�
 Object.assign(stages, { memory_recalled: '读取聊天与记忆', memory_processing_started: '开始整理记忆', memory_processing_completed: '记忆整理完成', memory_processing_failed: '记忆整理失败', memory_vector_fallback: '向量不可用，使用关键词检索', memory_summary_failed: '聊天摘要整理失败', memory_image_unavailable: '图片暂时无法读取', memory_image_described: '图片描述已生成' });
 Object.assign(stages, { persona_learning_started: '开始学习聊天表达', persona_learning_completed: '表达学习完成', persona_learning_failed: '表达学习未完成' });
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
-const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什么，也可以帮它纠正。'], overview: ['运行概览', '看看小狼现在怎么样。'], chats: ['最近聊天', '收到的消息、生成的回复，以及每一轮的处理结果。'], logs: ['过程日志', '从收到消息到发送回复，跟着每一步看。'], plugins: ['插件列表', '查看当前的小狼由哪些插件组成。'], 'model-settings': ['回复模型', '配置模型连接与生成方式。'], 'qq-settings': ['QQ 接入', '配置小狼连接的机器人与消息范围。'] };
+const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什么，也可以帮它纠正。'], overview: ['运行概览', '看看小狼现在怎么样。'], chats: ['聊天记录', '按群聊和私聊查看收到的消息与小狼回复。'], logs: ['过程日志', '从收到消息到发送回复，跟着每一步看。'], plugins: ['插件列表', '查看当前的小狼由哪些插件组成。'], 'model-settings': ['回复模型', '配置模型连接与生成方式。'], 'qq-settings': ['QQ 接入', '配置小狼连接的机器人与消息范围。'] };
 Object.assign(descriptions, { persona: ['人设与学习', '基础人设保持固定，让表达逐渐自然。'] });
 Object.assign(descriptions, { tooling: ['工具与行动', '查看工具、连接和权限，按插件扩展能力。'] });
 Object.assign(descriptions, { reminders: ['定时提醒', '查看提醒时间、执行结果，也可以取消任务。'] });
@@ -23,7 +23,7 @@ Object.assign(stages, { panel_tls_reloaded: '面板证书已重新加载', panel
 Object.assign(reasons, { proactive: '主动插话', no_trigger: '未命中直接触发条件' });
 const dateFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const timeFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-let logs = [], cursor = 0, before, next = null, busy = false, turnRequest = 0, selected, runStarted;
+let logs = [], cursor = 0, busy = false, selected, runStarted;
 let settings, settingsLoading = false, applying = false;
 const dirtyForms = new Set();
 let pluginDetails, pluginDirty = false;
@@ -43,7 +43,7 @@ function showView(view) {
   for (const section of document.querySelectorAll('.view')) section.hidden = section.id !== view;
   for (const button of document.querySelectorAll('.nav')) { button.classList.toggle('active', button.dataset.view === view); if (button.dataset.view === view) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current'); }
   [$('page-title').textContent, $('page-description').textContent] = descriptions[view];
-  if (view === 'chats') refreshTurns();
+  if (view === 'chats') refreshChats();
   if (view === 'memories') refreshMemory();
   if (view === 'persona') refreshPersona();
   if (view === 'tooling') refreshTools();
@@ -114,26 +114,6 @@ function renderLogs() {
   }));
   if (!logs.length) $('recent-events').append(element('p', 'empty', '等待小狼的第一条动态'));
 }
-async function refreshTurns() {
-  const version = ++turnRequest;
-  const params = new URLSearchParams({ limit: '25', failures: $('failures-only').checked ? '1' : '0' });
-  if (before) params.set('before', before);
-  try {
-    const result = await get(`/api/turns?${params}`);
-    if (version !== turnRequest) return;
-    next = result.next; $('older').disabled = next === null; $('chat-empty').hidden = result.items.length > 0;
-    $('page-note').textContent = before ? '更早的 25 轮' : '最近 25 轮';
-    $('turns').replaceChildren(...result.items.map(turn => {
-      const row = element('tr', 'turn-row'); row.tabIndex = 0; row.setAttribute('aria-label', `查看对话：${turn.input.slice(0, 30)}`);
-      const source = element('td', '', time(turn.received, true)); source.append(element('span', 'source', `${words[turn.scope] ?? '群聊'} · ${turn.sender}`));
-      const input = element('td'), reply = element('td'), state = element('td');
-      input.append(element('div', 'snippet', turn.input || '（非文字消息）'));
-      reply.append(element('div', 'snippet', turn.reply || '—')); state.append(badge(turn.state));
-      row.append(source, input, reply, state); row.addEventListener('click', () => openDetail(turn.id));
-      row.addEventListener('keydown', event => { if (event.key === 'Enter') openDetail(turn.id); }); return row;
-    }));
-  } catch { notice('暂时无法读取聊天记录。请检查 SSH 隧道连接。'); }
-}
 function detailSection(title, text, className = '') {
   const section = element('section', 'detail-section'); section.append(element('h3', '', title), element('div', `bubble ${className}`, text)); return section;
 }
@@ -167,9 +147,6 @@ $('detail').addEventListener('close', () => { selected = undefined; });
 $('log-filter').addEventListener('input', renderLogs);
 $('clear-filter').addEventListener('click', () => { $('log-filter').value = ''; renderLogs(); });
 $('follow').addEventListener('change', renderLogs);
-$('failures-only').addEventListener('change', () => { before = undefined; refreshTurns(); });
-$('latest').addEventListener('click', () => { before = undefined; refreshTurns(); });
-$('older').addEventListener('click', () => { if (next !== null) { before = next; refreshTurns(); } });
 async function poll() {
   if (busy) return; busy = true;
   try {
@@ -186,7 +163,7 @@ async function poll() {
     if (page.items.length || page.reset) { logs = [...logs, ...page.items].slice(-500); renderLogs(); }
     cursor = page.cursor;
     $('connection').textContent = '面板在线'; $('connection').className = 'badge good'; $('synced').textContent = time(Date.now()); notice('');
-    if (!before && !$('chats').hidden) await refreshTurns();
+    if (!$('chats').hidden) await refreshChats();
     if (!$('tooling').hidden) await refreshTools();
     if (!$('reminders').hidden) await refreshReminders();
   } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('无法连接面板，当前保留上次显示的数据。请检查网络和访问地址，连接恢复后会自动更新。'); }
@@ -194,6 +171,7 @@ async function poll() {
 }
 
 const settingsErrors = {
+  conversation_conflict: '会话备注已被修改，请关闭窗口重新编辑。', invalid_conversation_request: '备注最多 80 字，不能包含换行。', conversation_not_found: '会话已不存在，请刷新列表。',
   persona_rate_limited: '已达到学习冷却时间或每日上限。', persona_not_enough_messages: '本批用户消息不足，继续聊天后再学习。', persona_catalog_full: '表达习惯已达上限，后续只更新已有习惯。', persona_busy: '正在学习，请稍后刷新。', invalid_persona_result: '本次学习结果未通过检查，没有修改已有习惯。',
   persona_conflict: '这条习惯已被修改，请重新打开。', invalid_persona_request: '表达习惯字段不正确，请检查内容与关键词。', persona_not_found: '这条习惯已不存在。', persona_disabled: '后台学习尚未开启。',
   reminder_not_found: '这条提醒已不存在，请刷新列表。', invalid_reminder_request: '提醒参数不正确。', reminders_unavailable: '定时提醒服务暂时不可用。',
@@ -593,4 +571,123 @@ $('persona-form').addEventListener('submit', async event => {
     await settingsRequest('/api/persona/mutate', { action: 'update', id: editingStyle.id, version: editingStyle.version, scene: form.elements.scene.value.trim(), rule: form.elements.rule.value.trim(), keywords: form.elements.keywords.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean), enabled: form.elements.enabled.checked });
     $('persona-detail').close(); await refreshPersona();
   } catch (error) { $('persona-message').textContent = error.message; }
+});
+
+let conversationItems = [], currentConversation, conversationNext, conversationRows = [], messageNext;
+let chatLoading = false, conversationFilterVersion = 0, timelineVersion = 0, namingConversation;
+function conversationLabel(item) { return item.alias || (item.scope === 'group' ? `群聊 · ${item.recipient.slice(0, 12)}` : item.name); }
+function setConversationHeading(item) {
+  $('conversation-title').textContent = conversationLabel(item);
+  $('conversation-subtitle').textContent = `${item.scope === 'group' ? '群' : '用户'} ID：${item.recipient} · ${item.messages} 条记录`;
+  $('conversation-name').disabled = false; $('message-latest').disabled = false;
+}
+function renderConversations() {
+  $('conversation-list').replaceChildren(...conversationItems.map(item => {
+    const button = element('button', `conversation-item${item.id === currentConversation?.id ? ' selected' : ''}`); button.type = 'button';
+    if (item.id === currentConversation?.id) button.setAttribute('aria-current', 'true');
+    button.append(element('small', 'muted', item.scope === 'group' ? '群聊' : '私聊'), element('strong', '', conversationLabel(item)), element('span', 'conversation-preview', item.preview || '（非文字消息）'));
+    button.addEventListener('click', () => { selectConversation(item).catch(() => { $('conversation-message').textContent = '读取会话失败，请重试。'; }); }); return button;
+  }));
+  if (!conversationItems.length) $('conversation-list').append(element('p', 'empty', '暂无符合条件的会话。收到消息后会自动出现。'));
+  $('conversation-more').hidden = !conversationNext;
+}
+async function refreshChats(more = false) {
+  if (chatLoading) return; chatLoading = true;
+  const version = conversationFilterVersion;
+  try {
+    const params = new URLSearchParams({ q: $('conversation-search').value.trim(), scope: $('conversation-scope').value });
+    if (more && conversationNext) params.set('before', conversationNext);
+    const data = await get(`/api/conversations?${params}`);
+    if (version !== conversationFilterVersion) return;
+    if (more || !conversationItems.length) conversationNext = data.next;
+    // Keep pages already opened while refreshing the first page.
+    const map = new Map(conversationItems.map(item => [item.id, item])); for (const item of data.items) map.set(item.id, item);
+    conversationItems = [...map.values()].sort((a, b) => b.lastSeq - a.lastSeq); renderConversations();
+    if (!currentConversation && data.items.length) await selectConversation(data.items[0]);
+    else if (currentConversation && !more) await loadTimeline(false);
+    $('conversation-message').textContent = '';
+  } catch { $('conversation-message').textContent = '暂时无法读取聊天记录，请检查连接后重试。'; }
+  finally { chatLoading = false; }
+}
+async function selectConversation(item) {
+  currentConversation = item; conversationRows = []; messageNext = undefined; timelineVersion++;
+  setConversationHeading(item); renderConversations(); $('message-timeline').replaceChildren(element('p', 'empty', '正在读取…'));
+  await loadTimeline(false, true);
+}
+function renderTimeline() {
+  const nodes = conversationRows.map(item => {
+    const article = element('article', `timeline-item ${item.direction === 'out' ? 'outgoing' : 'incoming'}`), meta = element('div', 'timeline-meta');
+    meta.append(element('strong', '', item.name), element('span', '', time(item.time, true)));
+    if (item.direction === 'in') meta.append(element('span', 'message-sender-id', `ID：${item.sender}`));
+    if (item.kind === 'reminder') meta.append(element('span', '', '定时提醒'));
+    const bubble = element('div', 'message-bubble');
+    if (item.direction === 'out') bubble.textContent = item.parts?.[0] ?? item.text;
+    else for (const segment of item.segments) {
+      if (segment.type === 'text') bubble.append(document.createTextNode(segment.text));
+      else if (segment.type === 'image') {
+        const link = element('a', 'message-image-link', '[图片 · 打开 QQ 原图]');
+        if (segment.url.startsWith('https://')) { link.href = segment.url; link.target = '_blank'; link.rel = 'noreferrer noopener'; }
+        bubble.append(link);
+      } else bubble.append(document.createTextNode(segment.type === 'mention' ? `[@ ${segment.userId}]` : segment.type === 'reply' ? `[引用消息 ${segment.messageId}]` : `[暂不支持：${segment.kind}]`));
+    }
+    article.append(meta, bubble);
+    if (item.direction === 'out' && item.parts?.length > 1) for (const part of item.parts.slice(1)) article.append(element('div', 'message-bubble', part));
+    if (item.turn) {
+      const button = element('button', 'link timeline-detail', `处理详情 · ${words[item.turn.state] ?? item.turn.state}`); button.type = 'button';
+      button.addEventListener('click', () => openDetail(item.turn.id)); article.append(button);
+    } else if (item.direction === 'in') article.append(element('small', 'muted', '未触发回复'));
+    if (item.feedback) article.append(detailSection(`故障反馈 · ${words[item.feedback.state] ?? item.feedback.state}`, item.feedback.text));
+    return article;
+  });
+  $('message-timeline').replaceChildren(...nodes);
+  if (!nodes.length) $('message-timeline').append(element('p', 'empty', '这个会话暂无消息。'));
+  $('message-older').disabled = !messageNext;
+  $('message-page-note').textContent = `已显示 ${conversationRows.length} 条`;
+}
+async function loadTimeline(older = false, initial = false) {
+  if (!currentConversation) return;
+  const id = currentConversation.id, version = ++timelineVersion, box = $('message-timeline');
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90, top = box.scrollTop, height = box.scrollHeight;
+  const data = await get(`/api/conversations/${id}${older && messageNext ? `?before=${messageNext}` : ''}`);
+  if (id !== currentConversation?.id || version !== timelineVersion) return;
+  currentConversation = data.conversation; setConversationHeading(currentConversation);
+  const existing = new Map(conversationRows.map(item => [item.seq, item]));
+  // A burst larger than a page must not leave a hidden gap between old and new records.
+  const disjoint = !older && data.items.length === 50 && conversationRows.length && !data.items.some(item => existing.has(item.seq));
+  if (disjoint) existing.clear();
+  for (const item of data.items) existing.set(item.seq, item);
+  conversationRows = [...existing.values()].sort((a, b) => a.seq - b.seq);
+  if (older || initial || disjoint) messageNext = data.next;
+  renderTimeline();
+  if (older) box.scrollTop = top + box.scrollHeight - height;
+  else box.scrollTop = initial || (nearBottom && $('message-follow').checked) ? box.scrollHeight : top;
+}
+function filterConversations() {
+  conversationFilterVersion++; timelineVersion++; conversationItems = []; currentConversation = undefined; conversationNext = undefined; conversationRows = []; messageNext = undefined;
+  $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = '包含未触发小狼回复的消息。'; $('conversation-name').disabled = true; $('message-latest').disabled = true;
+  $('message-older').disabled = true; $('message-timeline').replaceChildren(element('p', 'empty', '选择群聊或私聊，查看完整聊天记录。'));
+  renderConversations(); refreshChats();
+}
+let conversationSearchTimer;
+$('conversation-search').addEventListener('input', () => { clearTimeout(conversationSearchTimer); conversationSearchTimer = setTimeout(filterConversations, 250); });
+$('conversation-scope').addEventListener('change', filterConversations);
+$('conversation-more').addEventListener('click', () => refreshChats(true));
+$('conversation-refresh').addEventListener('click', () => refreshChats());
+$('message-older').addEventListener('click', () => { if (messageNext) loadTimeline(true).catch(() => { $('conversation-message').textContent = '无法读取更早消息，请重试。'; }); });
+$('message-latest').addEventListener('click', () => { if (currentConversation) selectConversation(currentConversation).catch(() => { $('conversation-message').textContent = '读取会话失败，请重试。'; }); });
+$('conversation-name').addEventListener('click', () => {
+  namingConversation = structuredClone(currentConversation); $('conversation-name-form').elements.alias.value = namingConversation.alias;
+  $('conversation-name-message').textContent = '备注保存在后台，保存后立即显示。'; $('conversation-name-dialog').showModal();
+});
+$('close-conversation-name').addEventListener('click', () => $('conversation-name-dialog').close());
+$('conversation-name-form').addEventListener('submit', async event => {
+  event.preventDefault(); const form = event.currentTarget, button = form.querySelector('button[type="submit"]'); button.disabled = true;
+  try {
+    if (!settings) await loadSettings();
+    const updated = await settingsRequest(`/api/conversations/${namingConversation.id}/name`, { alias: form.elements.alias.value, version: namingConversation.version });
+    const existing = conversationItems.findIndex(item => item.id === updated.id); if (existing >= 0) conversationItems[existing] = updated;
+    if (currentConversation?.id === updated.id) { currentConversation = updated; setConversationHeading(updated); }
+    renderConversations(); $('conversation-name-dialog').close();
+  } catch (error) { $('conversation-name-message').textContent = error.message; }
+  finally { button.disabled = false; }
 });

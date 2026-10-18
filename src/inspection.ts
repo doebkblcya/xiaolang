@@ -34,6 +34,9 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
           plugins: structuredClone(options.plugins()),
         };
       },
+      conversations: (query, scope, before) => ctx.historyReader.conversations(query, scope, before),
+      timeline: (id, before) => ctx.historyReader.timeline(id, before),
+      renameConversation: (id, alias, version) => ctx.historyReader.renameConversation(id, alias, version),
       recent: (limit, before, failures) => ctx.historyReader.recent(limit, before, failures),
       detail: id => ctx.historyReader.detail(id),
       logs(after = 0) {

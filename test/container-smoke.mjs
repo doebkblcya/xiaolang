@@ -47,6 +47,12 @@ try {
   assert.ok(events.some(entry => entry.code === 'send_confirmed' && entry.receipt === '1'));
   const status = await fetch('http://127.0.0.1:18080/api/status').then(response => response.json());
   assert.equal(status.state, 'ready');
+  const conversations = await fetch('http://127.0.0.1:18080/api/conversations').then(response => response.json());
+  assert.equal(conversations.items.length, 1);
+  const timeline = await fetch(`http://127.0.0.1:18080/api/conversations/${conversations.items[0].id}`).then(response => response.json());
+  assert.equal(timeline.items[0].text, '向小狼问好');
+  assert.equal(timeline.items.at(-1).text, delivered);
+  assert.equal(timeline.conversation.scope, 'private');
   assert.ok(status.plugins.some(plugin => plugin.id === 'panel' && plugin.state === 'active'));
   const turns = await fetch('http://127.0.0.1:18080/api/turns').then(response => response.json());
   assert.equal(turns.items[0].reply, delivered);

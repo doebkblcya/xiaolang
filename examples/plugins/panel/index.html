@@ -6,7 +6,7 @@
     <a class="brand" href="/"><span class="brand-mark">狼</span><span>小狼<small>XIAOLANG</small></span></a>
     <nav aria-label="主导航">
       <button class="nav active" data-view="overview" aria-current="page"><span>◈</span>运行概览</button>
-      <button class="nav" data-view="chats"><span>▤</span>最近聊天</button>
+      <button class="nav" data-view="chats"><span>▤</span>聊天记录</button>
       <button class="nav" data-view="logs"><span>≋</span>过程日志</button>
       <button class="nav" data-view="model-settings"><span>◉</span>回复模型</button>
       <button class="nav" data-view="qq-settings"><span>↔</span>QQ 接入</button>
@@ -43,9 +43,18 @@
       </article>
     </section>
     <section id="chats" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>最近聊天</h2><p class="muted">展示已触发处理的对话轮次，点击查看回复、发送状态和失败原因。</p></div><label class="filter"><input id="failures-only" type="checkbox">只看异常</label></div>
-        <div class="table-wrap"><table><thead><tr><th>时间 / 来源</th><th>收到消息</th><th>已确认回复</th><th>处理结果</th></tr></thead><tbody id="turns"></tbody></table></div><p id="chat-empty" class="empty" hidden>还没有符合条件的对话</p>
-        <div class="pagination"><button id="latest" class="secondary">回到最新</button><span id="page-note" class="muted">最近 25 轮</span><button id="older" class="secondary" disabled>查看更早</button></div>
+      <article class="panel chat-browser">
+        <aside class="conversation-sidebar" aria-label="会话列表">
+          <div class="conversation-filters"><h2>会话</h2><input id="conversation-search" type="search" placeholder="搜索备注、昵称或 ID" aria-label="搜索会话"><select id="conversation-scope" aria-label="会话类型"><option value="">全部会话</option><option value="group">群聊</option><option value="private">私聊</option></select></div>
+          <div id="conversation-list" class="conversation-list"><p class="empty">暂无会话，收到消息后会自动出现。</p></div>
+          <button id="conversation-more" class="link conversation-more" hidden>更多会话</button>
+        </aside>
+        <section class="conversation-main" aria-label="聊天时间线">
+          <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted">包含未触发小狼回复的消息。</p></div><div class="form-actions"><button id="conversation-name" class="secondary" disabled>备注名称</button><button id="conversation-refresh" class="secondary">刷新</button></div></div>
+          <div class="timeline-toolbar"><button id="message-older" class="link" disabled>查看更早消息</button><span id="message-page-note" class="muted"></span><label class="filter"><input id="message-follow" type="checkbox" checked>跟随新消息</label></div>
+          <div id="message-timeline" class="message-timeline"><p class="empty">选择群聊或私聊，查看完整聊天记录。</p></div>
+          <div class="timeline-footer"><span id="conversation-message" class="muted" role="status"></span><button id="message-latest" class="link" disabled>回到最新</button></div>
+        </section>
       </article>
     </section>
     <section id="logs" class="view" hidden>
@@ -160,5 +169,8 @@
       <label class="filter"><input name="enabled" type="checkbox">在回复中参考这条习惯</label>
     </div><p id="persona-message" class="muted" role="status"></p><button class="primary" type="submit">保存</button></form>
     <div id="persona-versions"></div><div id="persona-sources"></div>
+  </dialog>
+  <dialog id="conversation-name-dialog"><div class="dialog-head"><h2>会话备注</h2><button id="close-conversation-name" class="secondary">关闭</button></div>
+    <form id="conversation-name-form"><label class="field">备注名称<input name="alias" maxlength="80" autocomplete="off"><small>仅用于后台显示，留空恢复默认名称。</small></label><p id="conversation-name-message" class="muted" role="status"></p><button type="submit" class="primary">保存备注</button></form>
   </dialog>
 </body></html>

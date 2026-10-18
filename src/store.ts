@@ -1,8 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import type { HistoryReader, Message, ModelMessage, SendRecord, Store, ToolCall, Turn, TurnDetail, TurnState, TurnView } from './contracts.js';
+import { randomUUID, createHash } from 'node:crypto';
+import type { HistoryReader, ConversationView, TimelineItem, Message, ModelMessage, SendRecord, Store, ToolCall, Turn, TurnDetail, TurnState, TurnView } from './contracts.js';
 import { render } from './messages.js';
 import { Failure } from './errors.js';
 
@@ -21,6 +21,7 @@ export class SqliteStore implements Store {
         payload TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS messages_session ON messages(session, seq);
+      CREATE TABLE IF NOT EXISTS chat_sessions (session TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,alias TEXT NOT NULL DEFAULT '',version INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS turns (
         id TEXT PRIMARY KEY, message_key TEXT NOT NULL UNIQUE, state TEXT NOT NULL,
         reason TEXT NOT NULL, code TEXT, draft TEXT, protocol TEXT, updated INTEGER NOT NULL
@@ -42,6 +43,10 @@ export class SqliteStore implements Store {
         (SELECT 1 FROM tools WHERE tools.turn_id=turns.id AND tools.state='unknown') THEN 'unknown' ELSE 'cancelled' END,
         code='process_interrupted' WHERE state IN ('queued','running','sending');
     `);
+    for (const row of this.db.prepare('SELECT DISTINCT session FROM messages').all()) this.ensureConversation(String(row.session));
+  }
+  private ensureConversation(session: string) {
+    this.db.prepare('INSERT OR IGNORE INTO chat_sessions(session,id) VALUES (?,?)').run(session, createHash('sha256').update(session).digest('hex'));
   }
   close(): void { this.db.close(); }
   records(query: { after?: number; before?: number; fence?: number; session?: string; limit: number; incoming?: boolean }) {
@@ -65,6 +70,7 @@ export class SqliteStore implements Store {
   }
   record(seq: number) { return this.records({ after: seq - 1, before: seq + 1, limit: 1 })[0]; }
   admit(message: Message): Message | undefined {
+    this.ensureConversation(message.session);
     const result = this.db.prepare('INSERT OR IGNORE INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,\'in\',0,?)')
       .run(message.key, message.session, JSON.stringify(message));
     return Number(result.changes) ? { ...message, seq: Number(result.lastInsertRowid) } : undefined;
@@ -113,7 +119,7 @@ export class SqliteStore implements Store {
   }
   delivered(turn: Turn, text: string, protocol: ModelMessage[], platformIds: string[]): void {
     this.db.prepare('INSERT INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,\'out\',?,?) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload')
-      .run(`reply:${turn.id}`, turn.message.session, turn.message.seq, JSON.stringify({ text, protocol, platformIds }));
+      .run(`reply:${turn.id}`, turn.message.session, turn.message.seq, JSON.stringify({ text, protocol, platformIds, sentAt: Date.now() }));
   }
   pushDelivered(source: number, execution: string, text: string, receipt: string, time: number): void {
     const row = this.db.prepare("SELECT session FROM messages WHERE seq=? AND direction='in'").get(source);
@@ -147,6 +153,65 @@ export class SqliteStore implements Store {
   inspectTurn(id: string) { return this.db.prepare('SELECT * FROM turns WHERE id=?').get(id); }
   inspectSends(id: string) { return this.db.prepare('SELECT * FROM sends WHERE turn_id=? ORDER BY part').all(id); }
   inspectTools(id: string) { return this.db.prepare('SELECT * FROM tools WHERE turn_id=?').all(id); }
+  private conversationView(row: Record<string, unknown>): ConversationView {
+    const message = JSON.parse(String(row.source)) as Message;
+    const payload = JSON.parse(String(row.payload));
+    const body = row.direction === 'in' ? message.segments.map(segment => segment.type === 'text' ? segment.text : segment.type === 'image' ? '[图片]' : segment.type === 'mention' ? '[@提及]' : segment.type === 'reply' ? '[引用]' : `[${segment.kind}]`).join('') : String(payload.text ?? '');
+    return { id: String(row.id), alias: String(row.alias), version: Number(row.version), scope: message.group ? 'group' : 'private',
+      recipient: message.group ?? message.sender, name: message.group ? `群聊 ${message.group}` : message.name,
+      platform: message.platform, account: message.account, lastSeq: Number(row.seq), preview: body.slice(0, 120), messages: Number(row.total) };
+  }
+  private conversationRows() {
+    return `WITH latest AS (SELECT session,MAX(seq) AS seq,COUNT(*) AS total FROM messages GROUP BY session)
+      SELECT c.id,c.alias,c.version,m.seq,m.direction,m.payload,s.payload AS source,l.total
+      FROM latest l JOIN chat_sessions c ON c.session=l.session JOIN messages m ON m.seq=l.seq
+      JOIN messages s ON s.seq=CASE WHEN m.direction='in' THEN m.seq ELSE m.source_seq END`;
+  }
+  conversations(query = '', scope = '', before?: number): ReturnType<HistoryReader['conversations']> {
+    if (typeof query !== 'string' || query.length > 200 || !['', 'group', 'private'].includes(scope) || (before !== undefined && (!Number.isSafeInteger(before) || before < 1))) throw new Failure('invalid_history_query');
+    const rows = this.db.prepare(this.conversationRows() + ` WHERE (? IS NULL OR m.seq<?)
+      AND (?='' OR CASE WHEN json_extract(s.payload,'$.group') IS NULL THEN 'private' ELSE 'group' END=?)
+      AND (?='' OR instr(lower(c.alias||' '||COALESCE(json_extract(s.payload,'$.group'),'')||' '||json_extract(s.payload,'$.sender')||' '||json_extract(s.payload,'$.name')),lower(?))>0)
+      ORDER BY m.seq DESC LIMIT 51`).all(before ?? null, before ?? null, scope, scope, query.trim(), query.trim());
+    const items = rows.slice(0, 50).map(row => this.conversationView(row));
+    return { items, next: rows.length > 50 ? items.at(-1)!.lastSeq : null };
+  }
+  private conversation(id: string): { session: string; view: ConversationView } {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw new Failure('invalid_history_query');
+    const row = this.db.prepare(this.conversationRows() + ' WHERE c.id=?').get(id);
+    const entry = this.db.prepare('SELECT session FROM chat_sessions WHERE id=?').get(id);
+    if (!row || !entry) throw new Failure('conversation_not_found');
+    return { session: String(entry.session), view: this.conversationView(row) };
+  }
+  renameConversation(id: string, alias: string, version: number): ConversationView {
+    if (typeof alias !== 'string' || alias.length > 80 || /[\r\n\0]/.test(alias) || !Number.isSafeInteger(version) || version < 0) throw new Failure('invalid_conversation_request');
+    this.conversation(id);
+    if (!this.db.prepare('UPDATE chat_sessions SET alias=?,version=version+1 WHERE id=? AND version=?').run(alias.trim(), id, version).changes) throw new Failure('conversation_conflict');
+    return this.conversation(id).view;
+  }
+  timeline(id: string, before?: number): ReturnType<HistoryReader['timeline']> {
+    if (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) throw new Failure('invalid_history_query');
+    const conversation = this.conversation(id);
+    const rows = this.db.prepare(`SELECT m.seq,m.key,m.direction,m.payload,s.payload AS source,t.id AS turn_id,t.state,t.reason,t.updated,
+      f.text AS feedback,f.state AS feedback_state FROM messages m
+      JOIN messages s ON s.seq=CASE WHEN m.direction='in' THEN m.seq ELSE m.source_seq END
+      LEFT JOIN turns t ON (m.direction='in' AND t.message_key=m.key) OR (m.direction='out' AND m.key='reply:'||t.id)
+      LEFT JOIN sends f ON m.direction='in' AND f.turn_id=t.id AND f.part=-1
+      WHERE m.session=? AND m.seq<? ORDER BY m.seq DESC LIMIT 51`).all(conversation.session, before ?? Number.MAX_SAFE_INTEGER);
+    const selected = rows.slice(0, 50);
+    const items: TimelineItem[] = selected.reverse().map(row => {
+      const message = JSON.parse(String(row.source)) as Message, payload = JSON.parse(String(row.payload));
+      const incoming = row.direction === 'in';
+      return { seq: Number(row.seq), direction: incoming ? 'in' : 'out', time: incoming ? message.time : Number(payload.sentAt ?? row.updated ?? message.time),
+        sender: incoming ? message.sender : message.account, name: incoming ? message.name : '小狼',
+        text: incoming ? message.text : String(payload.text ?? ''), segments: incoming ? message.segments : [],
+        kind: incoming ? 'message' : String(row.key).startsWith('reminder:') ? 'reminder' : 'reply',
+        ...(!incoming && row.turn_id ? { parts: this.db.prepare("SELECT text FROM sends WHERE turn_id=? AND part>=0 AND state='sent' ORDER BY part").all(String(row.turn_id)).map(part => String(part.text)) } : {}),
+        ...(row.turn_id ? { turn: { id: String(row.turn_id), state: String(row.state), reason: String(row.reason) } } : {}),
+        ...(row.feedback ? { feedback: { text: String(row.feedback), state: String(row.feedback_state) } } : {}) };
+    });
+    return { conversation: conversation.view, items, next: rows.length > 50 ? items[0]!.seq : null };
+  }
   counts(): Record<string, number> {
     return Object.fromEntries(this.db.prepare('SELECT state,count(*) AS count FROM turns GROUP BY state').all().map(row => [String(row.state), Number(row.count)]));
   }

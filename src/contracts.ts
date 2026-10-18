@@ -166,7 +166,20 @@ export interface TurnDetail extends TurnView {
   sends: { part: number; kind?: 'reply' | 'feedback'; text: string; state: string; receipt: string | null }[];
   tools: { name: string; state: string }[];
 }
+export interface ConversationView {
+  id: string; scope: 'group' | 'private'; recipient: string; name: string; alias: string; version: number;
+  platform: string; account: string; lastSeq: number; preview: string; messages: number;
+}
+export interface TimelineItem {
+  seq: number; direction: 'in' | 'out'; time: number; sender: string; name: string;
+  text: string; segments: Segment[]; kind: 'message' | 'reply' | 'reminder'; parts?: string[];
+  turn?: { id: string; state: string; reason: string }; feedback?: { text: string; state: string };
+}
 export interface HistoryReader {
+  conversations(query?: string, scope?: string, before?: number): { items: ConversationView[]; next: number | null };
+  timeline(id: string, before?: number): { conversation: ConversationView; items: TimelineItem[]; next: number | null };
+  renameConversation(id: string, alias: string, version: number): ConversationView;
+
   counts(): Record<string, number>;
   recent(limit: number, before?: number, failures?: boolean): { items: TurnView[]; next: number | null };
   detail(id: string): TurnDetail | undefined;
@@ -180,6 +193,7 @@ export interface Inspection {
     counts: Record<string, number>; plugins: PluginInfo[];
   };
   recent: HistoryReader['recent']; detail: HistoryReader['detail'];
+  conversations: HistoryReader['conversations']; timeline: HistoryReader['timeline']; renameConversation: HistoryReader['renameConversation'];
   logs(after?: number): { items: LogItem[]; cursor: number; reset: boolean };
 }
 

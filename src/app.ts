@@ -35,7 +35,7 @@ export const storePlugin: Plugin.Object<Config> = {
     const store = new SqliteStore(config.database);
     ctx.effect(() => () => store.close());
     ctx.provide('store', store);
-    ctx.provide('historyReader', { counts: () => store.counts(), recent: (limit, before, failures) => store.recent(limit, before, failures), detail: id => store.detail(id) });
+    ctx.provide('historyReader', { conversations: (query, scope, before) => store.conversations(query, scope, before), timeline: (id, before) => store.timeline(id, before), renameConversation: (id, alias, version) => store.renameConversation(id, alias, version), counts: () => store.counts(), recent: (limit, before, failures) => store.recent(limit, before, failures), detail: id => store.detail(id) });
   },
 };
 export const schedulerPlugin: Plugin.Object<Config> = {
