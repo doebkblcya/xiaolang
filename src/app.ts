@@ -150,7 +150,7 @@ export async function createApp(config: Config, options: AppOptions) {
     state = 'stopped';
     beforeReady.length = 0;
     const active = ctx.get('chat');
-    try { await Promise.all([active?.stop(), ctx.get('reminders')?.stop()]); }
+    try { await Promise.all([typeof active?.stop === 'function' ? active.stop() : undefined, ctx.get('reminders')?.stop()]); }
     finally {
       try { if (typeof adapter?.stop === 'function') await adapter.stop(); }
       finally {
