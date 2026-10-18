@@ -6,6 +6,8 @@ import type { Adapter, IncomingMessage, Message, Model, ModelMessage, ToolSchema
 
 export function config(): Config {
   const value = validateConfig(JSON.parse(readFileSync('config.example.json', 'utf8')));
+  // General pipeline fixtures exercise legacy configuration; persona tests opt in explicitly.
+  delete value.character;
   value.database = ':memory:';
   value.limits.turnTimeoutMs = 3000;
   value.model.timeoutMs = 1000;

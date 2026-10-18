@@ -103,6 +103,7 @@ export class ChatMemory implements Memory {
     await Promise.allSettled([this.images.stop(), ...(this.working ? [this.working] : []), ...this.summaries.values()]);
     this.repository.close();
   }
+  sourceAllowed(seq: number): boolean { return !this.repository.suppressed(seq); }
   status(): Record<string, unknown> {
     return { enabled: this.settings.enabled, ...this.repository.counts(), processing: !!this.working,
       processedThrough: Number(this.repository.meta('cursor') || 0), lastProcessed: this.lastProcessed ?? null,

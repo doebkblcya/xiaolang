@@ -55,8 +55,9 @@ export function createHandler(inspection, configuration, options = {}) {
       const memoryRoute = /^\/api\/memory(?:\/(status|action|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const recallRoute = /^\/api\/memory-recalls\/([a-f0-9-]{36})$/.exec(url.pathname);
       const pluginRoute = /^\/api\/plugins\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname);
+      const personaRoute = /^\/api\/persona(?:\/(learn|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const cancelReminder = url.pathname === '/api/reminders/cancel';
-      if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute || cancelReminder)) {
+      if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute || personaRoute || cancelReminder)) {
         if (!configuration) return send(503, { error: 'configuration_unavailable' });
         const token = request.headers['x-xiaolang-token'];
         if (request.headers.origin !== origin || typeof token !== 'string'
@@ -64,7 +65,13 @@ export function createHandler(inspection, configuration, options = {}) {
           request.resume?.(); return send(403, { error: 'write_authorization_required' });
         }
         if (request.headers['content-type'] !== 'application/json') { request.resume?.(); return send(415, { error: 'json_required' }); }
-        const input = await readJson(request, pluginRoute?.[1] === 'xiaolang-mcp' ? 131072 : 16384);
+        const input = await readJson(request, pluginRoute?.[1] === 'xiaolang-mcp' ? 131072 : pluginRoute?.[1] === 'xiaolang-persona' ? 65536 : 16384);
+        if (personaRoute) {
+          if (!options.persona) return send(503, { error: 'persona_unavailable' });
+          if (personaRoute[1] === 'mutate') return send(200, options.persona.mutate(input));
+          if (personaRoute[1] === 'learn') { void options.persona.learn().catch(() => {}); return send(202, { started: true }); }
+          return send(405, { error: 'method_not_allowed' });
+        }
         if (cancelReminder) {
           if (!options.reminders) return send(503, { error: 'reminders_unavailable' });
           if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 1) throw new Error('invalid_reminder_request');
@@ -84,6 +91,11 @@ export function createHandler(inspection, configuration, options = {}) {
         return send(200, { ...await configuration.save(writeRoute[1], input), writeToken });
       }
       if (request.method !== 'GET') { request.resume?.(); return send(405, { error: 'method_not_allowed' }); }
+      if (personaRoute) {
+        if (!options.persona) return send(503, { error: 'persona_unavailable' });
+        if (['learn', 'mutate'].includes(personaRoute[1])) return send(405, { error: 'method_not_allowed' });
+        return send(200, personaRoute[1] ? options.persona.detail(personaRoute[1]) : options.persona.list());
+      }
       if (url.pathname === '/api/reminders') return options.reminders ? send(200, options.reminders.list()) : send(503, { error: 'reminders_unavailable' });
       if (recallRoute) return options.memory ? send(200, options.memory.recalled(recallRoute[1])) : send(503, { error: 'memory_unavailable' });
       if (memoryRoute) {
@@ -120,6 +132,9 @@ export function createHandler(inspection, configuration, options = {}) {
       return send(404, { error: 'not_found' });
     } catch (error) {
       const failure = error.code ?? error.message;
+      if (['invalid_persona_request', 'invalid_persona_result'].includes(failure)) return send(400, { error: failure });
+      if (failure === 'persona_not_found') return send(404, { error: failure });
+      if (['persona_conflict', 'persona_disabled', 'persona_busy', 'persona_rate_limited', 'persona_not_enough_messages', 'persona_catalog_full'].includes(failure)) return send(409, { error: failure });
       if (failure === 'invalid_reminder_request') return send(400, { error: failure });
       if (failure === 'reminder_not_found') return send(404, { error: failure });
       if (['invalid_memory_request', 'invalid_memory_source'].includes(failure)) return send(400, { error: failure });
@@ -148,7 +163,7 @@ export async function apply(ctx, config = {}) {
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
   const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth,
-    memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
+    persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   server.requestTimeout = 10000;
   server.headersTimeout = 10000;

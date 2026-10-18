@@ -11,6 +11,7 @@
       <button class="nav" data-view="model-settings"><span>◉</span>回复模型</button>
       <button class="nav" data-view="qq-settings"><span>↔</span>QQ 接入</button>
       <button class="nav" data-view="memories"><span>◇</span>聊天与记忆</button>
+      <button class="nav" data-view="persona"><span>♧</span>人设与学习</button>
       <button class="nav" data-view="tooling"><span>⚒</span>工具与行动</button>
       <button class="nav" data-view="reminders"><span>◷</span>定时提醒</button>
       <button class="nav" data-view="plugins"><span>⊞</span>插件列表</button>
@@ -62,6 +63,12 @@
         <div id="memory-list" class="memory-list"></div>
         <div class="pagination"><button id="memory-latest" class="secondary">回到最新</button><button id="memory-older" class="secondary" disabled>查看更早</button></div>
       </article>
+    </section>
+    <section id="persona" class="view" hidden>
+      <article class="panel"><div class="panel-title"><div><h2>人设与学习</h2><p class="muted">固定身份由你设定；后台只学习适合小狼的真人表达，下一次回复即可参考。</p></div><button id="persona-config" class="secondary">插件配置</button></div>
+      <p id="persona-status" class="muted" role="status">正在读取…</p>
+      <div class="form-actions"><button id="persona-refresh" class="secondary">刷新</button><button id="persona-learn" class="secondary">学习一批聊天</button></div>
+      <div id="persona-list" class="memory-list"></div></article>
     </section>
     <section id="tooling" class="view" hidden>
       <article class="panel"><div class="panel-title"><div><h2>工具与行动</h2><p class="muted">模型按需要选择工具。敏感工具依据消息中的真实用户 ID 鉴权；管理员列表为空时无人可用。</p></div><button class="secondary" data-tool-config="xiaolang-tools">管理员设置</button></div>
@@ -144,5 +151,14 @@
       <label class="filter"><input name="pinned" type="checkbox">置顶保留</label>
     </div><p id="memory-form-message" class="muted" role="status"></p><div class="form-actions"><button id="memory-forget" type="button" class="secondary">删除这条记忆</button><button type="submit" class="primary">保存记忆</button></div></form>
     <div id="memory-history"></div><div id="memory-sources"></div>
+  </dialog>
+  <dialog id="persona-detail"><div class="dialog-head"><h2>表达习惯</h2><button id="close-persona" class="secondary">关闭</button></div>
+    <form id="persona-form"><div class="form-grid">
+      <label class="field full">适用情境<input name="scene" required maxlength="80"></label>
+      <label class="field full">表达建议<textarea name="rule" rows="3" required maxlength="200"></textarea></label>
+      <label class="field full">情境关键词（每行一个）<textarea name="keywords" rows="3"></textarea></label>
+      <label class="filter"><input name="enabled" type="checkbox">在回复中参考这条习惯</label>
+    </div><p id="persona-message" class="muted" role="status"></p><button class="primary" type="submit">保存</button></form>
+    <div id="persona-versions"></div><div id="persona-sources"></div>
   </dialog>
 </body></html>

@@ -10,8 +10,10 @@ const stages = { application_ready: '小狼已就绪', application_stopping: '�
   tool_started: '调用工具', tool_completed: '工具完成', tool_failed: '工具失败', tool_unknown: '工具结果未知',
   send_started: '发送回复', send_confirmed: 'QQ 已确认发送', send_failed: '发送失败', send_unknown: '发送结果未知', turn_completed: '本轮完成' };
 Object.assign(stages, { memory_recalled: '读取聊天与记忆', memory_processing_started: '开始整理记忆', memory_processing_completed: '记忆整理完成', memory_processing_failed: '记忆整理失败', memory_vector_fallback: '向量不可用，使用关键词检索', memory_summary_failed: '聊天摘要整理失败', memory_image_unavailable: '图片暂时无法读取', memory_image_described: '图片描述已生成' });
+Object.assign(stages, { persona_learning_started: '开始学习聊天表达', persona_learning_completed: '表达学习完成', persona_learning_failed: '表达学习未完成' });
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
 const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什么，也可以帮它纠正。'], overview: ['运行概览', '看看小狼现在怎么样。'], chats: ['最近聊天', '收到的消息、生成的回复，以及每一轮的处理结果。'], logs: ['过程日志', '从收到消息到发送回复，跟着每一步看。'], plugins: ['插件列表', '查看当前的小狼由哪些插件组成。'], 'model-settings': ['回复模型', '配置模型连接与生成方式。'], 'qq-settings': ['QQ 接入', '配置小狼连接的机器人与消息范围。'] };
+Object.assign(descriptions, { persona: ['人设与学习', '基础人设保持固定，让表达逐渐自然。'] });
 Object.assign(descriptions, { tooling: ['工具与行动', '查看工具、连接和权限，按插件扩展能力。'] });
 Object.assign(descriptions, { reminders: ['定时提醒', '查看提醒时间、执行结果，也可以取消任务。'] });
 Object.assign(stages, { reminder_created: '已创建提醒', reminder_cancelled: '已取消提醒', reminder_queued: '提醒等待发送', reminder_send_started: '开始发送提醒', reminder_sent: '提醒已确认发送', reminder_failed: '提醒发送失败', reminder_unknown: '提醒发送结果未知', reminder_scheduler_failed: '提醒调度异常', reminder_history_failed: '提醒已发出，聊天记录写入失败' });
@@ -43,6 +45,7 @@ function showView(view) {
   [$('page-title').textContent, $('page-description').textContent] = descriptions[view];
   if (view === 'chats') refreshTurns();
   if (view === 'memories') refreshMemory();
+  if (view === 'persona') refreshPersona();
   if (view === 'tooling') refreshTools();
   if (view === 'reminders') refreshReminders();
   if (view === 'logs') renderLogs();
@@ -191,6 +194,8 @@ async function poll() {
 }
 
 const settingsErrors = {
+  persona_rate_limited: '已达到学习冷却时间或每日上限。', persona_not_enough_messages: '本批用户消息不足，继续聊天后再学习。', persona_catalog_full: '表达习惯已达上限，后续只更新已有习惯。', persona_busy: '正在学习，请稍后刷新。', invalid_persona_result: '本次学习结果未通过检查，没有修改已有习惯。',
+  persona_conflict: '这条习惯已被修改，请重新打开。', invalid_persona_request: '表达习惯字段不正确，请检查内容与关键词。', persona_not_found: '这条习惯已不存在。', persona_disabled: '后台学习尚未开启。',
   reminder_not_found: '这条提醒已不存在，请刷新列表。', invalid_reminder_request: '提醒参数不正确。', reminders_unavailable: '定时提醒服务暂时不可用。',
   memory_conflict: '记忆已更新，请关闭详情重新读取后再修改。', invalid_memory_request: '记忆字段填写不正确，请检查内容、用户ID或有效期。', memory_not_found: '这条记忆已不存在。', memory_disabled: '记忆功能尚未启用，请先在插件配置中开启并应用。', embedding_key_missing: '尚未配置百炼 API Key。', embedding_http_401: '百炼鉴权失败，请检查 API Key 和业务空间地址。', embedding_http_403: '百炼未授权此模型，请检查模型权限和地址。', embedding_http_404: '百炼地址或模型标识不正确。', embedding_network: '向量服务暂时无法连接或请求超时。', settings_conflict: '配置已被其他页面修改，请重新读取后再保存。', settings_busy: '配置正在保存或应用，请稍后重试。',
   chat_busy: '小狼正在处理消息，请等回复结束后再应用。已保存的配置不会丢失。', no_pending_settings: '没有需要应用的新配置。',
@@ -327,6 +332,10 @@ function renderPlugin(detail) {
   meta.append(badge(detail.state), element('span', '', detail.kind === 'builtin' ? '内置 · 镜像内' : '外挂 · 挂载加载'));
   body.replaceChildren(meta, element('p', 'mono', `${detail.id} · ${detail.module}`),
     detailSection('依赖服务', detail.dependencies.join('、') || '无'), detailSection('提供服务', detail.provides.join('、') || '无'));
+  if (detail.id === 'xiaolang-persona') {
+    const button = element('button', 'secondary detail-log-button', '查看学习记录'); button.type = 'button';
+    button.addEventListener('click', () => { $('plugin-detail').close(); showView('persona'); }); body.append(button);
+  }
   if (detail.id === 'xiaolang-reminders') {
     const button = element('button', 'secondary detail-log-button', '查看定时提醒'); button.type = 'button';
     button.addEventListener('click', () => { $('plugin-detail').close(); showView('reminders'); }); body.append(button);
@@ -535,3 +544,51 @@ async function refreshTools() {
   } catch { $('tool-connections').textContent = '暂时无法读取工具状态。'; }
 }
 for (const button of document.querySelectorAll('[data-tool-config]')) button.addEventListener('click', () => openPlugin(button.dataset.toolConfig));
+
+let editingStyle;
+async function refreshPersona() {
+  try {
+    const data = await get('/api/persona'), state = data.status;
+    $('persona-status').textContent = `${state.enabled ? '后台学习已开启' : '后台学习已关闭'} · ${state.active} 条启用 / ${state.total} 条习惯 · 每 ${state.intervalMinutes} 分钟检查 · 今日调用 ${state.dailyCalls}/${state.maxDailyCalls}${state.processing ? ' · 正在学习' : ''}${state.error ? ` · ${settingsErrors[state.error] ?? state.error}` : ''}`;
+    $('persona-list').replaceChildren(...data.items.map(item => {
+      const card = element('button', 'memory-card'); card.type = 'button';
+      card.append(element('strong', '', item.scene), element('p', '', item.rule), element('small', 'muted', `${item.enabled ? '启用' : '停用'} · 版本 ${item.version} · ${item.examples.length} 组真人示例`));
+      card.addEventListener('click', () => openStyle(item.id).catch(() => notice('无法读取学习详情，请刷新后重试。'))); return card;
+    }));
+    if (!data.items.length) $('persona-list').append(element('p', 'empty', '暂未学到表达习惯。至少积累 20 条用户消息后，后台才会调用模型；没有合适规律时不会强行学习。'));
+  } catch { $('persona-status').textContent = '暂时无法读取学习记录。'; }
+}
+async function openStyle(id) {
+  editingStyle = await get(`/api/persona/${encodeURIComponent(id)}`);
+  const form = $('persona-form'), item = editingStyle;
+  form.elements.scene.value = item.scene; form.elements.rule.value = item.rule; form.elements.keywords.value = item.keywords.join('\n'); form.elements.enabled.checked = item.enabled;
+  $('persona-message').textContent = '保存后下一轮回复即可参考。固定人设在插件配置里修改。';
+  $('persona-sources').replaceChildren(...item.sources.map(source => detailSection(`原文 ${source.seq} · ${source.name} · ${source.group ? `群 ${source.group}` : '私聊'}`, source.text)));
+  $('persona-versions').replaceChildren(element('h3', '', '最近版本'));
+  for (const version of item.versions) {
+    const box = element('div', 'detail-section'); box.append(element('p', '', `版本 ${version.version} · ${version.scene}：${version.rule}`));
+    if (version.version !== item.version) {
+      const button = element('button', 'secondary', '恢复此版本'); button.type = 'button';
+      button.addEventListener('click', async () => {
+        try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/mutate', { action: 'rollback', id, version: item.version, targetVersion: version.version }); await openStyle(id); await refreshPersona(); }
+        catch (error) { $('persona-message').textContent = error.message; }
+      }); box.append(button);
+    } $('persona-versions').append(box);
+  }
+  if (!$('persona-detail').open) $('persona-detail').showModal();
+}
+$('persona-config').addEventListener('click', () => openPlugin('xiaolang-persona'));
+$('persona-refresh').addEventListener('click', refreshPersona);
+$('close-persona').addEventListener('click', () => $('persona-detail').close());
+$('persona-learn').addEventListener('click', async () => {
+  try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/learn', {}); $('persona-status').textContent = '已提交后台学习。至少需两条用户消息，受五分钟冷却与每日上限限制；稍后刷新查看结果。'; }
+  catch (error) { $('persona-status').textContent = error.message; }
+});
+$('persona-form').addEventListener('submit', async event => {
+  event.preventDefault(); const form = event.currentTarget;
+  try {
+    if (!settings) await loadSettings();
+    await settingsRequest('/api/persona/mutate', { action: 'update', id: editingStyle.id, version: editingStyle.version, scene: form.elements.scene.value.trim(), rule: form.elements.rule.value.trim(), keywords: form.elements.keywords.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean), enabled: form.elements.enabled.checked });
+    $('persona-detail').close(); await refreshPersona();
+  } catch (error) { $('persona-message').textContent = error.message; }
+});

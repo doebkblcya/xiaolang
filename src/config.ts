@@ -1,3 +1,5 @@
+import { personaProperties, personaSettings } from './persona-config.js';
+import type { PersonaConfig } from './persona-config.js';
 import { readFile } from 'node:fs/promises';
 import { Ajv } from 'ajv';
 import { Failure } from './errors.js';
@@ -26,6 +28,7 @@ export interface Config {
   adapter: { module: string; config?: Record<string, unknown> };
   database: string;
   persona: string;
+  character?: PersonaConfig;
   triggerWords: string[];
   groupIds: string[];
   chatEnabled: boolean;
@@ -49,6 +52,7 @@ const schema = {
   properties: {
     adapter: { type: 'object', additionalProperties: false, required: ['module'], properties: { module: text, config: { type: 'object' } } },
     database: text, persona: text,
+    character: { type: 'object', additionalProperties: false, required: Object.keys(personaProperties), properties: personaProperties },
     triggerWords: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 100 } },
     groupIds: { type: 'array', maxItems: 1000, uniqueItems: true, items: identifier }, chatEnabled: { type: 'boolean' },
     trigger: { type: 'object', additionalProperties: false, required: ['privateReply', 'groupMention', 'groupKeywords', 'words'], properties: {
@@ -99,8 +103,11 @@ export function validateConfig(raw: unknown): Config {
   catch { throw new Failure('invalid_url'); }
   if (!['https:', 'http:'].includes(baseUrl.protocol)
     || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) throw new Failure('invalid_url');
-  if (raw.limits.contextTokens === undefined ? raw.persona.length + 500 >= raw.limits.contextChars!
-    : textTokens(raw.persona) + raw.model.maxOutputTokens + raw.limits.toolResultChars + 1024 >= raw.limits.contextTokens) throw new Failure('persona_exceeds_context');
+  const character = personaSettings(raw);
+  const prompt = character.anchor + character.replyStyle;
+  const learnedReserve = raw.character ? 1800 : 0;
+  if (raw.limits.contextTokens === undefined ? prompt.length + learnedReserve + 500 >= raw.limits.contextChars!
+    : textTokens(prompt) + learnedReserve + raw.model.maxOutputTokens + raw.limits.toolResultChars + 1024 >= raw.limits.contextTokens) throw new Failure('persona_exceeds_context');
   if (raw.memory) {
     let url: URL;
     try { url = new URL(raw.memory.embeddingBaseUrl); } catch { throw new Failure('invalid_url'); }

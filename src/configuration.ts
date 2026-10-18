@@ -1,3 +1,4 @@
+import { personaSettings } from './persona-config.js';
 import { readFile, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -14,7 +15,7 @@ import { toolingDefaults, toolingSections } from './tooling-config.js';
 
 interface QQSettings { appId: string; environment: 'production' | 'sandbox'; groupMessages: 'all' | 'mentions'; connectTimeoutMs: number; groupIds: string[] }
 interface PluginSettings { chatEnabled?: boolean; entries?: Record<string, { enabled?: boolean; config?: Fields }> }
-interface Settings { tooling?: Config['tooling']; memory?: Config['memory']; output?: Config['output']; model: Config['model']; qq?: QQSettings; trigger?: NonNullable<Config['trigger']>; plugins?: PluginSettings; secrets: { deepseek?: string; qq?: string; embedding?: string } }
+interface Settings { character?: Config['character']; tooling?: Config['tooling']; memory?: Config['memory']; output?: Config['output']; model: Config['model']; qq?: QQSettings; trigger?: NonNullable<Config['trigger']>; plugins?: PluginSettings; secrets: { deepseek?: string; qq?: string; embedding?: string } }
 interface Document { version: 1; active?: Settings; pending?: Settings; lastApplyFailed?: boolean }
 
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
@@ -22,13 +23,14 @@ function keys(value: Record<string, unknown>, allowed: string[]): boolean { retu
 function revision(text: string): string { return createHash('sha256').update(text).digest('hex'); }
 function snapshot(config: Config): Settings {
   const qq = config.adapter.module === 'builtin:qq-official' ? validateQQConfig(config.adapter.config) : undefined;
-  return { tooling: structuredClone(config.tooling ?? toolingDefaults), memory: structuredClone(config.memory ?? memoryDefaults), model: structuredClone(config.model), ...(qq ? { qq: {
+  return { character: structuredClone(personaSettings(config)), tooling: structuredClone(config.tooling ?? toolingDefaults), memory: structuredClone(config.memory ?? memoryDefaults), model: structuredClone(config.model), ...(qq ? { qq: {
     appId: qq.appId, environment: qq.environment, groupMessages: qq.groupMessages,
     connectTimeoutMs: qq.connectTimeoutMs, groupIds: [...config.groupIds],
   } } : {}), trigger: triggerSettings(config), output: config.output ?? { mode: 'normal' }, secrets: {} };
 }
 function combine(base: Config, settings: Settings): Config {
   const config = structuredClone(base);
+  config.character = structuredClone(settings.character ?? personaSettings(base));
   config.memory = structuredClone(settings.memory ?? base.memory ?? memoryDefaults);
   config.tooling = structuredClone(settings.tooling ?? base.tooling ?? toolingDefaults);
   config.output = structuredClone(settings.output ?? base.output ?? { mode: 'normal' });
@@ -48,7 +50,7 @@ function combine(base: Config, settings: Settings): Config {
   return validateConfig(config);
 }
 function checkSettings(raw: unknown, base: Config): Settings {
-  if (!record(raw) || !keys(raw, ['model', 'qq', 'trigger', 'plugins', 'output', 'memory', 'tooling', 'secrets']) || !record(raw.secrets)
+  if (!record(raw) || !keys(raw, ['model', 'qq', 'trigger', 'plugins', 'output', 'memory', 'tooling', 'character', 'secrets']) || !record(raw.secrets)
     || !keys(raw.secrets, ['deepseek', 'qq', 'embedding'])) throw new Failure('invalid_saved_settings');
   for (const secret of Object.values(raw.secrets)) {
     if (typeof secret !== 'string' || !secret.trim() || secret.length > 4096 || /[\r\n\0]/.test(secret)) throw new Failure('invalid_secret');
@@ -180,6 +182,7 @@ export class ConfigurationStore implements Configuration {
     const info = this.catalog().find(plugin => plugin.id === id);
     if (!info) throw new Failure('plugin_not_found');
     const entry = id === 'xiaolang-memory' ? { id, module: 'builtin', config: { ...config.memory, apiKey: settings.secrets.embedding ?? this.environment.BAILIAN_API_KEY ?? '' } as Fields }
+      : id === 'xiaolang-persona' ? { id, module: 'builtin', config: personaSettings(config) as unknown as Fields }
       : id === 'xiaolang-output' ? { id, module: 'builtin', config: config.output as unknown as Fields }
       : toolingSections[id] ? { id, module: 'builtin', config: (config.tooling ?? toolingDefaults)[toolingSections[id]!] as unknown as Fields }
       : config.plugins?.entries.find(item => item.id === id);
@@ -237,7 +240,8 @@ export class ConfigurationStore implements Configuration {
           const { apiKey, ...memory } = values;
           if (typeof apiKey === 'string' && apiKey.trim()) next.secrets.embedding = apiKey.trim();
           next.memory = memory as unknown as Config['memory'];
-        } else if (id === 'xiaolang-output') next.output = values as unknown as Config['output'];
+        } else if (id === 'xiaolang-persona') next.character = values as unknown as Config['character'];
+        else if (id === 'xiaolang-output') next.output = values as unknown as Config['output'];
         else if (toolingSections[id]) { next.tooling ??= structuredClone(this.config.tooling ?? toolingDefaults); Object.assign(next.tooling, { [toolingSections[id]!]: values }); }
         else { next.plugins.entries ??= {}; next.plugins.entries[id] = { ...next.plugins.entries[id], config: values }; }
       }

@@ -86,7 +86,17 @@ export interface Reminders {
   create(input: unknown, message: Message): Record<string, unknown>;
   cancel(id: unknown, message?: Message): Record<string, unknown>;
 }
+export interface Persona {
+  prompt(message: Message): string;
+  status(): Record<string, unknown>;
+  list(): unknown;
+  detail(id: string): unknown;
+  mutate(input: unknown): unknown;
+  learn(): Promise<unknown>;
+  stop(): Promise<void>;
+}
 export interface Memory {
+  sourceAllowed?(seq: number): boolean;
   imageContext?(message: Message): string;
   prepare(turn: Turn, signal: AbortSignal): Promise<{ history: ModelMessage[]; context: string; images: { url: string }[] } | undefined>;
   status(): Record<string, unknown>;
@@ -198,6 +208,7 @@ declare module 'cordis' {
     configuration: Configuration;
     faultFeedback: FaultFeedback;
     memory: Memory;
+    persona: Persona;
     mcp: { status(): unknown[] };
     skills: { status(): unknown[] };
     reminders: Reminders;

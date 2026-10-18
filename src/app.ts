@@ -1,3 +1,4 @@
+import { personaPlugin } from './persona.js';
 import { Context, FiberState } from 'cordis';
 import type { Fiber, Plugin } from 'cordis';
 import { Loader } from '@cordisjs/plugin-loader';
@@ -90,6 +91,7 @@ export interface AppOptions {
   configuration?: Configuration;
   embeddingKey?: string;
   memoryModel?: Model;
+  personaModel?: Model;
   embeddings?: Embeddings;
   imageFetch?: typeof fetch;
   webFetch?: typeof fetch;
@@ -111,6 +113,7 @@ export async function createApp(config: Config, options: AppOptions) {
     'xiaolang-output': ['统一发送', 'src/output.ts'], 'xiaolang-chat': ['默认聊天编排', 'src/chat.ts'],
     'xiaolang-fault-feedback': ['故障反馈', 'src/fault-feedback.ts'],
     'xiaolang-memory': ['聊天与记忆', 'src/memory.ts'],
+    'xiaolang-persona': ['人设与学习', 'src/persona.ts'],
     'xiaolang-web': ['网页搜索与阅读', 'src/web-tools.ts'], 'xiaolang-mcp': ['MCP 接入', 'src/mcp.ts'],
     'xiaolang-skills': ['Skills 接入', 'src/skills.ts'], 'xiaolang-basic-tools': ['基础计算工具', 'src/basic-tools.ts'],
     'xiaolang-reminders': ['定时提醒', 'src/reminders.ts'],
@@ -150,7 +153,7 @@ export async function createApp(config: Config, options: AppOptions) {
     state = 'stopped';
     beforeReady.length = 0;
     const active = ctx.get('chat');
-    try { await Promise.all([typeof active?.stop === 'function' ? active.stop() : undefined, ctx.get('reminders')?.stop()]); }
+    try { await Promise.all([typeof active?.stop === 'function' ? active.stop() : undefined, ctx.get('reminders')?.stop(), ctx.get('persona')?.stop()]); }
     finally {
       try { if (typeof adapter?.stop === 'function') await adapter.stop(); }
       finally {
@@ -181,6 +184,7 @@ export async function createApp(config: Config, options: AppOptions) {
     await mount(remindersPlugin, config);
     await mount(intakePlugin, config);
     await mount(memoryPlugin, { config, apiKey: options.apiKey, embeddingKey: options.embeddingKey, model: options.memoryModel, embeddings: options.embeddings, imageFetch: options.imageFetch });
+    await mount(personaPlugin, { config, apiKey: options.apiKey, model: options.personaModel });
     await mount(outputPlugin, config);
     if (config.failureFeedback?.enabled !== false) await mount(faultFeedbackPlugin, config);
     const settings = config.plugins ?? { directory: 'plugins', entries: [] };

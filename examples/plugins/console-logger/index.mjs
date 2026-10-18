@@ -22,6 +22,7 @@ const labels = {
   proactive_decided: '接话判断完成', proactive_skipped: '本次未接话', proactive_judge_failed: '接话判断失败，保持沉默',
 };
 Object.assign(labels, { reminder_created: '已创建提醒', reminder_cancelled: '已取消提醒', reminder_queued: '提醒等待发送', reminder_send_started: '开始发送提醒', reminder_sent: '提醒已确认发送', reminder_failed: '提醒发送失败', reminder_unknown: '提醒发送结果未知', reminder_scheduler_failed: '提醒调度异常', reminder_history_failed: '提醒已发出，聊天记录写入失败' });
+Object.assign(labels, { persona_learning_started: '开始学习聊天表达', persona_learning_completed: '表达学习完成', persona_learning_failed: '表达学习未完成' });
 const reasons = {
   private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', proactive: '主动插话', no_trigger: '未命中直接触发条件',
   duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单',
