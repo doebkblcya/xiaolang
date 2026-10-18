@@ -90,7 +90,7 @@ export function createHandler(inspection, configuration, options = {}) {
         if (!options.memory) return send(503, { error: 'memory_unavailable' });
         const id = memoryRoute[1];
         if (id === 'status') return send(200, options.memory.status());
-        if (id && !['action', 'mutate'].includes(id)) return send(200, options.memory.detail(id));
+        if (id && !['action', 'mutate'].includes(id)) return send(200, options.memory.detail(id, integer(url.searchParams.get('beforeVersion'), undefined)));
         if (!id) return send(200, options.memory.list(url.searchParams.get('q') ?? '', url.searchParams.get('kind') ?? '', integer(url.searchParams.get('before'), undefined)));
         return send(405, { error: 'method_not_allowed' });
       }

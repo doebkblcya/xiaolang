@@ -11,7 +11,9 @@ export interface MemoryItem {
 export interface MemoryWrite {
   id?: string; content: string; kind: 'profile' | 'event'; people: string[]; sources: number[];
   importance: number; validUntil?: string | null; version?: number; pinned?: boolean;
+  operation?: 'add' | 'update' | 'supersede';
 }
+export interface MemoryVersion { item: MemoryItem; change: 'baseline' | 'add' | 'update' | 'supersede' | 'correct'; usable: boolean }
 const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
 export function words(text: string): string[] {
   const clean = text.normalize('NFKC').toLowerCase();
@@ -45,7 +47,13 @@ export class MemoryRepository {
       CREATE TABLE IF NOT EXISTS memory_summaries(session TEXT PRIMARY KEY,through INTEGER NOT NULL,body TEXT NOT NULL,updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_recalls(turn TEXT PRIMARY KEY,payload TEXT NOT NULL,created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_images(hash TEXT PRIMARY KEY,caption TEXT NOT NULL,updated INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS memory_versions(memory_id TEXT NOT NULL,version INTEGER NOT NULL,payload TEXT NOT NULL,change TEXT NOT NULL,usable INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(memory_id,version));
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_version_fts USING fts5(id UNINDEXED,version UNINDEXED,body);
     `);
+    if (this.meta('history_initialized') !== '1') this.transaction(() => {
+      for (const row of this.db.prepare('SELECT * FROM memory_items WHERE deleted=0').all()) this.saveVersion(unpack(row), 'baseline');
+      this.meta('history_initialized', '1');
+    });
     try {
       vec.load(this.db);
       const fingerprint = createHash('sha256').update(JSON.stringify([config.embeddingBaseUrl, config.embeddingModel, config.embeddingDimensions])).digest('hex');
@@ -71,6 +79,25 @@ export class MemoryRepository {
     const row = this.db.prepare('SELECT * FROM memory_items WHERE id=? AND deleted=0').get(id);
     return row ? unpack(row) : undefined;
   }
+  private saveVersion(item: MemoryItem, change: MemoryVersion['change']): void {
+    const added = this.db.prepare('INSERT OR IGNORE INTO memory_versions(memory_id,version,payload,change) VALUES (?,?,?,?)')
+      .run(item.id, item.version, JSON.stringify(item), change);
+    if (added.changes) this.db.prepare('INSERT INTO memory_version_fts(id,version,body) VALUES (?,?,?)')
+      .run(item.id, item.version, tokens(item.content + ' ' + item.people.join(' ')));
+  }
+  versions(id: string, before = Number.MAX_SAFE_INTEGER, limit = 10, includeInvalid = false): MemoryVersion[] {
+    if (!this.get(id)) return [];
+    return this.db.prepare(`SELECT payload,change,usable FROM memory_versions WHERE memory_id=? AND version<? ${includeInvalid ? '' : 'AND usable=1'} ORDER BY version DESC LIMIT ?`)
+      .all(id, before, limit).map(row => ({ item: JSON.parse(String(row.payload)) as MemoryItem, change: row.change as MemoryVersion['change'], usable: !!row.usable }));
+  }
+  searchHistory(query: string, limit = 5): MemoryVersion[] {
+    const search = words(query).slice(0, 40).map(w => `"${w.replaceAll('"', '""')}"`).join(' OR ');
+    if (!search) return [];
+    return this.db.prepare(`SELECT v.payload,v.change,v.usable FROM memory_version_fts f
+      JOIN memory_versions v ON v.memory_id=f.id AND v.version=f.version JOIN memory_items m ON m.id=v.memory_id
+      WHERE memory_version_fts MATCH ? AND v.usable=1 AND m.deleted=0 AND v.version<m.version ORDER BY bm25(memory_version_fts) LIMIT ?`)
+      .all(search, limit).map(row => ({ item: JSON.parse(String(row.payload)) as MemoryItem, change: row.change as MemoryVersion['change'], usable: true }));
+  }
   list(query = '', kind = '', before = Number.MAX_SAFE_INTEGER, limit = 40): MemoryItem[] {
     const rows = this.db.prepare(`SELECT * FROM memory_items WHERE deleted=0 AND updated<? AND (?='' OR kind=?)
       AND (?='' OR instr(lower(content),lower(?))>0 OR instr(people,?)>0) ORDER BY updated DESC,id LIMIT ?`)
@@ -89,7 +116,9 @@ export class MemoryRepository {
   }
   candidates(query: string, people: string[], vector?: number[]): MemoryItem[] {
     const lexical = this.lexical(query), semantic = vector ? this.semantic(vector) : [];
-    const profiles = this.db.prepare("SELECT * FROM memory_items WHERE deleted=0 AND kind='profile' AND (pinned=1 OR instr(people,?)>0) ORDER BY pinned DESC,importance DESC LIMIT 15").all(people[0] ?? '\0').map(unpack);
+    const profiles = this.db.prepare(`SELECT * FROM memory_items WHERE deleted=0 AND kind='profile' AND
+      (pinned=1 OR EXISTS(SELECT 1 FROM json_each(memory_items.people) p JOIN json_each(?) wanted ON p.value=wanted.value))
+      ORDER BY pinned DESC,importance DESC LIMIT 15`).all(JSON.stringify([...new Set(people)])).map(unpack);
     const pinned = this.db.prepare('SELECT * FROM memory_items WHERE deleted=0 AND pinned=1 ORDER BY importance DESC LIMIT 10').all().map(unpack);
     const scores = new Map<string, { item: MemoryItem; score: number }>();
     for (const [weight, items] of [[1, lexical], [1, semantic], [0.45, profiles], [0.6, pinned]] as const) items.forEach((item, i) => {
@@ -107,22 +136,32 @@ export class MemoryRepository {
     const old = input.id ? this.get(input.id) : undefined;
     if (input.id && !old) throw new Failure('memory_not_found');
     if (old && input.version !== old.version) throw new Failure('memory_conflict');
+    if (!manual && input.operation && (input.operation === 'add' ? !!old : !old)) throw new Failure('memory_invalid_operation');
+    if (!manual && old && (old.kind !== input.kind || JSON.stringify([...old.people].sort()) !== JSON.stringify([...input.people].sort()))) throw new Failure('memory_subject_mismatch');
     const duplicate = !old ? this.db.prepare('SELECT * FROM memory_items WHERE deleted=0 AND content=? AND people=?').get(input.content, JSON.stringify([...input.people].sort())) : undefined;
     if (duplicate) return unpack(duplicate);
     const id = old?.id ?? randomUUID(), now = Date.now();
+    const change = old ? manual ? 'correct' : input.operation ?? 'update' : 'add';
+    if (old) this.saveVersion(old, 'baseline');
     this.db.prepare(`INSERT INTO memory_items(id,content,kind,people,sources,importance,pinned,created,updated,valid_until) VALUES (?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET content=excluded.content,kind=excluded.kind,people=excluded.people,sources=excluded.sources,
       importance=excluded.importance,pinned=excluded.pinned,updated=excluded.updated,valid_until=excluded.valid_until,version=memory_items.version+1,indexed=0`)
-      .run(id, input.content, input.kind, JSON.stringify([...input.people].sort()), JSON.stringify([...new Set([...(old?.sources ?? []), ...input.sources])]), input.importance,
+      .run(id, input.content, input.kind, JSON.stringify([...input.people].sort()), JSON.stringify([...new Set([...(change === 'supersede' ? [] : old?.sources ?? []), ...input.sources])]), input.importance,
         input.pinned === undefined ? (old?.pinned ? 1 : 0) : input.pinned ? 1 : 0, old?.created ?? now, now, input.validUntil ?? null);
     this.db.prepare('DELETE FROM memory_fts WHERE id=?').run(id);
     this.db.prepare('INSERT INTO memory_fts(id,body) VALUES (?,?)').run(id, tokens(input.content + ' ' + input.people.join(' ')));
     if (!this.vectorError) this.db.prepare('DELETE FROM memory_vec WHERE id=?').run(id);
-    return this.get(id);
+    const result = this.get(id)!;
+    this.saveVersion(result, change);
+    return result;
   }
   protect(item: MemoryItem): void {
-    this.db.prepare('INSERT OR IGNORE INTO memory_forgotten VALUES (?)').run(item.content);
-    item.sources.forEach(seq => this.db.prepare('INSERT OR IGNORE INTO memory_suppressed VALUES (?)').run(seq));
+    for (const previous of [item, ...this.versions(item.id, undefined, Number.MAX_SAFE_INTEGER, true).map(entry => entry.item)]) {
+      this.db.prepare('INSERT OR IGNORE INTO memory_forgotten VALUES (?)').run(previous.content);
+      previous.sources.forEach(seq => this.db.prepare('INSERT OR IGNORE INTO memory_suppressed VALUES (?)').run(seq));
+    }
+    this.db.prepare('UPDATE memory_versions SET usable=0 WHERE memory_id=?').run(item.id);
+    this.db.prepare('DELETE FROM memory_version_fts WHERE id=?').run(item.id);
     // Summaries can contain the old fact without naming its memory ID. Invalidate them together.
     this.db.exec('DELETE FROM memory_summaries; DELETE FROM memory_recalls');
   }
@@ -133,6 +172,8 @@ export class MemoryRepository {
     this.protect(item);
     this.db.prepare('UPDATE memory_items SET deleted=1,version=version+1,indexed=0 WHERE id=?').run(id);
     this.db.prepare('DELETE FROM memory_fts WHERE id=?').run(id);
+    this.db.prepare('DELETE FROM memory_versions WHERE memory_id=?').run(id);
+    this.db.prepare('DELETE FROM memory_version_fts WHERE id=?').run(id);
     if (!this.vectorError) this.db.prepare('DELETE FROM memory_vec WHERE id=?').run(id);
   }
   pending(limit = 10): MemoryItem[] { return this.db.prepare('SELECT * FROM memory_items WHERE deleted=0 AND indexed=0 ORDER BY updated LIMIT ?').all(limit).map(unpack); }

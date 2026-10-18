@@ -465,7 +465,33 @@ async function openMemory(id) {
   $('memory-forget').hidden = !item;
   $('memory-form-message').textContent = '保存后立即影响后续召回；原始聊天记录仍可追溯。';
   $('memory-sources').replaceChildren(...(item?.sources ?? []).map(source => detailSection(`原文 ${source.seq} · ${time(source.time, true)} · ${source.name} · ${source.group ? `群 ${source.group}` : '私聊'}`, source.text)));
+  renderMemoryHistory(item?.history);
   if (!$('memory-detail').open) $('memory-detail').showModal();
+}
+function renderMemoryHistory(history, append = false) {
+  const box = $('memory-history');
+  if (!append) {
+    box.replaceChildren();
+    if (!history) return;
+    box.append(element('h3', '', '变化历史'), element('p', 'muted', '旧版本按需查阅，不会每轮送给模型。这里的时间是记录更新时间，事实发生时间以原文为准。升级前已被覆盖的内容无法还原。'));
+  }
+  box.querySelector('[data-history-more]')?.remove();
+  for (const entry of history.items) {
+    const label = ({ baseline: '升级时保留', add: '新记忆', update: '补充信息', supersede: '状态变化', correct: '手动编辑' })[entry.change] ?? entry.change;
+    const section = detailSection(`v${entry.version} · ${label} · ${time(entry.updated, true)} · ${entry.current ? '当前版本' : entry.usable ? '历史版本' : '已纠正作废，不用于回复'}`, entry.content);
+    section.append(element('p', 'module', (entry.origins ?? []).join('\n') || '没有原文来源')); box.append(section);
+  }
+  if (history.nextBeforeVersion) {
+    const button = element('button', 'secondary', '查看更早版本'); button.type = 'button'; button.dataset.historyMore = 'true';
+    const id = editingMemory.id;
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        const page = await get(`/api/memory/${encodeURIComponent(id)}?beforeVersion=${history.nextBeforeVersion}`);
+        if (editingMemory?.id === id) renderMemoryHistory(page.history, true);
+      } catch { button.textContent = '读取失败，点击重试'; button.disabled = false; }
+    }); box.append(button);
+  }
 }
 $('memory-config').addEventListener('click', () => openPlugin('xiaolang-memory'));
 $('memory-refresh').addEventListener('click', () => { memoryBefore = undefined; refreshMemory(); });

@@ -91,7 +91,7 @@ export interface Memory {
   prepare(turn: Turn, signal: AbortSignal): Promise<{ history: ModelMessage[]; context: string; images: { url: string }[] } | undefined>;
   status(): Record<string, unknown>;
   list(query: string, kind?: string, before?: number): Record<string, unknown>;
-  detail(id: string): unknown;
+  detail(id: string, beforeVersion?: number): unknown;
   mutate(input: unknown): Promise<unknown>;
   recalled(turn: string): unknown;
   maintain(action: string): Promise<unknown>;
