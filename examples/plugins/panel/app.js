@@ -574,6 +574,7 @@ $('persona-form').addEventListener('submit', async event => {
 });
 
 let conversationItems = [], currentConversation, conversationNext, conversationRows = [], messageNext;
+let timelineLoading;
 let chatLoading = false, conversationFilterVersion = 0, timelineVersion = 0, namingConversation;
 function conversationLabel(item) { return item.alias || (item.scope === 'group' ? `群聊 · ${item.recipient.slice(0, 12)}` : item.name); }
 function setConversationHeading(item) {
@@ -599,6 +600,8 @@ async function refreshChats(more = false) {
     if (more && conversationNext) params.set('before', conversationNext);
     const data = await get(`/api/conversations?${params}`);
     if (version !== conversationFilterVersion) return;
+    const disjoint = !more && data.items.length === 50 && conversationItems.length && !data.items.some(item => conversationItems.some(old => old.id === item.id));
+    if (disjoint) conversationItems = [];
     if (more || !conversationItems.length) conversationNext = data.next;
     // Keep pages already opened while refreshing the first page.
     const map = new Map(conversationItems.map(item => [item.id, item])); for (const item of data.items) map.set(item.id, item);
@@ -645,7 +648,9 @@ function renderTimeline() {
   $('message-page-note').textContent = `已显示 ${conversationRows.length} 条`;
 }
 async function loadTimeline(older = false, initial = false) {
-  if (!currentConversation) return;
+  if (!currentConversation || (!initial && timelineLoading?.id === currentConversation.id)) return;
+  const pending = { id: currentConversation.id }; timelineLoading = pending;
+  try {
   const id = currentConversation.id, version = ++timelineVersion, box = $('message-timeline');
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90, top = box.scrollTop, height = box.scrollHeight;
   const data = await get(`/api/conversations/${id}${older && messageNext ? `?before=${messageNext}` : ''}`);
@@ -661,6 +666,7 @@ async function loadTimeline(older = false, initial = false) {
   renderTimeline();
   if (older) box.scrollTop = top + box.scrollHeight - height;
   else box.scrollTop = initial || (nearBottom && $('message-follow').checked) ? box.scrollHeight : top;
+  } finally { if (timelineLoading === pending) timelineLoading = undefined; }
 }
 function filterConversations() {
   conversationFilterVersion++; timelineVersion++; conversationItems = []; currentConversation = undefined; conversationNext = undefined; conversationRows = []; messageNext = undefined;
