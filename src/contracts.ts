@@ -52,6 +52,7 @@ export interface Adapter {
   capabilities: { groupMessages: 'all' | 'mentions'; maxTextChars: number; maxReplyParts?: number; nativeStreaming?: boolean };
   start(receive: (message: IncomingMessage) => void): Promise<void> | void;
   stop(): Promise<void> | void;
+  groupName?(group: string): Promise<string | undefined>;
   streamReply?(message: Message, text: string, index: number, done: boolean, streamId: string | undefined, signal: AbortSignal): Promise<{ id: string }>;
   reply(message: Message, text: string, part: number, signal: AbortSignal): Promise<{ id: string }>;
   push?(target: PushTarget, text: string, sequence: number, signal: AbortSignal): Promise<{ id: string }>;
@@ -176,6 +177,8 @@ export interface TimelineItem {
   turn?: { id: string; state: string; reason: string }; feedback?: { text: string; state: string };
 }
 export interface HistoryReader {
+  deleteData(input: unknown): unknown;
+  cacheConversationName(id: string, name: string): void;
   conversations(query?: string, scope?: string, before?: number): { items: ConversationView[]; next: number | null };
   timeline(id: string, before?: number): { conversation: ConversationView; items: TimelineItem[]; next: number | null };
   renameConversation(id: string, alias: string, version: number): ConversationView;
@@ -187,13 +190,16 @@ export interface HistoryReader {
 export interface LogItem { seq: number; entry: Log }
 export interface PluginInfo { id: string; title: string; module: string; kind: 'builtin' | 'external'; state: string; dependencies: string[]; provides: string[] }
 export interface Inspection {
+  deleteData(input: unknown): Promise<unknown>;
   status(): {
     started: number; uptimeMs: number; state: string; connection: string; lastMessage?: string;
     model: string; platform?: string; chatEnabled: boolean; memoryBytes: number;
     counts: Record<string, number>; plugins: PluginInfo[];
   };
   recent: HistoryReader['recent']; detail: HistoryReader['detail'];
-  conversations: HistoryReader['conversations']; timeline: HistoryReader['timeline']; renameConversation: HistoryReader['renameConversation'];
+  conversations(query?: string, scope?: string, before?: number): Promise<ReturnType<HistoryReader['conversations']>>;
+  timeline(id: string, before?: number): Promise<ReturnType<HistoryReader['timeline']>>;
+  renameConversation: HistoryReader['renameConversation'];
   logs(after?: number): { items: LogItem[]; cursor: number; reset: boolean };
 }
 

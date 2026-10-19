@@ -3,7 +3,7 @@ import type { Context } from 'cordis';
 import { ApiError, QQBot } from '@tencent-connect/qqbot-nodejs';
 import type { QQBotInboundMessage, QQBotOptions } from '@tencent-connect/qqbot-nodejs';
 import type { Adapter, IncomingMessage, Message, PushTarget, Segment } from '../contracts.js';
-import { id, log } from '../contracts.js';
+import { id, log, object } from '../contracts.js';
 import { abortable, check, Failure } from '../errors.js';
 
 export const name = 'xiaolang-qq-official';
@@ -49,13 +49,19 @@ export function normalizeQQ(event: QQBotInboundMessage, appId: string): Incoming
     else segments.push({ type: 'unsupported', kind: attachment.content_type ?? 'attachment' });
   }
   if (!segments.length) return;
+  const author = object(object(event.raw)?.author);
   return {
-    account: appId, id: event.messageId, sender: event.senderId, name: event.senderName ?? event.senderId,
+    account: appId, id: event.messageId, sender: event.senderId, name: displayName(event.senderName) ?? displayName(author?.username) ?? event.senderId,
     group: event.kind === 'group' ? event.groupOpenid : undefined, time, segments,
   };
 }
 
-export type QQClient = Pick<QQBot, 'on' | 'off' | 'start' | 'stop' | 'getCredentials' | 'messageApi'>;
+function displayName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return;
+  return value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 100) || undefined;
+}
+
+export type QQClient = Pick<QQBot, 'on' | 'off' | 'start' | 'stop' | 'getCredentials' | 'messageApi' | 'api'>;
 export class QQOfficialAdapter implements Adapter {
   readonly platform: string;
   readonly account: string;
@@ -65,6 +71,10 @@ export class QQOfficialAdapter implements Adapter {
   private running?: Promise<void>;
   private cancelStart?: () => void;
   private receive?: (message: IncomingMessage) => void;
+  private names = new Map<string, { name?: string; until: number }>();
+  private nameRequests = new Map<string, Promise<string | undefined>>();
+  private lastNameLookup = 0;
+  private namesUnavailableUntil = 0;
   constructor(private config: QQConfig, secret: string, private report: (code: string) => void = () => {},
     factory: (options: QQBotOptions) => QQClient = options => new QQBot(options)) {
     this.account = config.appId;
@@ -76,6 +86,38 @@ export class QQOfficialAdapter implements Adapter {
       intents: 1 << 25,
       // SDK logs may contain message bodies or provider response text. Emit our own codes instead.
     });
+  }
+  async groupName(group: string): Promise<string | undefined> {
+    if (!id(group)) return;
+    const cached = this.names.get(group);
+    if (cached && cached.until > Date.now()) return cached.name;
+    const pending = this.nameRequests.get(group);
+    if (pending) return pending;
+    // Official endpoint permits 30 QPM. Panel polling must not turn into API polling.
+    if (this.namesUnavailableUntil > Date.now() || Date.now() - this.lastNameLookup < 2100) return cached?.name;
+    this.lastNameLookup = Date.now();
+    const request = (async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const response = await Promise.race([
+          this.client.api.get<{ group_name?: unknown }>(`/v2/groups/${encodeURIComponent(group)}/info`),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('name_timeout')), 3000); }),
+        ]);
+        const name = displayName(response.group_name);
+        this.names.set(group, { name, until: Date.now() + (name ? 3600_000 : 600_000) });
+        return name;
+      } catch (error) {
+        if (error instanceof ApiError && error.bizCode === 11253) this.namesUnavailableUntil = Date.now() + 1800_000;
+        this.names.set(group, { name: cached?.name, until: Date.now() + 600_000 });
+        return cached?.name;
+      } finally {
+        if (timer) clearTimeout(timer);
+        this.nameRequests.delete(group);
+        if (this.names.size > 256) this.names.delete(this.names.keys().next().value!);
+      }
+    })();
+    this.nameRequests.set(group, request);
+    return request;
   }
   async start(receive: (message: IncomingMessage) => void): Promise<void> {
     if (this.running) throw new Failure('qq_already_started');

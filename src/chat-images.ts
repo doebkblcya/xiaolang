@@ -40,6 +40,7 @@ export class ChatImages {
   async stop(): Promise<void> { this.stopped = true; await this.queue.close(); await Promise.allSettled([...this.descriptions.values()]); }
   async describe(message: Message): Promise<void> {
     if (!this.settings.enabled || !this.settings.images || this.stopped) return;
+    const revision = this.repository.meta('revision');
     await Promise.all(pictures(message).map(picture => {
       if (this.repository.image(picture.key)) return Promise.resolve();
       const active = this.descriptions.get(picture.key);
@@ -53,6 +54,7 @@ export class ChatImages {
         ], [], signal), signal);
         check(signal);
         if (!answer.content?.trim()) throw new Failure('image_description_empty');
+        if (revision !== this.repository.meta('revision')) return;
         this.repository.image(picture.key, answer.content.trim().slice(0, 600));
         this.report('completed', message);
       }).catch(error => { if (!this.stopped) this.report('failed', message, error); })

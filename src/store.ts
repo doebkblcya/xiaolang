@@ -5,12 +5,13 @@ import { randomUUID, createHash } from 'node:crypto';
 import type { HistoryReader, ConversationView, TimelineItem, Message, ModelMessage, SendRecord, Store, ToolCall, Turn, TurnDetail, TurnState, TurnView } from './contracts.js';
 import { render } from './messages.js';
 import { Failure } from './errors.js';
+import { deleteData } from './data-deletion.js';
 
 export class SqliteStore implements Store {
   private db: DatabaseSync;
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(path);
+    this.db = new DatabaseSync(path, { allowExtension: true });
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
     const version = this.db.prepare('PRAGMA user_version').get()!;
     if (Number(version.user_version) > 1) { this.db.close(); throw new Failure('unsupported_database_version'); }
@@ -20,6 +21,7 @@ export class SqliteStore implements Store {
         session TEXT NOT NULL, direction TEXT NOT NULL, source_seq INTEGER NOT NULL,
         payload TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS message_tombstones(key TEXT PRIMARY KEY);
       CREATE INDEX IF NOT EXISTS messages_session ON messages(session, seq);
       CREATE TABLE IF NOT EXISTS chat_sessions (session TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,alias TEXT NOT NULL DEFAULT '',version INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS turns (
@@ -43,6 +45,9 @@ export class SqliteStore implements Store {
         (SELECT 1 FROM tools WHERE tools.turn_id=turns.id AND tools.state='unknown') THEN 'unknown' ELSE 'cancelled' END,
         code='process_interrupted' WHERE state IN ('queued','running','sending');
     `);
+    if (!this.db.prepare('PRAGMA table_info(chat_sessions)').all().some(column => column.name === 'display_name')) {
+      this.db.exec("ALTER TABLE chat_sessions ADD COLUMN display_name TEXT NOT NULL DEFAULT ''");
+    }
     for (const row of this.db.prepare('SELECT DISTINCT session FROM messages').all()) this.ensureConversation(String(row.session));
   }
   private ensureConversation(session: string) {
@@ -69,10 +74,15 @@ export class SqliteStore implements Store {
     });
   }
   record(seq: number) { return this.records({ after: seq - 1, before: seq + 1, limit: 1 })[0]; }
+  deleteData(input: unknown) { return deleteData(this.db, input); }
   admit(message: Message): Message | undefined {
+    if (this.db.prepare('SELECT 1 FROM message_tombstones WHERE key=?').get(message.key)) return;
     this.ensureConversation(message.session);
     const result = this.db.prepare('INSERT OR IGNORE INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,\'in\',0,?)')
       .run(message.key, message.session, JSON.stringify(message));
+    if (result.changes && !message.group && message.name.trim() && message.name !== message.sender) {
+      this.db.prepare('UPDATE chat_sessions SET display_name=? WHERE session=?').run(message.name, message.session);
+    }
     return Number(result.changes) ? { ...message, seq: Number(result.lastInsertRowid) } : undefined;
   }
   history(message: Message, limit: number): ModelMessage[] {
@@ -158,12 +168,12 @@ export class SqliteStore implements Store {
     const payload = JSON.parse(String(row.payload));
     const body = row.direction === 'in' ? message.segments.map(segment => segment.type === 'text' ? segment.text : segment.type === 'image' ? '[图片]' : segment.type === 'mention' ? '[@提及]' : segment.type === 'reply' ? '[引用]' : `[${segment.kind}]`).join('') : String(payload.text ?? '');
     return { id: String(row.id), alias: String(row.alias), version: Number(row.version), scope: message.group ? 'group' : 'private',
-      recipient: message.group ?? message.sender, name: message.group ? `群聊 ${message.group}` : message.name,
+      recipient: message.group ?? message.sender, name: String(row.display_name || (message.group ? `群聊 ${message.group}` : message.name)),
       platform: message.platform, account: message.account, lastSeq: Number(row.seq), preview: body.slice(0, 120), messages: Number(row.total) };
   }
   private conversationRows() {
     return `WITH latest AS (SELECT session,MAX(seq) AS seq,COUNT(*) AS total FROM messages GROUP BY session)
-      SELECT c.id,c.alias,c.version,m.seq,m.direction,m.payload,s.payload AS source,l.total
+      SELECT c.id,c.alias,c.version,c.display_name,m.seq,m.direction,m.payload,s.payload AS source,l.total
       FROM latest l JOIN chat_sessions c ON c.session=l.session JOIN messages m ON m.seq=l.seq
       JOIN messages s ON s.seq=CASE WHEN m.direction='in' THEN m.seq ELSE m.source_seq END`;
   }
@@ -171,10 +181,14 @@ export class SqliteStore implements Store {
     if (typeof query !== 'string' || query.length > 200 || !['', 'group', 'private'].includes(scope) || (before !== undefined && (!Number.isSafeInteger(before) || before < 1))) throw new Failure('invalid_history_query');
     const rows = this.db.prepare(this.conversationRows() + ` WHERE (? IS NULL OR m.seq<?)
       AND (?='' OR CASE WHEN json_extract(s.payload,'$.group') IS NULL THEN 'private' ELSE 'group' END=?)
-      AND (?='' OR instr(lower(c.alias||' '||COALESCE(json_extract(s.payload,'$.group'),'')||' '||json_extract(s.payload,'$.sender')||' '||json_extract(s.payload,'$.name')),lower(?))>0)
+      AND (?='' OR instr(lower(c.alias||' '||c.display_name||' '||COALESCE(json_extract(s.payload,'$.group'),'')||' '||json_extract(s.payload,'$.sender')||' '||json_extract(s.payload,'$.name')),lower(?))>0)
       ORDER BY m.seq DESC LIMIT 51`).all(before ?? null, before ?? null, scope, scope, query.trim(), query.trim());
     const items = rows.slice(0, 50).map(row => this.conversationView(row));
     return { items, next: rows.length > 50 ? items.at(-1)!.lastSeq : null };
+  }
+  cacheConversationName(id: string, name: string): void {
+    if (!/^[a-f0-9]{64}$/.test(id) || typeof name !== 'string' || !name.trim() || name.length > 100 || /[\r\n\0]/.test(name)) return;
+    this.db.prepare('UPDATE chat_sessions SET display_name=? WHERE id=? AND display_name!=?').run(name.trim(), id, name.trim());
   }
   private conversation(id: string): { session: string; view: ConversationView } {
     if (!/^[a-f0-9]{64}$/.test(id)) throw new Failure('invalid_history_query');
@@ -202,8 +216,12 @@ export class SqliteStore implements Store {
     const items: TimelineItem[] = selected.reverse().map(row => {
       const message = JSON.parse(String(row.source)) as Message, payload = JSON.parse(String(row.payload));
       const incoming = row.direction === 'in';
+      const knownName = incoming ? this.db.prepare(`SELECT json_extract(payload,'$.name') AS name FROM messages
+        WHERE session=? AND direction='in' AND json_extract(payload,'$.sender')=?
+        AND trim(json_extract(payload,'$.name'))!='' AND json_extract(payload,'$.name')!=json_extract(payload,'$.sender')
+        ORDER BY seq DESC LIMIT 1`).get(conversation.session, message.sender)?.name : undefined;
       return { seq: Number(row.seq), direction: incoming ? 'in' : 'out', time: incoming ? message.time : Number(payload.sentAt ?? row.updated ?? message.time),
-        sender: incoming ? message.sender : message.account, name: incoming ? message.name : '小狼',
+        sender: incoming ? message.sender : message.account, name: incoming ? String(knownName ?? message.name) : '小狼',
         text: incoming ? message.text : String(payload.text ?? ''), segments: incoming ? message.segments : [],
         kind: incoming ? 'message' : String(row.key).startsWith('reminder:') ? 'reminder' : 'reply',
         ...(!incoming && row.turn_id ? { parts: this.db.prepare("SELECT text FROM sends WHERE turn_id=? AND part>=0 AND state='sent' ORDER BY part").all(String(row.turn_id)).map(part => String(part.text)) } : {}),

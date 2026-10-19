@@ -169,8 +169,13 @@ export class MemoryRepository {
     const item = this.get(id);
     if (!item) throw new Failure('memory_not_found');
     if (item.version !== version) throw new Failure('memory_conflict');
-    this.protect(item);
-    this.db.prepare('UPDATE memory_items SET deleted=1,version=version+1,indexed=0 WHERE id=?').run(id);
+    const previous = [item, ...this.versions(id, undefined, Number.MAX_SAFE_INTEGER, true).map(entry => entry.item)];
+    for (const version of previous) {
+      for (const seq of version.sources) this.db.prepare('INSERT OR IGNORE INTO memory_suppressed VALUES (?)').run(seq);
+      this.db.prepare('DELETE FROM memory_forgotten WHERE content=?').run(version.content);
+    }
+    this.db.exec("PRAGMA secure_delete=ON; INSERT INTO memory_fts(memory_fts,rank) VALUES('secure-delete',1); INSERT INTO memory_version_fts(memory_version_fts,rank) VALUES('secure-delete',1); DELETE FROM memory_summaries; DELETE FROM memory_recalls");
+    this.db.prepare('DELETE FROM memory_items WHERE id=?').run(id);
     this.db.prepare('DELETE FROM memory_fts WHERE id=?').run(id);
     this.db.prepare('DELETE FROM memory_versions WHERE memory_id=?').run(id);
     this.db.prepare('DELETE FROM memory_version_fts WHERE id=?').run(id);

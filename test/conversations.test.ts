@@ -86,5 +86,24 @@ test('conversation endpoints use existing write authorization and aliases take e
     assert.equal((await request(`/api/conversations/${id}/name`, 'POST', input, headers)).status, 409);
     assert.equal((await request(`/api/conversations/${id}?before=0`)).status, 400);
     assert.equal((await request(`/api/conversations/${'f'.repeat(64)}`)).status, 404);
+    assert.equal((await request('/api/data/delete', 'POST', { kind: 'conversation', id })).status, 403);
+    assert.equal((await request('/api/data/delete', 'POST', { kind: 'conversation', id }, headers)).status, 200);
+    assert.equal((await request('/api/conversations')).data.items.length, 0);
   } finally { handle.close(); await app.stop(); }
+});
+
+test('official display names remain separate from aliases and retain known private names across nameless events', () => {
+  const db = new SqliteStore(':memory:');
+  try {
+    admit(db, '群消息', 1); const group = db.conversations().items[0]!;
+    db.renameConversation(group.id, '我的备注', 0);
+    db.cacheConversationName(group.id, '官方群名');
+    const found = db.conversations('官方群名').items[0]!;
+    assert.equal(found.name, '官方群名'); assert.equal(found.alias, '我的备注'); assert.equal(found.version, 1);
+    const named = normalize({ ...event('第一条', 2, null, 'P'), name: '小明' }, adapter, [])!; db.admit(named);
+    db.admit(normalize({ ...event('第二条', 3, null, 'P'), name: 'P' }, adapter, [])!);
+    const privateChat = db.conversations('', 'private').items[0]!;
+    assert.equal(privateChat.name, '小明');
+    assert.ok(db.timeline(privateChat.id).items.every(item => item.name === '小明' && item.sender === 'P'));
+  } finally { db.close(); }
 });

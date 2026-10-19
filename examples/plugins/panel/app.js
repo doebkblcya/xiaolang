@@ -171,6 +171,7 @@ async function poll() {
 }
 
 const settingsErrors = {
+  data_busy: '小狼正在处理消息或发送提醒，请稍后再删。', message_not_found: '这条消息已经不存在，请刷新。', invalid_delete_request: '删除请求无效，请刷新后重试。',
   conversation_conflict: '会话备注已被修改，请关闭窗口重新编辑。', invalid_conversation_request: '备注最多 80 字，不能包含换行。', conversation_not_found: '会话已不存在，请刷新列表。',
   persona_rate_limited: '已达到学习冷却时间或每日上限。', persona_not_enough_messages: '本批用户消息不足，继续聊天后再学习。', persona_catalog_full: '表达习惯已达上限，后续只更新已有习惯。', persona_busy: '正在学习，请稍后刷新。', invalid_persona_result: '本次学习结果未通过检查，没有修改已有习惯。',
   persona_conflict: '这条习惯已被修改，请重新打开。', invalid_persona_request: '表达习惯字段不正确，请检查内容与关键词。', persona_not_found: '这条习惯已不存在。', persona_disabled: '后台学习尚未开启。',
@@ -507,7 +508,8 @@ $('memory-form').addEventListener('submit', async event => {
 });
 $('memory-forget').addEventListener('click', async () => {
   if (!editingMemory) return;
-  try { await settingsRequest('/api/memory/mutate', { action: 'forget', id: editingMemory.id, version: editingMemory.version }); $('memory-detail').close(); await refreshMemory(); }
+  if (!confirm('彻底删除这条记忆及全部版本、向量和召回记录？无法恢复。原始聊天记录仍保留。')) return;
+  try { await eraseStoredData({ kind: 'memory', id: editingMemory.id, version: editingMemory.version }); $('memory-detail').close(); await refreshMemory(); }
   catch (error) { $('memory-form-message').textContent = error.message; }
 });
 
@@ -576,11 +578,11 @@ $('persona-form').addEventListener('submit', async event => {
 let conversationItems = [], currentConversation, conversationNext, conversationRows = [], messageNext;
 let timelineLoading;
 let chatLoading = false, conversationFilterVersion = 0, timelineVersion = 0, namingConversation;
-function conversationLabel(item) { return item.alias || (item.scope === 'group' ? `群聊 · ${item.recipient.slice(0, 12)}` : item.name); }
+function conversationLabel(item) { return item.alias || (item.scope === 'group' && item.name === `群聊 ${item.recipient}` ? `群聊 · ${item.recipient.slice(0, 12)}` : item.name); }
 function setConversationHeading(item) {
   $('conversation-title').textContent = conversationLabel(item);
   $('conversation-subtitle').textContent = `${item.scope === 'group' ? '群' : '用户'} ID：${item.recipient} · ${item.messages} 条记录`;
-  $('conversation-name').disabled = false; $('message-latest').disabled = false;
+  $('conversation-delete').disabled = false; $('conversation-name').disabled = false; $('message-latest').disabled = false;
 }
 function renderConversations() {
   $('conversation-list').replaceChildren(...conversationItems.map(item => {
@@ -621,7 +623,7 @@ function renderTimeline() {
   const nodes = conversationRows.map(item => {
     const article = element('article', `timeline-item ${item.direction === 'out' ? 'outgoing' : 'incoming'}`), meta = element('div', 'timeline-meta');
     meta.append(element('strong', '', item.name), element('span', '', time(item.time, true)));
-    if (item.direction === 'in') meta.append(element('span', 'message-sender-id', `ID：${item.sender}`));
+    if (item.direction === 'in' && item.name !== item.sender) meta.append(element('span', 'message-sender-id', `ID：${item.sender}`));
     if (item.kind === 'reminder') meta.append(element('span', '', '定时提醒'));
     const bubble = element('div', 'message-bubble');
     if (item.direction === 'out') bubble.textContent = item.parts?.[0] ?? item.text;
@@ -633,6 +635,13 @@ function renderTimeline() {
         bubble.append(link);
       } else bubble.append(document.createTextNode(segment.type === 'mention' ? `[@ ${segment.userId}]` : segment.type === 'reply' ? `[引用消息 ${segment.messageId}]` : `[暂不支持：${segment.kind}]`));
     }
+    const remove = element('button', 'link', '删除'); remove.type = 'button';
+    remove.addEventListener('click', async () => {
+      if (!confirm(item.direction === 'in' ? '彻底删除这条消息及对应回复？关联的记忆、摘要和表达学习也会清理，无法恢复。' : '彻底删除这条回复及关联记录？无法恢复。')) return;
+      remove.disabled = true;
+      try { await eraseStoredData({ kind: 'message', id: currentConversation.id, seq: item.seq }); await resetChatsAfterDelete(); }
+      catch (error) { $('conversation-message').textContent = error.message; remove.disabled = false; }
+    }); meta.append(remove);
     article.append(meta, bubble);
     if (item.direction === 'out' && item.parts?.length > 1) for (const part of item.parts.slice(1)) article.append(element('div', 'message-bubble', part));
     if (item.turn) {
@@ -670,7 +679,7 @@ async function loadTimeline(older = false, initial = false) {
 }
 function filterConversations() {
   conversationFilterVersion++; timelineVersion++; conversationItems = []; currentConversation = undefined; conversationNext = undefined; conversationRows = []; messageNext = undefined;
-  $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = '包含未触发小狼回复的消息。'; $('conversation-name').disabled = true; $('message-latest').disabled = true;
+  $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = '包含未触发小狼回复的消息。'; $('conversation-delete').disabled = true; $('conversation-name').disabled = true; $('message-latest').disabled = true;
   $('message-older').disabled = true; $('message-timeline').replaceChildren(element('p', 'empty', '选择群聊或私聊，查看完整聊天记录。'));
   renderConversations(); refreshChats();
 }
@@ -696,4 +705,31 @@ $('conversation-name-form').addEventListener('submit', async event => {
     renderConversations(); $('conversation-name-dialog').close();
   } catch (error) { $('conversation-name-message').textContent = error.message; }
   finally { button.disabled = false; }
+});
+
+async function eraseStoredData(input) {
+  if (!settings) await loadSettings();
+  const result = await settingsRequest('/api/data/delete', input);
+  logs = []; cursor = 0; selected = undefined; renderLogs(); $('detail').close();
+  return result;
+}
+async function resetChatsAfterDelete() {
+  conversationFilterVersion++; timelineVersion++; conversationItems = []; conversationRows = []; conversationNext = undefined; messageNext = undefined; currentConversation = undefined;
+  $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = '';
+  $('conversation-name').disabled = true; $('conversation-delete').disabled = true;
+  $('message-timeline').replaceChildren(); renderConversations();
+  // An already-running poll must finish before reloading the erased timeline.
+  while (chatLoading || timelineLoading) await new Promise(resolve => setTimeout(resolve, 30));
+  await refreshChats();
+}
+$('conversation-delete').addEventListener('click', async event => {
+  if (!currentConversation || !confirm('彻底删除这个会话的全部聊天记录和回复？关联的记忆、摘要、表达学习及来源提醒也会清理，无法恢复。')) return;
+  event.target.disabled = true;
+  try { await eraseStoredData({ kind: 'conversation', id: currentConversation.id }); await resetChatsAfterDelete(); }
+  catch (error) { $('conversation-message').textContent = error.message; event.target.disabled = false; }
+});
+$('persona-delete').addEventListener('click', async () => {
+  if (!editingStyle || !confirm('彻底删除这条表达习惯、全部版本和示例关联？无法恢复。原始聊天记录仍保留。')) return;
+  try { await eraseStoredData({ kind: 'persona', id: editingStyle.id, version: editingStyle.version }); $('persona-detail').close(); await refreshPersona(); }
+  catch (error) { $('persona-message').textContent = error.message; }
 });

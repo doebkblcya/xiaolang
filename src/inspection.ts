@@ -1,6 +1,6 @@
 import type { Plugin } from 'cordis';
 import type { Config } from './config.js';
-import type { LogItem, PluginInfo } from './contracts.js';
+import type { ConversationView, LogItem, PluginInfo } from './contracts.js';
 
 export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => PluginInfo[] }> = {
   name: 'xiaolang-inspection', inject: ['historyReader'],
@@ -23,7 +23,22 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
       buffer.push({ seq: ++cursor, entry: structuredClone(entry) });
       if (buffer.length > 500) buffer.shift();
     });
+    const nameConversation = async (item: ConversationView) => {
+      const adapter = ctx.get('adapter');
+      if (item.scope !== 'group' || adapter?.platform !== item.platform || adapter.account !== item.account || !adapter.groupName) return item;
+      try {
+        const name = await adapter.groupName(item.recipient);
+        if (name) { ctx.historyReader.cacheConversationName(item.id, name); return { ...item, name }; }
+      } catch { /* Missing optional metadata must not hide the conversation. */ }
+      return item;
+    };
     ctx.provide('inspection', {
+      deleteData: async input => {
+        await ctx.get('trigger')?.clear?.();
+        const result = ctx.historyReader.deleteData(input);
+        buffer.length = 0; cursor = 0;
+        return result;
+      },
       status() {
         return { started, uptimeMs: Math.max(0, Date.now() - started), state, connection, lastMessage,
           model: config.model.name, platform: ctx.get('adapter')?.platform, chatEnabled: !!ctx.get('chat'),
@@ -34,8 +49,14 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
           plugins: structuredClone(options.plugins()),
         };
       },
-      conversations: (query, scope, before) => ctx.historyReader.conversations(query, scope, before),
-      timeline: (id, before) => ctx.historyReader.timeline(id, before),
+      conversations: async (query, scope, before) => {
+        const page = ctx.historyReader.conversations(query, scope, before);
+        return { ...page, items: await Promise.all(page.items.map(nameConversation)) };
+      },
+      timeline: async (id, before) => {
+        const page = ctx.historyReader.timeline(id, before);
+        return { ...page, conversation: await nameConversation(page.conversation) };
+      },
       renameConversation: (id, alias, version) => ctx.historyReader.renameConversation(id, alias, version),
       recent: (limit, before, failures) => ctx.historyReader.recent(limit, before, failures),
       detail: id => ctx.historyReader.detail(id),

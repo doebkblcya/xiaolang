@@ -50,7 +50,7 @@
           <button id="conversation-more" class="link conversation-more" hidden>更多会话</button>
         </aside>
         <section class="conversation-main" aria-label="聊天时间线">
-          <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted">包含未触发小狼回复的消息。</p></div><div class="form-actions"><button id="conversation-name" class="secondary" disabled>备注名称</button><button id="conversation-refresh" class="secondary">刷新</button></div></div>
+          <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted">包含未触发小狼回复的消息。</p></div><div class="form-actions"><button id="conversation-delete" class="secondary" disabled>删除会话</button><button id="conversation-name" class="secondary" disabled>备注名称</button><button id="conversation-refresh" class="secondary">刷新</button></div></div>
           <div class="timeline-toolbar"><button id="message-older" class="link" disabled>查看更早消息</button><span id="message-page-note" class="muted"></span><label class="filter"><input id="message-follow" type="checkbox" checked>跟随新消息</label></div>
           <div id="message-timeline" class="message-timeline"><p class="empty">选择群聊或私聊，查看完整聊天记录。</p></div>
           <div class="timeline-footer"><span id="conversation-message" class="muted" role="status"></span><button id="message-latest" class="link" disabled>回到最新</button></div>
@@ -167,7 +167,7 @@
       <label class="field full">表达建议<textarea name="rule" rows="3" required maxlength="200"></textarea></label>
       <label class="field full">情境关键词（每行一个）<textarea name="keywords" rows="3"></textarea></label>
       <label class="filter"><input name="enabled" type="checkbox">在回复中参考这条习惯</label>
-    </div><p id="persona-message" class="muted" role="status"></p><button class="primary" type="submit">保存</button></form>
+    </div><p id="persona-message" class="muted" role="status"></p><div class="form-actions"><button id="persona-delete" class="secondary" type="button">彻底删除</button><button class="primary" type="submit">保存</button></div></form>
     <div id="persona-versions"></div><div id="persona-sources"></div>
   </dialog>
   <dialog id="conversation-name-dialog"><div class="dialog-head"><h2>会话备注</h2><button id="close-conversation-name" class="secondary">关闭</button></div>

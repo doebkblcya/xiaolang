@@ -57,8 +57,9 @@ export function createHandler(inspection, configuration, options = {}) {
       const pluginRoute = /^\/api\/plugins\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname);
       const personaRoute = /^\/api\/persona(?:\/(learn|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const conversationRoute = /^\/api\/conversations(?:\/([a-f0-9]{64})(?:\/(name))?)?$/.exec(url.pathname);
+      const deleteData = url.pathname === '/api/data/delete';
       const cancelReminder = url.pathname === '/api/reminders/cancel';
-      if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute || personaRoute || conversationRoute || cancelReminder)) {
+      if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute || personaRoute || conversationRoute || cancelReminder || deleteData)) {
         if (!configuration) return send(503, { error: 'configuration_unavailable' });
         const token = request.headers['x-xiaolang-token'];
         if (request.headers.origin !== origin || typeof token !== 'string'
@@ -67,6 +68,7 @@ export function createHandler(inspection, configuration, options = {}) {
         }
         if (request.headers['content-type'] !== 'application/json') { request.resume?.(); return send(415, { error: 'json_required' }); }
         const input = await readJson(request, pluginRoute?.[1] === 'xiaolang-mcp' ? 131072 : pluginRoute?.[1] === 'xiaolang-persona' ? 65536 : 16384);
+        if (deleteData) return send(200, await inspection.deleteData(input));
         if (conversationRoute) {
           if (!conversationRoute[1] || conversationRoute[2] !== 'name') return send(405, { error: 'method_not_allowed' });
           if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['alias', 'version'].includes(key))) throw new Error('invalid_conversation_request');
@@ -99,8 +101,8 @@ export function createHandler(inspection, configuration, options = {}) {
       if (request.method !== 'GET') { request.resume?.(); return send(405, { error: 'method_not_allowed' }); }
       if (conversationRoute) {
         if (conversationRoute[2]) return send(405, { error: 'method_not_allowed' });
-        if (conversationRoute[1]) return send(200, inspection.timeline(conversationRoute[1], integer(url.searchParams.get('before'), undefined)));
-        return send(200, inspection.conversations(url.searchParams.get('q') ?? '', url.searchParams.get('scope') ?? '', integer(url.searchParams.get('before'), undefined)));
+        if (conversationRoute[1]) return send(200, await inspection.timeline(conversationRoute[1], integer(url.searchParams.get('before'), undefined)));
+        return send(200, await inspection.conversations(url.searchParams.get('q') ?? '', url.searchParams.get('scope') ?? '', integer(url.searchParams.get('before'), undefined)));
       }
       if (personaRoute) {
         if (!options.persona) return send(503, { error: 'persona_unavailable' });
@@ -146,6 +148,9 @@ export function createHandler(inspection, configuration, options = {}) {
       if (['invalid_persona_request', 'invalid_persona_result'].includes(failure)) return send(400, { error: failure });
       if (failure === 'persona_not_found') return send(404, { error: failure });
       if (['persona_conflict', 'persona_disabled', 'persona_busy', 'persona_rate_limited', 'persona_not_enough_messages', 'persona_catalog_full'].includes(failure)) return send(409, { error: failure });
+      if (failure === 'invalid_delete_request') return send(400, { error: failure });
+      if (failure === 'data_busy') return send(409, { error: failure });
+      if (failure === 'message_not_found') return send(404, { error: failure });
       if (failure === 'invalid_conversation_request') return send(400, { error: failure });
       if (failure === 'conversation_not_found') return send(404, { error: failure });
       if (failure === 'conversation_conflict') return send(409, { error: failure });

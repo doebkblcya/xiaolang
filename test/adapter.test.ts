@@ -227,3 +227,21 @@ test('scheduled QQ push uses the active message body, validates its real target 
   client.failure = new ApiError('server error', 503, '/test');
   await assert.rejects(transport.push(target, '提醒', 45, signal), { code: 'qq_send_unknown', unknownOutcome: true });
 });
+
+test('QQ names use official raw usernames when the SDK omits private names, and empty names fall back to IDs', () => {
+  const raw = incoming().raw;
+  assert.equal(normalizeQQ(incoming({ raw: { ...raw, author: { user_openid: 'user-openid', username: '小明' } } as typeof raw }), 'app')?.name, '小明');
+  assert.equal(normalizeQQ(incoming({ senderName: ' ', raw: { ...raw, author: { user_openid: 'user-openid', username: '' } } as typeof raw }), 'app')?.name, 'user-openid');
+  assert.equal(normalizeQQ(incoming({ senderName: '群昵称', raw: { ...raw, author: { user_openid: 'user-openid', username: '原昵称' } } as typeof raw }), 'app')?.name, '群昵称');
+});
+
+test('official group names coalesce concurrent reads and are cached separately from chatting', async () => {
+  const client = new MockQQ(), gate = deferred<{ group_name: string }>(); let reads = 0;
+  const qq = Object.assign(client, { api: { get: async (path: string) => { reads++; assert.equal(path, '/v2/groups/test-group/info'); return gate.promise; } } });
+  const transport = adapter(qq);
+  const a = transport.groupName('test-group'), b = transport.groupName('test-group');
+  gate.resolve({ group_name: '朋友聊天群' });
+  assert.deepEqual(await Promise.all([a, b]), ['朋友聊天群', '朋友聊天群']);
+  assert.equal(await transport.groupName('test-group'), '朋友聊天群'); assert.equal(reads, 1);
+  assert.equal(client.sent.length, 0);
+});
