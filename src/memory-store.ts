@@ -47,6 +47,7 @@ export class MemoryRepository {
       CREATE TABLE IF NOT EXISTS memory_summaries(session TEXT PRIMARY KEY,through INTEGER NOT NULL,body TEXT NOT NULL,updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_recalls(turn TEXT PRIMARY KEY,payload TEXT NOT NULL,created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_images(hash TEXT PRIMARY KEY,caption TEXT NOT NULL,updated INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS memory_image_failures(url_hash TEXT PRIMARY KEY,image_hash TEXT NOT NULL,attempts INTEGER NOT NULL,error TEXT NOT NULL,retry_at INTEGER);
       CREATE TABLE IF NOT EXISTS memory_versions(memory_id TEXT NOT NULL,version INTEGER NOT NULL,payload TEXT NOT NULL,change TEXT NOT NULL,usable INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(memory_id,version));
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_version_fts USING fts5(id UNINDEXED,version UNINDEXED,body);
     `);
@@ -207,6 +208,15 @@ export class MemoryRepository {
     if (caption !== undefined) this.db.prepare('INSERT INTO memory_images VALUES (?,?,?) ON CONFLICT(hash) DO UPDATE SET caption=excluded.caption,updated=excluded.updated').run(hash, caption, Date.now());
     return this.db.prepare('SELECT caption FROM memory_images WHERE hash=?').get(hash)?.caption as string | undefined;
   }
+  imageFailure(urlHash: string): { attempts: number; error: string; retryAt: number | null } | undefined {
+    const row = this.db.prepare('SELECT attempts,error,retry_at FROM memory_image_failures WHERE url_hash=?').get(urlHash);
+    return row ? { attempts: Number(row.attempts), error: String(row.error), retryAt: row.retry_at === null ? null : Number(row.retry_at) } : undefined;
+  }
+  failImage(urlHash: string, imageHash: string, attempts: number, error: string, retryAt: number | null): void {
+    this.db.prepare('INSERT INTO memory_image_failures VALUES (?,?,?,?,?) ON CONFLICT(url_hash) DO UPDATE SET attempts=excluded.attempts,error=excluded.error,retry_at=excluded.retry_at')
+      .run(urlHash, imageHash, attempts, error, retryAt);
+  }
+  clearImageFailure(urlHash: string): void { this.db.prepare('DELETE FROM memory_image_failures WHERE url_hash=?').run(urlHash); }
   recall(turn: string, payload?: unknown): unknown {
     if (payload !== undefined) {
       this.db.prepare('INSERT OR REPLACE INTO memory_recalls VALUES (?,?,?)').run(turn, JSON.stringify(payload), Date.now());

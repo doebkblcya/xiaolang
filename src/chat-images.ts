@@ -1,14 +1,17 @@
 import type { Message, Model, Segment } from './contracts.js';
 import { VisualToolResult } from './contracts.js';
 import { imageKey } from './image-identity.js';
+import { createHash } from 'node:crypto';
 import type { MemoryConfig } from './memory-config.js';
 import type { MemoryRepository } from './memory-store.js';
-import { abortable, check, Failure } from './errors.js';
+import { abortable, check, code, Failure } from './errors.js';
 import { SessionQueue } from './scheduler.js';
 import { withUsage } from './usage.js';
 import type { UsageMeter } from './usage.js';
 
 type Picture = Extract<Segment, { type: 'image' }> & { imageId: string; key: string };
+// Access links can expire independently of the underlying image identity.
+const linkKey = (url: string) => createHash('sha256').update(url).digest('hex');
 export function pictures(message: Message): Picture[] {
   return message.segments.filter((part): part is Extract<Segment, { type: 'image' }> => part.type === 'image')
     .map((part, index) => ({ ...part, imageId: `img_${message.seq}_${index + 1}`, key: imageKey(part.url) }));
@@ -27,11 +30,13 @@ export class ChatImages {
   private stopped = false;
   constructor(private settings: MemoryConfig, private repository: MemoryRepository, private model: Model,
     private report: (event: 'completed' | 'failed', message: Message, error?: unknown) => void,
-    private fetcher: typeof fetch = fetch, private meter?: UsageMeter) {}
+    private fetcher: typeof fetch = fetch, private meter?: UsageMeter, private now: () => number = Date.now) {}
   references(message: Message) {
     if (!this.settings.images) return [];
     return pictures(message).map(picture => ({ imageId: picture.imageId,
-      description: this.repository.image(picture.key)?.slice(0, 600) ?? '暂无图片描述；需要查看内容时调用 inspect_chat_image。' }));
+      description: this.repository.image(picture.key)?.slice(0, 600)
+        ?? (this.repository.imageFailure(linkKey(picture.url))?.error === 'image_url_expired'
+          ? 'QQ原图链接已过期，未生成描述；查看内容需用户重新发送图片。' : '暂无图片描述；需要查看内容时调用 inspect_chat_image。') }));
   }
   text(message: Message): string {
     const references = this.references(message);
@@ -45,9 +50,12 @@ export class ChatImages {
     const revision = this.repository.meta('revision');
     await Promise.all(pictures(message).map(picture => {
       if (this.repository.image(picture.key)) return Promise.resolve();
-      const active = this.descriptions.get(picture.key);
+      const urlHash = linkKey(picture.url), failure = this.repository.imageFailure(urlHash);
+      if (failure && (failure.retryAt === null || failure.retryAt > this.now())) return Promise.resolve();
+      const active = this.descriptions.get(urlHash);
       if (active) return active;
       const job = this.queue.enqueue(picture.key, async parent => {
+        if (revision !== this.repository.meta('revision') || this.repository.image(picture.key)) return;
         const signal = AbortSignal.any([parent, AbortSignal.timeout(65000)]);
         const url = await this.read(picture, signal);
         const effort = this.settings.imageDescriptionThinking ?? 'off';
@@ -59,10 +67,20 @@ export class ChatImages {
         if (!answer.content?.trim()) throw new Failure('image_description_empty');
         if (revision !== this.repository.meta('revision')) return;
         this.repository.image(picture.key, answer.content.trim().slice(0, 600));
+        this.repository.clearImageFailure(urlHash);
         this.report('completed', message);
-      }).catch(error => { if (!this.stopped) this.report('failed', message, error); })
-        .finally(() => this.descriptions.delete(picture.key));
-      this.descriptions.set(picture.key, job);
+      }).catch(error => {
+        if (this.stopped || revision !== this.repository.meta('revision')) return;
+        const errorCode = code(error);
+        if (errorCode !== 'image_url_expired') {
+          const attempts = (this.repository.imageFailure(urlHash)?.attempts ?? 0) + 1;
+          const permanent = ['image_host_not_allowed', 'image_format_unsupported', 'image_too_large'].includes(errorCode);
+          this.repository.failImage(urlHash, picture.key, attempts, errorCode,
+            permanent || attempts >= 3 ? null : this.now() + (attempts === 1 ? 60000 : 300000));
+        }
+        this.report('failed', message, error);
+      }).finally(() => this.descriptions.delete(urlHash));
+      this.descriptions.set(urlHash, job);
       return job;
     }));
   }
@@ -85,18 +103,46 @@ export class ChatImages {
       check(signal);
       this.report('failed', message, error);
       return { imageId: picture.imageId, available: false, description: this.repository.image(picture.key) ?? null,
-        notice: '没有重新看到原图。当前无法从QQ链接读取图片；请说明无法核实细节，需要用户重新发送图片。已有描述只作参考。' };
+        errorCode: code(error),
+        notice: code(error) === 'image_url_expired'
+          ? '没有重新看到原图。QQ原图下载链接已过期，需要用户重新发送图片。已有描述只作参考，不能核实细节。'
+          : '没有重新看到原图。当前无法从QQ链接读取图片；请说明无法核实细节，需要用户重新发送图片。已有描述只作参考。' };
     }
     return new VisualToolResult({ imageId: picture.imageId, available: true, question,
       notice: '本轮已取回原图，将随当前问题一起提供给回复模型。请直接看原图回答，不用旧描述代替观察；看不清应明确说明。此结果不代表后续轮次仍附有原图。' }, [{ url }]);
   }
   private async read(picture: Picture, parent: AbortSignal): Promise<string> {
+    const urlHash = linkKey(picture.url), revision = this.repository.meta('revision');
+    if (this.repository.imageFailure(urlHash)?.error === 'image_url_expired') throw new Failure('image_url_expired');
     const parsed = new URL(picture.url), host = parsed.hostname.toLowerCase();
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password || (parsed.port && parsed.port !== '443')
       || !['qpic.cn', 'qq.com', 'qlogo.cn', 'qq.com.cn'].some(domain => host === domain || host.endsWith(`.${domain}`))) throw new Failure('image_host_not_allowed');
     const signal = AbortSignal.any([parent, AbortSignal.timeout(10000)]);
-    const response = await this.fetcher(picture.url, { redirect: 'error', signal });
-    if (!response.ok || !response.body) { await response.body?.cancel(); throw new Failure('image_download_failed'); }
+    let response: Response;
+    try { response = await this.fetcher(picture.url, { redirect: 'error', signal }); }
+    catch { check(parent); throw new Failure(signal.aborted ? 'image_download_timeout' : 'image_download_network'); }
+    if (!response.ok || !response.body) {
+      // Inspect a bounded error body, never store/log signed URLs or upstream bodies.
+      let errorBody = '';
+      if (response.body) {
+        const reader = response.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
+        try {
+          while (size < 4096) {
+            const { done, value } = await reader.read(); if (done) break;
+            const part = value.subarray(0, 4096 - size); chunks.push(part); size += part.length;
+          }
+          errorBody = Buffer.concat(chunks).toString('utf8');
+        } catch { check(parent); }
+        finally { await reader.cancel().catch(() => {}); }
+      }
+      let expired = false;
+      try { const data = JSON.parse(errorBody); expired = data?.retcode === -5503007 && data?.retmsg === 'download url has expired'; } catch {}
+      if (expired) {
+        if (revision === this.repository.meta('revision')) this.repository.failImage(urlHash, picture.key, 1, 'image_url_expired', null);
+        throw new Failure('image_url_expired');
+      }
+      throw new Failure('image_download_failed');
+    }
     const mime = response.headers.get('content-type')?.split(';')[0];
     if (!mime || !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) { await response.body.cancel(); throw new Failure('image_format_unsupported'); }
     const reader = response.body.getReader(), chunks: Uint8Array[] = []; let bytes = 0;

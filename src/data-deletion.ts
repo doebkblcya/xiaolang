@@ -89,6 +89,7 @@ export function deleteData(db: DatabaseSync, raw: unknown) {
       if (exists('memory_images')) for (const image of payload.segments ?? []) if (image.type === 'image') {
         const hash = imageKey(image.url);
         db.prepare('DELETE FROM memory_images WHERE hash=?').run(hash);
+        if (exists('memory_image_failures')) db.prepare('DELETE FROM memory_image_failures WHERE image_hash=?').run(hash);
       }
       db.prepare('DELETE FROM messages WHERE seq=?').run(seq); messages++;
       if (exists('memory_suppressed')) db.prepare('DELETE FROM memory_suppressed WHERE seq=?').run(seq);

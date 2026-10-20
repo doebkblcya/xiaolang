@@ -13,6 +13,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../src/store.js';
+import { createHash } from 'node:crypto';
 const settings = { ...memoryDefaults, enabled: true };
 const signal = () => new AbortController().signal;
 function pictureMessage(): Message {
@@ -60,6 +61,69 @@ test('an unavailable QQ image is reported as unavailable, even when an old text 
     assert.ok(result.notice?.includes('没有重新看到原图'));
     assert.equal(model.requests.length, 0);
   } finally { await images.stop(); repository.close(); }
+});
+
+test('confirmed expired URLs stop automatic downloads across restarts; renewed access links can describe the same image', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'xiaolang-image-expiry-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'chat.sqlite'), message = pictureMessage();
+  const oldUrl = 'https://multimedia.nt.qq.com.cn/download?fileid=one&rkey=old';
+  message.segments = [{ type: 'image', url: oldUrl }];
+  let downloads = 0, failures = 0;
+  const model = new FakeModel();
+  const fetcher: typeof fetch = async input => {
+    downloads++;
+    return String(input) === oldUrl
+      ? new Response('{"retcode":-5503007,"retmsg":"download url has expired"}', { status: 400 })
+      : new Response('pixels', { headers: { 'Content-Type': 'image/png' } });
+  };
+  let repository = new MemoryRepository(path, settings);
+  let images = new ChatImages(settings, repository, model, event => { if (event === 'failed') failures++; }, fetcher);
+  await images.describe(message); await images.describe(message);
+  assert.equal(downloads, 1); assert.equal(failures, 1); assert.equal(model.requests.length, 0);
+  assert.ok(images.text(message).includes('已过期'));
+  await images.stop(); repository.close();
+  repository = new MemoryRepository(path, settings);
+  images = new ChatImages(settings, repository, model, () => {}, fetcher);
+  try {
+    await images.describe(message);
+    const result = await images.inspect(message, 0, '看图', signal());
+    assert.ok(!(result instanceof VisualToolResult)); assert.equal(result.errorCode, 'image_url_expired');
+    assert.equal(downloads, 1, 'known expired URL must not be downloaded again, even by the tool');
+    const renewed = structuredClone(message); renewed.segments = [{ type: 'image', url: oldUrl.replace('rkey=old', 'rkey=new') }];
+    await images.describe(renewed);
+    assert.equal(downloads, 2); assert.equal(model.requests.length, 1);
+    assert.equal(repository.image(imageKey(oldUrl)), '收到。');
+  } finally { await images.stop(); repository.close(); }
+});
+
+test('temporary caption failures retry only when reused after backoff and stop after three attempts', async () => {
+  const repository = new MemoryRepository(':memory:', settings), message = pictureMessage(), model = new FakeModel();
+  message.segments = message.segments.slice(0, 1);
+  let now = 1000, downloads = 0;
+  const images = new ChatImages(settings, repository, model, () => {}, async () => { downloads++; throw new TypeError('network'); }, undefined, () => now);
+  try {
+    await images.describe(message); await images.describe(message); assert.equal(downloads, 1);
+    now += 59999; await images.describe(message); assert.equal(downloads, 1);
+    now++; await images.describe(message); assert.equal(downloads, 2);
+    now += 299999; await images.describe(message); assert.equal(downloads, 2);
+    now++; await images.describe(message); assert.equal(downloads, 3);
+    now += 86400000; await images.describe(message); assert.equal(downloads, 3);
+    assert.equal(model.requests.length, 0);
+  } finally { await images.stop(); repository.close(); }
+});
+
+test('deleting an image source also deletes its persisted failure state', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'xiaolang-image-delete-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'chat.sqlite'), store = new SqliteStore(path), repository = new MemoryRepository(path, settings);
+  const message = store.admit(pictureMessage())!, picture = pictures(message)[0]!;
+  const urlHash = createHash('sha256').update(picture.url).digest('hex');
+  repository.failImage(urlHash, picture.key, 1, 'image_url_expired', null);
+  try {
+    store.deleteData({ kind: 'message', id: store.conversations().items[0]!.id, seq: message.seq });
+    assert.equal(repository.imageFailure(urlHash), undefined);
+  } finally { repository.close(); store.close(); }
 });
 
 test('untriggered images are described immediately; multiple text followups carry references without original pixels and tools inspect the selected image', async () => {
