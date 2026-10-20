@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { readFile } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { createAccess, readAuth, readTls } from './security.mjs';
+import { createAccess, readAuth, readTls, isPrivateAddress } from './security.mjs';
 
 export const name = 'xiaolang-panel';
 export const xiaolangApiVersion = 1;
@@ -32,12 +32,13 @@ export function createHandler(inspection, configuration, options = {}) {
   const allowedHosts = options.allowedHosts ?? [];
   if (!Array.isArray(allowedHosts) || allowedHosts.some(host => typeof host !== 'string' || !/^[a-zA-Z0-9.-]+(?::[0-9]{1,5})?$/.test(host))) throw new Error('invalid_panel_config');
   const writeToken = randomBytes(24).toString('hex');
-  const access = createAccess(options.auth);
+  const access = createAccess(options.auth, Date.now, { privateHttp: options.privateHttp === true });
   const handler = async (request, response) => {
     const send = (status, value, type = 'application/json; charset=utf-8', extra = {}) => {
       response.writeHead(status, { ...headers, 'Content-Type': type, ...extra });
       response.end(type.startsWith('application/json') ? JSON.stringify(value) : value);
     };
+    if (options.privateHttp && !isPrivateAddress(request.socket?.remoteAddress)) return send(403, { error: 'lan_access_only' });
     const host = request.headers.host ?? '';
     const origin = `${request.socket?.encrypted ? 'https' : 'http'}://${host}`;
     if (!/^(?:127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{1,5})?$/.test(host) && !allowedHosts.includes(host)) return send(403, { error: 'local_access_only' });
@@ -184,15 +185,26 @@ export async function apply(ctx, config = {}) {
   const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth,
     persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
-  server.requestTimeout = 10000;
-  server.headersTimeout = 10000;
-  server.keepAliveTimeout = 5000;
-  server.maxConnections = 32;
+  const listeners = [{ server, handler, port, host }];
+  if (config.lanHttp !== undefined) {
+    const lan = config.lanHttp;
+    if (!auth || !tls || !lan || !['127.0.0.1', '0.0.0.0'].includes(lan.host ?? '0.0.0.0')
+      || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
+      || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
+    const lanHandler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true,
+      persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
+    listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
+  }
+  for (const entry of listeners) {
+    entry.server.requestTimeout = 10000; entry.server.headersTimeout = 10000; entry.server.keepAliveTimeout = 5000; entry.server.maxConnections = 32;
+  }
   let timer, reloading = false, reloadFailed = false;
-  ctx.effect(() => () => new Promise(resolve => { clearInterval(timer); handler.close(); server.close(() => resolve()); server.closeAllConnections(); }));
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, host, () => { server.off('error', reject); resolve(); });
+  ctx.effect(() => () => { clearInterval(timer); return Promise.all(listeners.map(entry => new Promise(resolve => {
+    entry.handler.close(); entry.server.close(() => resolve()); entry.server.closeAllConnections();
+  }))); });
+  for (const entry of listeners) await new Promise((resolve, reject) => {
+    entry.server.once('error', reject);
+    entry.server.listen(entry.port, entry.host, () => { entry.server.off('error', reject); resolve(); });
   });
   if (tls) {
     timer = setInterval(async () => {
@@ -209,6 +221,6 @@ export async function apply(ctx, config = {}) {
     }, 60000);
     timer.unref();
   }
-  server.on('error', () => ctx.emit('xiaolang/log', { code: 'panel_server_error', plugin: 'panel' }));
+  for (const entry of listeners) entry.server.on('error', () => ctx.emit('xiaolang/log', { code: 'panel_server_error', plugin: 'panel' }));
   ctx.emit('xiaolang/log', { code: 'panel_listening', plugin: 'panel' });
 }

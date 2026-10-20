@@ -175,3 +175,31 @@ test('panel sessions expire and repeated invalid Keys are rate limited without t
   assert.equal((await request('/api/auth/session', { key })).status, 200);
   access.close();
 });
+
+test('separate LAN HTTP access keeps Key checks and write tokens, isolates cookies and rejects public peers', async () => {
+  const module = await import(pathToFileURL(resolve('examples/plugins/panel/index.mjs')).href);
+  const key = 'c'.repeat(64), host = '192.168.31.97:18081', auth = { keyHash: createHash('sha256').update(key).digest('hex') };
+  let writes = 0;
+  const inspect = { status: () => ({ state: 'ready' }) }, configuration = { view: () => ({ revision: 'one' }), save: () => { writes++; return { revision: 'two' }; } };
+  const lan = module.createHandler(inspect, configuration, { allowedHosts: [host], auth, privateHttp: true });
+  const publicHandler = module.createHandler(inspect, configuration, { allowedHosts: [host], auth });
+  async function request(handle: typeof lan, path: string, method = 'GET', body?: unknown, cookie?: string, peer = '::ffff:192.168.31.20') {
+    let status = 0, headers: Record<string,string> = {}, text = '';
+    const req = Object.assign(Readable.from(body === undefined ? [] : [JSON.stringify(body)]), { url: path, method,
+      headers: { host, origin: `http://${host}`, 'content-type': 'application/json', cookie, 'x-forwarded-for': '192.168.31.20' }, socket: { encrypted: false, remoteAddress: peer } });
+    await handle(req, { writeHead(code: number, values: Record<string,string>) { status = code; headers = values; }, end(value: string) { text = String(value); } });
+    return { status, headers, text };
+  }
+  try {
+    assert.equal((await request(lan,'/api/status')).status,401);
+    assert.equal((await request(lan,'/api/status','GET',undefined,undefined,'203.0.113.5')).status,403);
+    assert.equal((await request(publicHandler,'/api/status')).status,426);
+    const login=await request(lan,'/api/auth/session','POST',{key});assert.equal(login.status,200);
+    assert.match(login.headers['Set-Cookie']!,/^xiaolang-lan-session=/);assert.ok(!login.headers['Set-Cookie']!.includes('Secure'));
+    const cookie=login.headers['Set-Cookie']!.split(';')[0];
+    assert.equal((await request(lan,'/api/status','GET',undefined,cookie)).status,200);
+    assert.equal((await request(lan,'/api/settings/model','POST',{},cookie)).status,403);assert.equal(writes,0);
+    assert.equal((await request(lan,'/api/auth/logout','POST',{},cookie)).status,200);
+    assert.equal((await request(lan,'/api/status','GET',undefined,cookie)).status,401);
+  } finally { lan.close();publicHandler.close(); }
+});

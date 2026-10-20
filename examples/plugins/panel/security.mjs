@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { createHash, createPrivateKey, randomBytes, timingSafeEqual, X509Certificate } from 'node:crypto';
 import { createSecureContext } from 'node:tls';
+import { isIP } from 'node:net';
 
 const cookieName = '__Host-xiaolang-session';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -51,26 +52,39 @@ export async function readTls(config) {
   } catch { throw new Error('invalid_panel_tls'); }
 }
 
-export function createAccess(auth, now = Date.now) {
+export function isPrivateAddress(address) {
+  if (typeof address !== 'string') return false;
+  const ip = address.toLowerCase().replace(/^::ffff:/, '');
+  if (isIP(ip) === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  return isIP(ip) === 6 && (ip === '::1' || /^f[cd]/.test(ip) || /^fe[89ab]/.test(ip));
+}
+
+export function createAccess(auth, now = Date.now, options = {}) {
   if (!auth) return undefined;
   if (!/^[a-f0-9]{64}$/.test(auth.keyHash)) throw new Error('invalid_panel_auth');
   const hours = auth.sessionHours ?? 168;
   if (!Number.isInteger(hours) || hours < 1 || hours > 720) throw new Error('invalid_panel_auth');
   const lifetime = hours * 3600000, sessions = new Map(), failures = new Map();
-  const cookie = (value, seconds) => `${cookieName}=${value}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${seconds}`;
+  const cookie = (name, secure, value, seconds) => `${name}=${value}; Path=/; HttpOnly;${secure ? ' Secure;' : ''} SameSite=Strict; Max-Age=${seconds}`;
   return {
     async handle(request, url, send, readJson) {
-      if (!request.socket?.encrypted) { request.resume?.(); send(426, { error: 'https_required' }); return true; }
+      const secure = !!request.socket?.encrypted;
+      if (!secure && !(options.privateHttp && isPrivateAddress(request.socket?.remoteAddress))) { request.resume?.(); send(426, { error: 'https_required' }); return true; }
+      const name = secure ? cookieName : 'xiaolang-lan-session';
+      const origin = `${secure ? 'https' : 'http'}://${request.headers.host}`;
       const time = now();
       for (const [id, session] of sessions) if (session.expires <= time) sessions.delete(id);
       for (const [ip, failure] of failures) if (failure.until <= time) failures.delete(ip);
-      const token = String(request.headers.cookie ?? '').split(';').map(part => part.trim()).find(part => part.startsWith(cookieName + '='))?.slice(cookieName.length + 1);
+      const token = String(request.headers.cookie ?? '').split(';').map(part => part.trim()).find(part => part.startsWith(name + '='))?.slice(name.length + 1);
       const session = typeof token === 'string' && /^[a-f0-9]{64}$/.test(token) ? sessions.get(sha256(token)) : undefined;
-      const authenticated = !!session && session.host === request.headers.host;
+      const authenticated = !!session && session.host === request.headers.host && session.secure === secure;
       if (url.pathname === '/api/auth/session') {
         if (request.method === 'GET') { send(200, { enabled: true, authenticated }); return true; }
         if (request.method !== 'POST') { request.resume?.(); send(405, { error: 'method_not_allowed' }); return true; }
-        if (request.headers.origin !== `https://${request.headers.host}`) { request.resume?.(); send(403, { error: 'same_origin_required' }); return true; }
+        if (request.headers.origin !== origin) { request.resume?.(); send(403, { error: 'same_origin_required' }); return true; }
         if (request.headers['content-type'] !== 'application/json') { request.resume?.(); send(415, { error: 'json_required' }); return true; }
         const ip = request.socket.remoteAddress ?? 'unknown';
         const failure = failures.get(ip);
@@ -87,14 +101,14 @@ export function createAccess(auth, now = Date.now) {
         if (token) sessions.delete(sha256(token));
         if (sessions.size >= 128) sessions.delete(sessions.keys().next().value);
         const value = randomBytes(32).toString('hex');
-        sessions.set(sha256(value), { expires: time + lifetime, host: request.headers.host });
-        send(200, { authenticated: true }, undefined, { 'Set-Cookie': cookie(value, lifetime / 1000) }); return true;
+        sessions.set(sha256(value), { expires: time + lifetime, host: request.headers.host, secure });
+        send(200, { authenticated: true }, undefined, { 'Set-Cookie': cookie(name, secure, value, lifetime / 1000) }); return true;
       }
       if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
         request.resume?.();
-        if (request.headers.origin !== `https://${request.headers.host}`) { send(403, { error: 'same_origin_required' }); return true; }
+        if (request.headers.origin !== origin) { send(403, { error: 'same_origin_required' }); return true; }
         if (token) sessions.delete(sha256(token));
-        send(200, { authenticated: false }, undefined, { 'Set-Cookie': cookie('', 0) }); return true;
+        send(200, { authenticated: false }, undefined, { 'Set-Cookie': cookie(name, secure, '', 0) }); return true;
       }
       if (request.method === 'GET' && ['/login.js', '/style.css'].includes(url.pathname)) return false;
       if (authenticated) return false;
