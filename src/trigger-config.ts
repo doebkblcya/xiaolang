@@ -8,8 +8,8 @@ export interface ProactiveSettings {
   maxRepliesPerMinute: number;
 }
 export const proactiveDefaults: ProactiveSettings = {
-  enabled: false, excludedGroupIds: [], activeSeconds: 60, idleSeconds: 10,
-  idleMessages: 10, historyMessages: 30, maxRepliesPerMinute: 6,
+  enabled: false, excludedGroupIds: [], activeSeconds: 60, idleSeconds: 60,
+  idleMessages: 20, historyMessages: 30, maxRepliesPerMinute: 6,
 };
 export const proactiveSchema = {
   type: 'object', additionalProperties: false, required: Object.keys(proactiveDefaults), properties: {

@@ -48,7 +48,7 @@ test('proactive groups use exclusions; legacy allowed groups are cleared rather 
   assert.deepEqual(migrated.trigger?.proactive?.excludedGroupIds, []);
   assert.equal(Object.hasOwn(migrated.trigger!.proactive!, 'groupIds'), false);
   assert.deepEqual(triggerSettings(previous as unknown as typeof base).proactive.excludedGroupIds, []);
-  assert.equal(proactiveDefaults.idleSeconds, 10); assert.equal(proactiveDefaults.idleMessages, 10);
+  assert.equal(proactiveDefaults.idleSeconds, 60); assert.equal(proactiveDefaults.idleMessages, 20);
 });
 
 test('activation is group-local, expires without participation, and a new summons invalidates an in-flight judgement', async () => {
@@ -153,4 +153,13 @@ test('only genuine direct continuations renew activity; incidental interjections
     assert.ok(instance.logs.some(entry => entry.reason?.includes(addressed ? '刷新活跃时间' : '不延长活跃时间')));
     await instance.value.clear(); t.mock.timers.reset();
   }
+});
+
+test('the queue deadline starts after the idle judgement, not before the configured observation window', async () => {
+  const instance = controller(new FakeModel(async () => ({ role: 'assistant', content: '{"reply":true,"addressed":false,"reason":"有值得补充的内容"}' })));
+  const pending = { ...message(1), time: Date.now() - 60000 };
+  instance.value.observe(pending, value => instance.sent.push(value.seq));
+  await instance.value.idle(); assert.deepEqual(instance.sent, [1]); assert.equal(instance.value.current(pending), true);
+  instance.value.queued(message(2), 'mention'); assert.equal(instance.value.current(pending), false);
+  instance.value.settled(message(2), false); await instance.value.clear();
 });

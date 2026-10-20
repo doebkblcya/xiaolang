@@ -4,7 +4,7 @@ import type { Log } from './contracts.js';
 
 const strings = ['code', 'time', 'turn', 'stage', 'plugin', 'messageId', 'taskId', 'scope', 'sender', 'group',
   'reason', 'model', 'tool', 'state', 'errorCode', 'receipt', 'purpose', 'provider'] as const;
-const numbers = ['step', 'part', 'parts', 'toolCalls', 'durationMs', 'waitMs', 'usageId', 'attempt', 'inputTokens', 'outputTokens', 'totalTokens', 'cachedTokens', 'reasoningTokens'] as const;
+const numbers = ['step', 'part', 'parts', 'toolCalls', 'durationMs', 'waitMs', 'usageId', 'attempt', 'inputTokens', 'outputTokens', 'totalTokens', 'cachedTokens', 'reasoningTokens', 'imageCount'] as const;
 
 export interface LoggingOptions {
   settings?: Config['logging'];

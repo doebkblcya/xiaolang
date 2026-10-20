@@ -42,6 +42,11 @@ export interface ToolSchema {
   type: 'function';
   function: { name: string; description: string; parameters: Fields };
 }
+/** Original image bytes are transient input, never part of the persisted tool result. */
+export class VisualToolResult {
+  constructor(public result: Fields, public readonly images: { url: string }[]) {}
+  toJSON(): Fields { return this.result; }
+}
 export interface Model {
   stream?(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>): Promise<ModelMessage>;
   complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage>;
@@ -159,6 +164,7 @@ export interface Log {
   part?: number; parts?: number; toolCalls?: number; durationMs?: number; waitMs?: number;
   state?: string; errorCode?: string; receipt?: string;
   usageId?: number; purpose?: string; provider?: string; attempt?: number;
+  imageCount?: number;
   inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number;
 }
 export interface TurnView {

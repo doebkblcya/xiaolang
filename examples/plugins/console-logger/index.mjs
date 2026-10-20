@@ -4,6 +4,7 @@ export const xiaolangApiVersion = 1;
 
 const labels = {
   api_usage: 'API 用量', usage_record_failed: '用量写入失败',
+  tool_image_attached: '原图已交给回复模型',
   application_ready: '小狼已就绪', application_stopping: '小狼正在停止', application_failed: '启动失败',
   qq_connected: 'QQ 已连接', qq_disconnected: 'QQ 已断开', qq_connection_error: 'QQ 连接错误',
   qq_connection_failed: 'QQ 连接失败', qq_event_failed: 'QQ 消息解析失败',
@@ -40,6 +41,7 @@ export function formatText(entry) {
   if (entry.turn) text.push(`turn=${entry.turn}`);
   if (entry.messageId) text.push(`message=${entry.messageId}`);
   if (entry.model) text.push(`模型=${entry.model}`);
+  if (entry.imageCount !== undefined) text.push(`附图=${entry.imageCount}张`);
   if (entry.purpose) text.push(`用途=${({ chat: '聊天回复', proactive: '插话判断', memory_extract: '记忆提炼', memory_summary: '聊天摘要', persona_learn: '表达学习', image_description: '图片描述', image_inspect: '重看图片', embedding_recall: '向量检索', embedding_index: '记忆向量入库', embedding_test: '向量测试', web_search: '网页搜索', web_fetch: '网页阅读', other: '其他' })[entry.purpose] ?? entry.purpose}`);
   for (const [key, title] of Object.entries({ inputTokens: '输入Token', outputTokens: '输出Token', totalTokens: '合计Token', cachedTokens: '缓存命中', reasoningTokens: '思考Token' })) if (entry[key] !== undefined) text.push(`${title}=${entry[key]}`);
   if (entry.attempt > 1) text.push(`尝试=${entry.attempt}`);

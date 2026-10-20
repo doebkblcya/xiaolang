@@ -181,7 +181,7 @@ export class ConfigurationStore implements Configuration {
     const config = combine(this.base, settings);
     const info = this.catalog().find(plugin => plugin.id === id);
     if (!info) throw new Failure('plugin_not_found');
-    const entry = id === 'xiaolang-memory' ? { id, module: 'builtin', config: { extractionThinking: 'low', ...config.memory, apiKey: settings.secrets.embedding ?? this.environment.BAILIAN_API_KEY ?? '' } as Fields }
+    const entry = id === 'xiaolang-memory' ? { id, module: 'builtin', config: { ...memoryDefaults, ...config.memory, apiKey: settings.secrets.embedding ?? this.environment.BAILIAN_API_KEY ?? '' } as Fields }
       : id === 'xiaolang-persona' ? { id, module: 'builtin', config: personaSettings(config) as unknown as Fields }
       : id === 'xiaolang-output' ? { id, module: 'builtin', config: config.output as unknown as Fields }
       : toolingSections[id] ? { id, module: 'builtin', config: (config.tooling ?? toolingDefaults)[toolingSections[id]!] as unknown as Fields }

@@ -19,6 +19,7 @@ const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什�
 Object.assign(descriptions, { persona: ['人设与学习', '基础人设保持固定，让表达逐渐自然。'] });
 Object.assign(descriptions, { usage: ['模型用量', '看看 Token 花在哪些功能上，追溯每次 API 请求。'] });
 Object.assign(stages, { api_usage: 'API 用量记录', usage_record_failed: '用量记录写入失败' });
+Object.assign(stages, { tool_image_attached: '原图已交给回复模型' });
 Object.assign(descriptions, { tooling: ['工具与行动', '查看工具、连接和权限，按插件扩展能力。'] });
 Object.assign(descriptions, { reminders: ['定时提醒', '查看提醒时间、执行结果，也可以取消任务。'] });
 Object.assign(stages, { reminder_created: '已创建提醒', reminder_cancelled: '已取消提醒', reminder_queued: '提醒等待发送', reminder_send_started: '开始发送提醒', reminder_sent: '提醒已确认发送', reminder_failed: '提醒发送失败', reminder_unknown: '提醒发送结果未知', reminder_scheduler_failed: '提醒调度异常', reminder_history_failed: '提醒已发出，聊天记录写入失败' });
@@ -91,6 +92,7 @@ function logMeta(entry) {
   if (entry.reason) values.push(reasons[entry.reason] ?? entry.reason);
   if (entry.code.startsWith('proactive_') && entry.state) values.push(({ active: '活跃', idle: '旁观', speak: '决定接话', silent: '保持沉默' })[entry.state] ?? entry.state);
   if (entry.model) values.push(entry.model);
+  if (entry.imageCount !== undefined) values.push(`本次附图 ${entry.imageCount} 张`);
   if (entry.purpose) values.push(usageNames[entry.purpose] ?? entry.purpose);
   if (entry.inputTokens !== undefined) values.push(`输入 ${entry.inputTokens} Token`);
   if (entry.outputTokens !== undefined) values.push(`输出 ${entry.outputTokens} Token`);
@@ -359,7 +361,7 @@ function renderPlugin(detail) {
       input = element('select');
       if (!required) { const option = element('option', '', '默认'); option.value = ''; input.append(option); }
       const labels = detail.id === 'xiaolang-output' ? { normal: '普通输出', streaming: '流式输出' }
-        : (detail.id === 'xiaolang-memory' && name === 'extractionThinking') || (detail.id === 'xiaolang-persona' && name === 'learningThinking') ? { off: '关闭思考', low: '低 · low', high: '高 · high', max: '最高 · max' } : {};
+        : (detail.id === 'xiaolang-memory' && name.endsWith('Thinking')) || (detail.id === 'xiaolang-persona' && name === 'learningThinking') ? { off: '关闭思考', low: '低 · low', high: '高 · high', max: '最高 · max' } : {};
       for (const item of definition.enum) { const option = element('option', '', labels[item] ?? String(item)); option.value = String(item); input.append(option); }
     } else if (definition.type === 'array' || (definition.type === 'string' && definition.maxLength > 4096)) { input = element('textarea'); input.rows = definition.type === 'array' ? 3 : 8; }
     else { input = element('input'); input.type = definition.writeOnly ? 'password' : definition.type === 'boolean' ? 'checkbox' : ['number', 'integer'].includes(definition.type) ? 'number' : 'text'; }

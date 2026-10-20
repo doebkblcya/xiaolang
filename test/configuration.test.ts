@@ -108,12 +108,13 @@ test('legacy plugin settings default to low and panel saves memory/persona think
   const memory = await store.plugin('xiaolang-memory'), persona = await store.plugin('xiaolang-persona');
   assert.equal((memory.config as Record<string, unknown>).extractionThinking, 'low');
   assert.equal((persona.config as Record<string, unknown>).learningThinking, 'low');
-  await store.savePlugin('xiaolang-memory', { revision: memory.revision, config: { ...memory.config as Record<string, unknown>, extractionThinking: 'high' } });
+  await store.savePlugin('xiaolang-memory', { revision: memory.revision, config: { ...memory.config as Record<string, unknown>, extractionThinking: 'high', summaryThinking: 'high', imageDescriptionThinking: 'high' } });
   const fresh = await store.plugin('xiaolang-persona');
   await assert.rejects(store.savePlugin('xiaolang-persona', { revision: fresh.revision, config: { ...fresh.config as Record<string, unknown>, learningThinking: 'invalid' } }), { code: 'invalid_plugin_config' });
   await store.savePlugin('xiaolang-persona', { revision: fresh.revision, config: { ...fresh.config as Record<string, unknown>, learningThinking: 'off' } });
   const boot = await ConfigurationStore.load(path, () => {}, () => true, {});
   assert.equal(boot.config.memory?.extractionThinking, 'high'); assert.equal(boot.config.character?.learningThinking, 'off');
+  assert.equal(boot.config.memory?.summaryThinking, 'high'); assert.equal(boot.config.memory?.imageDescriptionThinking, 'high');
   assert.equal(boot.config.model.thinking, false); assert.equal(boot.config.character.anchor, oldCharacter.anchor);
   await boot.confirm(); assert.equal((await boot.view()).pendingRestart, false);
 });

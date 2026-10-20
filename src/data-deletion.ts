@@ -1,8 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { createHash } from 'node:crypto';
 import * as vec from 'sqlite-vec';
 import { object } from './contracts.js';
 import { Failure } from './errors.js';
+import { imageKey } from './image-identity.js';
 
 /** Delete stored content and its derived records in one transaction; never retain content as a tombstone. */
 export function deleteData(db: DatabaseSync, raw: unknown) {
@@ -87,7 +87,7 @@ export function deleteData(db: DatabaseSync, raw: unknown) {
       if (turn) turns.add(String(turn.id));
       const payload = JSON.parse(String(row.payload));
       if (exists('memory_images')) for (const image of payload.segments ?? []) if (image.type === 'image') {
-        const url = new URL(image.url), hash = createHash('sha256').update(url.origin+url.pathname).digest('hex');
+        const hash = imageKey(image.url);
         db.prepare('DELETE FROM memory_images WHERE hash=?').run(hash);
       }
       db.prepare('DELETE FROM messages WHERE seq=?').run(seq); messages++;

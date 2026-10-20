@@ -50,6 +50,11 @@ export class MemoryRepository {
       CREATE TABLE IF NOT EXISTS memory_versions(memory_id TEXT NOT NULL,version INTEGER NOT NULL,payload TEXT NOT NULL,change TEXT NOT NULL,usable INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(memory_id,version));
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_version_fts USING fts5(id UNINDEXED,version UNINDEXED,body);
     `);
+    if (this.meta('image_cache_version') !== '2') this.transaction(() => {
+      // Legacy keys discarded the fileid query parameter, so even apparently valid captions cannot be reused.
+      this.db.exec('DELETE FROM memory_images; DELETE FROM memory_summaries; DELETE FROM memory_recalls;');
+      this.meta('image_cache_version', '2');
+    });
     if (this.meta('history_initialized') !== '1') this.transaction(() => {
       for (const row of this.db.prepare('SELECT * FROM memory_items WHERE deleted=0').all()) this.saveVersion(unpack(row), 'baseline');
       this.meta('history_initialized', '1');

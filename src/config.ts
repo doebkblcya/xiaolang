@@ -61,7 +61,7 @@ const schema = {
       proactive: proactiveSchema,
     } },
     output: { type: 'object', additionalProperties: false, required: ['mode'], properties: { mode: { enum: ['normal', 'streaming'] } } },
-    memory: { type: 'object', additionalProperties: false, required: Object.keys(memoryProperties).filter(key => key !== 'extractionThinking'), properties: memoryProperties },
+    memory: { type: 'object', additionalProperties: false, required: Object.keys(memoryProperties).filter(key => !key.endsWith('Thinking')), properties: memoryProperties },
     tooling: { type: 'object', additionalProperties: false, required: Object.keys(toolingSchemas), properties: toolingSchemas },
     failureFeedback: { type: 'object', additionalProperties: false, required: ['enabled'], properties: { enabled: { type: 'boolean' } } },
     logging: { type: 'object', additionalProperties: false, properties: {

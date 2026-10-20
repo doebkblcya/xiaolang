@@ -45,9 +45,12 @@ export class DeepSeekModel implements Model {
       response = await this.fetcher(`${config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST', redirect: 'error', signal: combined,
         headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: config.name, messages: messages.map(({ images, ...message }) => images?.length ? { ...message, content: [
+        body: JSON.stringify({ model: config.name, messages: messages.map(({ images, ...message }) => {
+          // Preserve actual tool-continuation thoughts; older non-thinking chat has no reasoning state.
+          if (config.thinking && tools.length && message.role === 'assistant' && message.reasoning_content === undefined) message.reasoning_content = '';
+          return images?.length ? { ...message, content: [
           { type: 'text', text: message.content ?? '' }, ...images.map(image => ({ type: 'image_url', image_url: { url: image.url } })),
-        ] } : message), stream: !!write, ...(write ? { stream_options: { include_usage: true } } : {}), max_tokens: config.maxOutputTokens,
+        ] } : message; }), stream: !!write, ...(write ? { stream_options: { include_usage: true } } : {}), max_tokens: config.maxOutputTokens,
           thinking: { type: config.thinking ? 'enabled' : 'disabled' },
           ...(config.thinking ? {
             ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),

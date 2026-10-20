@@ -199,7 +199,7 @@ test('optional null fields from the extraction model do not block a valid new me
 });
 
 test('older chat is summarized behind the current turn; correcting its source invalidates the summary', async () => {
-  const options = config(); options.chatEnabled = false; options.memory = { ...memoryDefaults, enabled: true, recentMessages: 5 };
+  const options = config(); options.chatEnabled = false; options.memory = { ...memoryDefaults, enabled: true, recentMessages: 5, summaryThinking: 'high' };
   const background = new FakeModel(async messages => ({ role: 'assistant', content: messages[0]!.content!.startsWith('将旧摘要') ? '用户200之前讨论过骑行计划，尚未确认完成。' : '{"memories":[]}' }));
   const app = await createApp(options, { adapter: new FakeAdapter(), model: new FakeModel(), memoryModel: background });
   try {
@@ -215,6 +215,8 @@ test('older chat is summarized behind the current turn; correcting its source in
     await new Promise<void>(resolve => setImmediate(resolve));
     const result = await app.ctx.memory.prepare(turn, signal());
     assert.ok(result!.context.includes('骑行计划'));
+    const summaryIndex = background.requests.findIndex(messages => messages[0]!.content!.startsWith('将旧摘要'));
+    assert.equal(background.options[summaryIndex]?.thinking, true); assert.equal(background.options[summaryIndex]?.reasoningEffort, 'high');
     assert.equal(result!.history.length, 5);
     const item = await app.ctx.memory.mutate({ action: 'remember', value: { content: '用户喜欢骑行', kind: 'profile', people: ['200'], sources: [1], importance: 3 } }) as { item: MemoryItem };
     await app.ctx.memory.mutate({ action: 'forget', id: item.item.id, version: item.item.version });
