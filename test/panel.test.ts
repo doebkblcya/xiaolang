@@ -84,6 +84,10 @@ test('panel handler enforces local Host, same-origin, read-only methods and boun
   const status = await request('/api/status');
   assert.equal(status.status, 200);
   assert.equal(status.json().model, 'deepseek-flash');
+  assert.equal((await request('/api/usage?range=7d&purpose=proactive')).status, 200);
+  assert.equal((await request('/api/usage?range=invalid')).status, 400);
+  assert.equal((await request('/api/usage?provider=invalid')).status, 400);
+  assert.equal((await request('/api/usage?before=0')).status, 400);
   assert.equal(status.headers['Cache-Control'], 'no-store');
   assert.ok(status.headers['Content-Security-Policy']?.includes("frame-ancestors 'none'"));
   assert.equal((await request('/api/status', 'GET', { host: 'attacker.example:18080' })).status, 403);

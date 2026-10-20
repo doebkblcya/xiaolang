@@ -3,14 +3,16 @@ import type { Config } from './config.js';
 import type { Model, ModelMessage, ModelOptions, ToolCall, ToolSchema } from './contracts.js';
 import { object } from './contracts.js';
 import { check, Failure } from './errors.js';
+import { meterRequest } from './usage.js';
+import type { UsageMeter } from './usage.js';
 
 export class DeepSeekModel implements Model {
-  constructor(private config: Config['model'], private apiKey: string, private fetcher: typeof fetch = fetch) {}
+  constructor(private config: Config['model'], private apiKey: string, private fetcher: typeof fetch = fetch, private meter?: UsageMeter) {}
   async complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage> {
     const config = { ...this.config, ...options };
     for (let attempt = 0; ; attempt++) {
       check(signal);
-      try { return await this.once(messages, tools, signal, undefined, config); }
+      try { return await this.request(messages, tools, signal, undefined, config, attempt + 1); }
       catch (error) {
         check(signal);
         if (!(error instanceof Failure) || !error.retryable || attempt >= config.retries) throw error;
@@ -22,7 +24,7 @@ export class DeepSeekModel implements Model {
     let emitted = false;
     for (let attempt = 0; ; attempt++) {
       check(signal);
-      try { return await this.once(messages, tools, signal, async delta => { emitted = true; await write(delta); }); }
+      try { return await this.request(messages, tools, signal, async delta => { emitted = true; await write(delta); }, this.config, attempt + 1); }
       catch (error) {
         check(signal);
         if (emitted || !(error instanceof Failure) || !error.retryable || attempt >= this.config.retries) throw error;
@@ -30,7 +32,13 @@ export class DeepSeekModel implements Model {
       }
     }
   }
-  private async once(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write?: (delta: string) => Promise<void>, config = this.config): Promise<ModelMessage> {
+  private request(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: ((delta: string) => Promise<void>) | undefined, config: Config['model'], attempt: number) {
+    return meterRequest({ provider: 'deepseek', model: config.name, kind: 'chat', streaming: !!write,
+      thinking: config.thinking ? config.reasoningEffort ?? 'enabled' : 'off', attempt },
+    capture => this.once(messages, tools, signal, write, config, capture), this.meter);
+  }
+  private async once(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: ((delta: string) => Promise<void>) | undefined,
+    config: Config['model'], capture: (body: unknown) => void): Promise<ModelMessage> {
     const combined = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
     let response: Response;
     try {
@@ -39,7 +47,7 @@ export class DeepSeekModel implements Model {
         headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: config.name, messages: messages.map(({ images, ...message }) => images?.length ? { ...message, content: [
           { type: 'text', text: message.content ?? '' }, ...images.map(image => ({ type: 'image_url', image_url: { url: image.url } })),
-        ] } : message), stream: !!write, max_tokens: config.maxOutputTokens,
+        ] } : message), stream: !!write, ...(write ? { stream_options: { include_usage: true } } : {}), max_tokens: config.maxOutputTokens,
           thinking: { type: config.thinking ? 'enabled' : 'disabled' },
           ...(config.thinking ? {
             ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
@@ -56,8 +64,8 @@ export class DeepSeekModel implements Model {
       throw new Failure(`model_http_${response.status}`, false, response.status === 429 || response.status >= 500);
     }
     let raw: unknown;
-    if (write) raw = await this.readStream(response, combined, signal, write);
-    else try { raw = await response.json(); }
+    if (write) raw = await this.readStream(response, combined, signal, write, capture);
+    else try { raw = await response.json(); capture(raw); }
     catch {
       check(signal);
       throw new Failure(combined.aborted ? 'model_timeout' : 'model_invalid_json', false, combined.aborted);
@@ -87,7 +95,7 @@ export class DeepSeekModel implements Model {
     if (!result.tool_calls?.length && !result.content?.trim()) throw new Failure('model_empty_response');
     return result;
   }
-  private async readStream(response: Response, combined: AbortSignal, signal: AbortSignal, write: (delta: string) => Promise<void>): Promise<unknown> {
+  private async readStream(response: Response, combined: AbortSignal, signal: AbortSignal, write: (delta: string) => Promise<void>, capture: (body: unknown) => void): Promise<unknown> {
     if (!response.body) throw new Failure('model_invalid_response');
     const reader = response.body.getReader(), decoder = new TextDecoder();
     let buffer = '', content = '', reasoning = '', finish: unknown, done = false;
@@ -98,6 +106,7 @@ export class DeepSeekModel implements Model {
       if (data === '[DONE]') { done = true; return; }
       let raw: unknown;
       try { raw = JSON.parse(data); } catch { throw new Failure('model_invalid_json'); }
+      capture(raw);
       const choices = object(raw)?.choices;
       if (!Array.isArray(choices)) throw new Failure('model_invalid_response');
       if (!choices.length) return; // Optional usage-only event.

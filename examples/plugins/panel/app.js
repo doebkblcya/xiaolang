@@ -1,5 +1,8 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const usageNames = { chat: '聊天回复', proactive: '插话判断', memory_extract: '记忆提炼', memory_summary: '聊天摘要', persona_learn: '表达学习',
+  image_description: '图片描述', image_inspect: '重看图片', embedding_recall: '向量检索', embedding_index: '记忆向量入库', embedding_test: '向量连接测试',
+  web_search: '网页搜索', web_fetch: '网页阅读', other: '其他调用' };
 const words = { connected: '已连接', disconnected: '已断开', starting: '启动中', ready: '已就绪', stopping: '停止中', failed: '失败', error: '连接异常',
   completed: '已完成', queued: '等待处理', running: '处理中', sending: '发送中', unknown: '结果未知', expired: '已过期', cancelled: '已取消',
   active: '已启用', disabled: '已停用', pending: '等待激活', scheduled: '等待到点', sent: '已确认发送', succeeded: '已成功', private: '私聊', mention: '@机器人', keyword: '触发词' };
@@ -14,6 +17,8 @@ Object.assign(stages, { persona_learning_started: '开始学习聊天表达', pe
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
 const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什么，也可以帮它纠正。'], overview: ['运行概览', '看看小狼现在怎么样。'], chats: ['聊天记录', '按群聊和私聊查看收到的消息与小狼回复。'], logs: ['过程日志', '从收到消息到发送回复，跟着每一步看。'], plugins: ['插件列表', '查看当前的小狼由哪些插件组成。'], 'model-settings': ['回复模型', '配置模型连接与生成方式。'], 'qq-settings': ['QQ 接入', '配置小狼连接的机器人与消息范围。'] };
 Object.assign(descriptions, { persona: ['人设与学习', '基础人设保持固定，让表达逐渐自然。'] });
+Object.assign(descriptions, { usage: ['模型用量', '看看 Token 花在哪些功能上，追溯每次 API 请求。'] });
+Object.assign(stages, { api_usage: 'API 用量记录', usage_record_failed: '用量记录写入失败' });
 Object.assign(descriptions, { tooling: ['工具与行动', '查看工具、连接和权限，按插件扩展能力。'] });
 Object.assign(descriptions, { reminders: ['定时提醒', '查看提醒时间、执行结果，也可以取消任务。'] });
 Object.assign(stages, { reminder_created: '已创建提醒', reminder_cancelled: '已取消提醒', reminder_queued: '提醒等待发送', reminder_send_started: '开始发送提醒', reminder_sent: '提醒已确认发送', reminder_failed: '提醒发送失败', reminder_unknown: '提醒发送结果未知', reminder_scheduler_failed: '提醒调度异常', reminder_history_failed: '提醒已发出，聊天记录写入失败' });
@@ -49,6 +54,7 @@ function showView(view) {
   if (view === 'tooling') refreshTools();
   if (view === 'reminders') refreshReminders();
   if (view === 'logs') renderLogs();
+  if (view === 'usage') refreshUsage();
   if (view.endsWith('-settings') && !settings) loadSettings();
 }
 for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => showView(button.dataset.view));
@@ -85,6 +91,13 @@ function logMeta(entry) {
   if (entry.reason) values.push(reasons[entry.reason] ?? entry.reason);
   if (entry.code.startsWith('proactive_') && entry.state) values.push(({ active: '活跃', idle: '旁观', speak: '决定接话', silent: '保持沉默' })[entry.state] ?? entry.state);
   if (entry.model) values.push(entry.model);
+  if (entry.purpose) values.push(usageNames[entry.purpose] ?? entry.purpose);
+  if (entry.inputTokens !== undefined) values.push(`输入 ${entry.inputTokens} Token`);
+  if (entry.outputTokens !== undefined) values.push(`输出 ${entry.outputTokens} Token`);
+  if (entry.totalTokens !== undefined) values.push(`合计 ${entry.totalTokens} Token`);
+  if (entry.cachedTokens !== undefined) values.push(`缓存命中 ${entry.cachedTokens}`);
+  if (entry.reasoningTokens !== undefined) values.push(`思考 ${entry.reasoningTokens}`);
+  if (entry.attempt > 1) values.push(`第 ${entry.attempt} 次尝试`);
   if (entry.step) values.push(`步骤 ${entry.step}`);
   if (entry.tool) values.push(`工具 ${entry.tool}`);
   if (entry.waitMs !== undefined) values.push(`排队 ${entry.waitMs} ms`);
@@ -138,6 +151,13 @@ async function openDetail(id) {
       if (selected === id && (recall.items?.length || recall.summary)) body.append(detailSection('本轮使用的记忆与摘要', [recall.summary ? `摘要：${recall.summary}` : '', ...(recall.items ?? []).map(item => `${item.content}\n记忆 ${item.id} · 来源 ${item.sources.join(', ')}`)].filter(Boolean).join('\n\n')));
     } catch { /* Older server versions may not expose memories. */ }
     if (detail.tools.length) body.append(detailSection('工具调用', detail.tools.map(tool => `${tool.name} · ${words[tool.state] ?? tool.state}`).join('\n')));
+    try {
+      const usage = await get(`/api/usage?range=all&turn=${encodeURIComponent(id)}`);
+      if (selected === id) body.append(detailSection('本轮 API 用量', usage.summary.calls ? [
+        `合计 ${numberText(usage.summary.total)} Token · ${usage.summary.calls} 次请求${usage.summary.unknown ? ` · ${usage.summary.unknown} 次用量未知` : ''}`,
+        ...usage.byPurpose.map(row => `${usageNames[row.purpose] ?? row.purpose}：输入 ${numberText(row.input)}，输出 ${numberText(row.output)}，合计 ${numberText(row.total)} Token`),
+      ].join('\n') : '这轮没有用量记录（更新前的调用无法补算）。'));
+    } catch { /* Usage may be unavailable on an older server. */ }
     const button = element('button', 'secondary detail-log-button', '查看这一轮的过程日志');
     button.addEventListener('click', () => { $('detail').close(); selected = undefined; $('log-filter').value = detail.id; showView('logs'); }); body.append(button);
   } catch { $('detail-body').replaceChildren(element('p', 'error-box', '暂时无法读取详情，请关闭后重试。')); }
@@ -166,6 +186,7 @@ async function poll() {
     if (!$('chats').hidden) await refreshChats();
     if (!$('tooling').hidden) await refreshTools();
     if (!$('reminders').hidden) await refreshReminders();
+    if (!$('usage').hidden && Date.now() - usageUpdated > 10000) await refreshUsage(false);
   } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('无法连接面板，当前保留上次显示的数据。请检查网络和访问地址，连接恢复后会自动更新。'); }
   finally { busy = false; }
 }
@@ -733,3 +754,83 @@ $('persona-delete').addEventListener('click', async () => {
   try { await eraseStoredData({ kind: 'persona', id: editingStyle.id, version: editingStyle.version }); $('persona-detail').close(); await refreshPersona(); }
   catch (error) { $('persona-message').textContent = error.message; }
 });
+
+let usageUpdated = 0, usageNext, usageBusy = false, usageKey = '';
+const numberText = value => value === null || value === undefined ? '—' : Number(value).toLocaleString('zh-CN');
+function usageTable(headings, rows) {
+  const table = element('table', 'usage-table'), head = element('thead'), tr = element('tr'), body = element('tbody');
+  for (const heading of headings) tr.append(element('th', '', heading));
+  head.append(tr); table.append(head, body);
+  for (const values of rows) {
+    const row = element('tr');
+    for (const value of values) { const cell = element('td'); cell.append(value instanceof Node ? value : document.createTextNode(String(value))); row.append(cell); }
+    body.append(row);
+  }
+  if (!rows.length) { const row = element('tr'), cell = element('td', 'empty', '这段时间还没有调用记录'); cell.colSpan = headings.length; row.append(cell); body.append(row); }
+  return table;
+}
+function usageRecord(row) {
+  const meta = element('details', 'usage-request'), label = element('summary', '', usageNames[row.purpose] ?? row.purpose);
+  meta.append(label, element('p', 'mono', `${row.provider} · ${row.model}`), element('p', 'muted', `请求 #${row.id} · 第 ${row.attempt} 次尝试${row.step ? ` · 模型步骤 ${row.step}` : ''}`),
+    element('p', 'muted', `${row.streaming ? '流式' : '普通'} · 思考 ${row.thinking === 'off' ? '关闭' : row.thinking}${row.scope ? ` · ${row.scope === 'group' ? '群聊' : '私聊'}` : ''}`),
+    element('p', 'muted', `缓存命中 ${numberText(row.cached)} · 思考 Token ${numberText(row.reasoning)}`));
+  if (row.requestId) meta.append(element('p', 'mono', `平台请求 ID：${row.requestId}`));
+  if (row.errorCode) meta.append(element('p', 'error-box', row.errorCode));
+  if (row.total === null) meta.append(element('p', 'muted', row.kind === 'web' ? '按次接口，未返回 Token 用量。' : '接口没有返回完整用量。此请求可能已产生消耗，无法据此计算。'));
+  if (row.turn) {
+    const reply = element('button', 'link', '查看对应消息与回复'); reply.type = 'button';
+    reply.addEventListener('click', () => openDetail(row.turn)); meta.append(reply);
+  }
+  const status = ({ success: '成功', failed: '失败', running: '进行中', interrupted: '重启中断' })[row.state] ?? row.state;
+  const state = element('span', `badge ${row.state === 'success' ? 'good' : row.state === 'running' ? 'waiting' : 'bad'}`, status);
+  return [time(row.started, true), meta, state, numberText(row.input), numberText(row.output), numberText(row.total), row.durationMs === null ? '—' : `${numberText(row.durationMs)} ms`];
+}
+async function refreshUsage(reset = true, more = false) {
+  if (usageBusy) { if (reset) usageKey = ''; return; }
+  const query = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value });
+  const key = query.toString();
+  if (more && usageNext) query.set('before', usageNext);
+  usageBusy = true;
+  try {
+    const page = await get(`/api/usage?${query}`);
+    const currentKey = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value }).toString();
+    if (key !== currentKey) return;
+    usageKey = key;
+    const summary = page.summary;
+    $('usage-total').textContent = numberText(summary.total);
+    $('usage-io').textContent = `${numberText(summary.input)} / ${numberText(summary.output)}`;
+    $('usage-detail-tokens').textContent = `缓存命中 ${numberText(summary.cached)} · 思考 ${numberText(summary.reasoning)}`;
+    $('usage-calls').textContent = `${numberText(summary.calls)} / ${numberText(summary.failures)}`;
+    $('usage-unknown').textContent = numberText(summary.unknown);
+    $('usage-note').textContent = `${page.firstRecorded ? `开始统计于 ${time(page.firstRecorded, true)}。` : '从本次版本开始统计，之前的消耗无法补算。'}缓存命中属于输入，思考属于输出，不重复相加。账户余额、赠送额度请查看平台账单。`;
+    $('usage-functions').replaceChildren(usageTable(['功能', '请求数', '失败', '输入 Token', '输出 Token', '总 Token', '缓存命中', '思考 Token', '用量未知', '平均耗时'],
+      page.byPurpose.map(row => [usageNames[row.purpose] ?? row.purpose, numberText(row.calls), numberText(row.failures), numberText(row.input), numberText(row.output), numberText(row.total), numberText(row.cached), numberText(row.reasoning), numberText(row.unknown), `${numberText(Math.round(row.averageMs))} ms`])));
+    $('usage-models').replaceChildren(usageTable(['模型', '请求数', '总 Token', '用量未知'], page.byModel.map(row => [`${row.provider} / ${row.model}`, numberText(row.calls), numberText(row.total), numberText(row.unknown)])));
+    const maximum = Math.max(1, ...page.daily.map(row => Number(row.total)));
+    $('usage-daily').replaceChildren(...(page.daily.length ? page.daily.map(row => {
+      const line = element('div', 'usage-day'), bar = element('progress'); bar.max = maximum; bar.value = Number(row.total); bar.setAttribute('aria-label', `${row.day} 用量`);
+      line.append(element('span', '', row.day), bar, element('strong', '', numberText(row.total)), element('small', 'muted', `${row.calls} 次${row.unknown ? ` · ${row.unknown} 次未知` : ''}`)); return line;
+    }) : [element('p', 'empty', '还没有用量记录')]));
+    // Auto-refresh keeps older pages in place; manual refresh starts from the latest page.
+    if (more) {
+      const body = $('usage-requests').querySelector('tbody');
+      const extra = usageTable([], page.items.map(usageRecord));
+      body.append(...extra.querySelector('tbody').children);
+      usageNext = page.next;
+    } else if (reset || !$('usage-requests').querySelector('tbody') || !$('usage-requests').dataset.expanded) {
+      $('usage-requests').replaceChildren(usageTable(['时间', '调用详情', '状态', '输入', '输出', '合计 Token', '耗时'], page.items.map(usageRecord)));
+      $('usage-requests').dataset.expanded = ''; usageNext = page.next;
+    }
+    if (more) $('usage-requests').dataset.expanded = '1';
+    $('usage-more').hidden = !usageNext; usageUpdated = Date.now(); $('usage-updated').textContent = `更新于 ${time(usageUpdated)}`;
+  } catch { $('usage-note').textContent = '暂时无法读取用量记录，请稍后刷新。'; }
+  finally {
+    usageBusy = false;
+    const keyNow = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value }).toString();
+    if (keyNow !== key) void refreshUsage();
+  }
+}
+for (const [value, title] of Object.entries(usageNames)) { const option = element('option', '', title); option.value = value; $('usage-purpose').append(option); }
+for (const id of ['usage-range', 'usage-purpose', 'usage-provider']) $(id).addEventListener('change', () => refreshUsage());
+$('refresh-usage').addEventListener('click', () => refreshUsage());
+$('usage-more').addEventListener('click', () => { if (usageKey) refreshUsage(false, true); });

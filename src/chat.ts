@@ -31,7 +31,7 @@ export function assemble(persona: string, history: ModelMessage[], current: Mess
 
 async function executeTurn(ctx: Context, config: Config, turn: Turn, parent: AbortSignal, queuedAt: number): Promise<void> {
   const signal = AbortSignal.any([parent, AbortSignal.timeout(config.limits.turnTimeoutMs)]);
-  try { await runTurn(ctx, config, turn, signal, queuedAt); }
+  try { await withUsage(ctx.get('usage'), 'chat', { turn: turn.id, scope: turn.message.group ? 'group' : 'private' }, () => runTurn(ctx, config, turn, signal, queuedAt)); }
   catch (error) {
     if (code(error) === 'cancelled' && signal.aborted && !parent.aborted) throw new Failure('turn_timeout');
     throw error;
@@ -61,8 +61,9 @@ async function runTurn(ctx: Context, config: Config, turn: Turn, signal: AbortSi
     const modelDetails = { model: config.model.name, step: step + 1 };
     log(ctx, 'model_started', turn.id, 'model', modelDetails);
     let response: ModelMessage;
-    try { response = await abortable(stream ? ctx.model.stream!(structuredClone(messages), tools, signal, delta => stream.write(delta))
-      : ctx.model.complete(structuredClone(messages), tools, signal), signal); }
+    try { response = await withUsage(ctx.get('usage'), 'chat', { turn: turn.id, step: step + 1, scope: turn.message.group ? 'group' : 'private' },
+      () => abortable(stream ? ctx.model.stream!(structuredClone(messages), tools, signal, delta => stream.write(delta))
+      : ctx.model.complete(structuredClone(messages), tools, signal), signal)); }
     catch (error) { log(ctx, 'model_failed', turn.id, 'model', { ...modelDetails, durationMs: elapsed(started), errorCode: code(error) }); throw error; }
     log(ctx, 'model_completed', turn.id, 'model', { ...modelDetails, durationMs: elapsed(started), toolCalls: response.tool_calls?.length ?? 0 });
     check(signal);
@@ -171,3 +172,4 @@ export const chatPlugin: Plugin.Object<Config> = {
     ctx.effect(() => stop);
   },
 };
+import { withUsage } from './usage.js';

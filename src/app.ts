@@ -1,4 +1,5 @@
 import { personaPlugin } from './persona.js';
+import { usagePlugin } from './usage.js';
 import { Context, FiberState } from 'cordis';
 import type { Fiber, Plugin } from 'cordis';
 import { Loader } from '@cordisjs/plugin-loader';
@@ -106,6 +107,7 @@ export async function createApp(config: Config, options: AppOptions) {
   let state: 'starting' | 'running' | 'stopped' = 'starting';
   const metadata: Record<string, [string, string]> = {
     'xiaolang-logging': ['日志处理', 'src/logging.ts'], 'xiaolang-store': ['会话存储', 'src/store.ts'],
+    'xiaolang-usage': ['模型用量统计', 'src/usage.ts'],
     'xiaolang-inspection': ['运行观察', 'src/inspection.ts'], 'xiaolang-configuration': ['配置管理', 'src/configuration.ts'],
     'xiaolang-scheduler': ['任务调度', 'src/scheduler.ts'], 'xiaolang-trigger': ['消息触发', 'src/trigger.ts'],
     'xiaolang-tools': ['工具注册与执行', 'src/tools.ts'], 'xiaolang-clock': ['查询时间工具', 'src/app.ts'],
@@ -146,7 +148,7 @@ export async function createApp(config: Config, options: AppOptions) {
   }
   const modelPlugin: Plugin.Object<void> = { name: 'xiaolang-deepseek', apply(context) {
     if (!options.model && !options.apiKey) throw new Failure('missing_model_key');
-    context.provide('model', options.model ?? new DeepSeekModel(config.model, options.apiKey!));
+    context.provide('model', options.model ?? new DeepSeekModel(config.model, options.apiKey!, undefined, context.get('usage')));
   } };
   async function stop() {
     log(ctx, 'application_stopping', undefined, 'lifecycle');
@@ -168,6 +170,7 @@ export async function createApp(config: Config, options: AppOptions) {
     await mount(loggingPlugin, { settings: config.logging, report: options.report, write: options.writeLog,
       secrets: [...(options.secrets ?? []), ...(options.apiKey ? [options.apiKey] : []), ...(options.embeddingKey ? [options.embeddingKey] : [])] });
     await mount(storePlugin, config);
+    await mount(usagePlugin, config);
     await mount(inspectionPlugin, { config, plugins: pluginList });
     if (options.configuration) await mount({ name: 'xiaolang-configuration', apply(context) {
       context.provide('configuration', options.configuration!);

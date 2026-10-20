@@ -3,7 +3,7 @@ import type { Config } from './config.js';
 import type { ConversationView, LogItem, PluginInfo } from './contracts.js';
 
 export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => PluginInfo[] }> = {
-  name: 'xiaolang-inspection', inject: ['historyReader'],
+  name: 'xiaolang-inspection', inject: ['historyReader', 'usage'],
   apply(ctx, options) {
     const { config } = options;
     const started = Date.now();
@@ -33,6 +33,7 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
       return item;
     };
     ctx.provide('inspection', {
+      usage: query => ctx.usage.view(query),
       deleteData: async input => {
         await ctx.get('trigger')?.clear?.();
         const result = ctx.historyReader.deleteData(input);

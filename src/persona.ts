@@ -141,10 +141,10 @@ export class PersonaLearning implements Persona {
     const signal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(60_000)]);
     log(this.ctx, 'persona_learning_started', undefined, 'persona', { plugin: 'xiaolang-persona', preview: `分析 ${incoming} 条用户消息` });
     const effort = this.settings.learningThinking ?? 'low';
-    const response = await abortable(this.model.complete([{ role: 'system', content: instruction }, { role: 'user', content: JSON.stringify({
+    const response = await withUsage(this.ctx.get('usage'), 'persona_learn', {}, () => abortable(this.model.complete([{ role: 'system', content: instruction }, { role: 'user', content: JSON.stringify({
       anchor: this.settings.anchor, replyStyle: this.settings.replyStyle,
       existing: this.styles().map(({ id, version, scene, rule, enabled }) => ({ id, version, scene, rule, enabled })), conversation: material,
-    }) }], [], signal, { thinking: effort !== 'off', ...(effort === 'off' ? {} : { reasoningEffort: effort }), maxOutputTokens: 8192, retries: 0, stop: [] }), signal);
+    }) }], [], signal, { thinking: effort !== 'off', ...(effort === 'off' ? {} : { reasoningEffort: effort }), maxOutputTokens: 8192, retries: 0, stop: [] }), signal));
     if (response.role !== 'assistant' || response.tool_calls?.length) throw new Failure('invalid_persona_result');
     const current = this.state(); if (current.revision !== state.revision) throw new Failure('persona_conflict');
     let result: unknown; try { result = JSON.parse((response.content ?? '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { throw new Failure('invalid_persona_result'); }
@@ -188,9 +188,10 @@ export class PersonaLearning implements Persona {
 export const personaPlugin: Plugin.Object<{ config: Config; apiKey?: string; model?: Model }> = {
   name: 'xiaolang-persona', inject: ['store', 'model'], apply(ctx, options) {
     ctx.get('configuration')?.registerPlugin('xiaolang-persona', personaSchema);
-    const model = options.model ?? (options.apiKey ? new DeepSeekModel({ ...options.config.model, thinking: false, stop: undefined, retries: 0, timeoutMs: 60_000, maxOutputTokens: 3000 }, options.apiKey) : ctx.model);
+    const model = options.model ?? (options.apiKey ? new DeepSeekModel({ ...options.config.model, thinking: false, stop: undefined, retries: 0, timeoutMs: 60_000, maxOutputTokens: 3000 }, options.apiKey, undefined, ctx.get('usage')) : ctx.model);
     const learning = new PersonaLearning(ctx, options.config, model);
     ctx.provide('persona', learning); learning.start();
     ctx.effect(() => async () => { await learning.stop(); learning.close(); });
   },
 };
+import { withUsage } from './usage.js';

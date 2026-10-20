@@ -129,6 +129,9 @@ export function createHandler(inspection, configuration, options = {}) {
         return send(200, await readFile(new URL(file, import.meta.url)), type);
       }
       if (url.pathname === '/api/status') return send(200, inspection.status());
+      if (url.pathname === '/api/usage') return inspection.usage ? send(200, inspection.usage({ range: url.searchParams.get('range') ?? 'today',
+        purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
+        before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
       if (url.pathname === '/api/tools') return send(200, { items: options.tools?.list() ?? [], mcp: options.mcp?.status() ?? [], skills: options.skills?.status() ?? [] });
       if (url.pathname === '/api/logs') return send(200, inspection.logs(integer(url.searchParams.get('after'), 0)));
       if (url.pathname === '/api/turns') {
@@ -168,8 +171,8 @@ export function createHandler(inspection, configuration, options = {}) {
       if (['plugin_required', 'plugin_not_configurable'].includes(failure)) return send(409, { error: failure });
       if (failure === 'invalid_plugin_config') return send(400, { error: failure });
       if (failure === 'body_too_large') return send(413, { error: failure });
-      return send(error.message === 'invalid_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' ? 400 : 500,
-        { error: error.message === 'invalid_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' ? 'invalid_query' : 'panel_query_failed' });
+      return send(error.message === 'invalid_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' || error.code === 'invalid_usage_query' ? 400 : 500,
+        { error: error.message === 'invalid_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' || error.code === 'invalid_usage_query' ? 'invalid_query' : 'panel_query_failed' });
     }
   };
   handler.close = () => access?.close();

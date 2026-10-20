@@ -1,4 +1,5 @@
 import type { Context } from 'cordis';
+import type { UsageMeter, UsageQuery } from './usage.js';
 
 export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
 export type Fields = Record<string, unknown>;
@@ -157,6 +158,8 @@ export interface Log {
   preview?: string; reason?: string; model?: string; step?: number; tool?: string;
   part?: number; parts?: number; toolCalls?: number; durationMs?: number; waitMs?: number;
   state?: string; errorCode?: string; receipt?: string;
+  usageId?: number; purpose?: string; provider?: string; attempt?: number;
+  inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number;
 }
 export interface TurnView {
   id: string; seq: number; state: string; reason: string; errorCode: string | null;
@@ -190,6 +193,7 @@ export interface HistoryReader {
 export interface LogItem { seq: number; entry: Log }
 export interface PluginInfo { id: string; title: string; module: string; kind: 'builtin' | 'external'; state: string; dependencies: string[]; provides: string[] }
 export interface Inspection {
+  usage?(query: UsageQuery): ReturnType<UsageMeter['view']>;
   deleteData(input: unknown): Promise<unknown>;
   status(): {
     started: number; uptimeMs: number; state: string; connection: string; lastMessage?: string;
@@ -233,6 +237,7 @@ declare module 'cordis' {
     mcp: { status(): unknown[] };
     skills: { status(): unknown[] };
     reminders: Reminders;
+    usage: UsageMeter;
   }
   interface Events {
     'xiaolang/message'(message: Message): void;

@@ -1,16 +1,19 @@
 import { Failure, check } from './errors.js';
 import { object } from './contracts.js';
 import type { MemoryConfig } from './memory-config.js';
+import { meterRequest } from './usage.js';
+import type { UsageMeter } from './usage.js';
 
 export interface Embeddings { embed(texts: string[], signal: AbortSignal): Promise<number[][]> }
 export class BailianEmbeddings implements Embeddings {
-  constructor(private config: MemoryConfig, private key: string, private fetcher: typeof fetch = fetch) {}
+  constructor(private config: MemoryConfig, private key: string, private fetcher: typeof fetch = fetch, private meter?: UsageMeter) {}
   async embed(texts: string[], signal: AbortSignal): Promise<number[][]> {
     if (!this.key) throw new Failure('embedding_key_missing');
     const vectors: number[][] = [];
     for (let offset = 0; offset < texts.length; offset += 10) {
       check(signal);
       const batch = texts.slice(offset, offset + 10).map(text => text.slice(0, 6000));
+      vectors.push(...await meterRequest({ provider: 'bailian', model: this.config.embeddingModel, kind: 'embedding' }, async capture => {
       let response: Response;
       try { response = await this.fetcher(`${this.config.embeddingBaseUrl.replace(/\/$/, '')}/embeddings`, {
         method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(15000)]),
@@ -18,7 +21,8 @@ export class BailianEmbeddings implements Embeddings {
         body: JSON.stringify({ model: this.config.embeddingModel, input: batch, dimensions: this.config.embeddingDimensions, encoding_format: 'float' }),
       }); } catch { check(signal); throw new Failure('embedding_network'); }
       if (!response.ok) { await response.body?.cancel(); throw new Failure(`embedding_http_${response.status}`); }
-      const data = object(await response.json())?.data;
+      const raw = await response.json(); capture(raw);
+      const data = object(raw)?.data;
       if (!Array.isArray(data) || data.length !== batch.length) throw new Failure('embedding_invalid_response');
       const ordered: number[][] = [];
       for (const item of data) {
@@ -28,7 +32,8 @@ export class BailianEmbeddings implements Embeddings {
           || !vector.some(n => n !== 0)) throw new Failure('embedding_invalid_response');
         ordered[index] = vector as number[];
       }
-      vectors.push(...ordered);
+      return ordered;
+      }, this.meter));
     }
     return vectors;
   }

@@ -14,7 +14,7 @@ export function triggerSettings(config: Config) {
 export const triggerPlugin: Plugin.Object<Config> = {
   name: 'xiaolang-trigger', inject: ['store', 'model'], apply(ctx, config) {
     const settings = triggerSettings(config);
-    const proactive = new ProactiveTrigger(settings.proactive, { model: ctx.model, persona: config.persona,
+    const proactive = new ProactiveTrigger(settings.proactive, { model: ctx.model, persona: config.persona, usage: ctx.get('usage'),
       history: (message, limit) => ctx.store.records({ session: message.session, limit }),
       imageContext: message => ctx.get('memory')?.imageContext?.(message) ?? '', report: entry => emitLog(ctx, entry) });
     ctx.effect(() => () => proactive.clear());
