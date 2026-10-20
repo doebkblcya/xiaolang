@@ -34,7 +34,10 @@ export class ChatImages {
       description: this.repository.image(picture.key)?.slice(0, 600) ?? '暂无图片描述；需要查看内容时调用 inspect_chat_image。' }));
   }
   text(message: Message): string {
-    return this.references(message).map(picture => `\n[图片 ${picture.imageId}，描述不是用户原话] ${picture.description}`).join('');
+    const references = this.references(message);
+    if (!references.length) return '';
+    return `\n[历史图片索引；后台模型生成的描述，不是用户原话，也不是本轮看到的原图。来源：用户 ${message.sender}；${message.group ? `群 ${message.group}` : '私聊'}；${new Date(message.time).toISOString()}]`
+      + references.map(picture => `\n[图片 ${picture.imageId}] ${picture.description}`).join('');
   }
   async stop(): Promise<void> { this.stopped = true; await this.queue.close(); await Promise.allSettled([...this.descriptions.values()]); }
   async describe(message: Message): Promise<void> {

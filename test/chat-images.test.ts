@@ -63,7 +63,7 @@ test('an unavailable QQ image is reported as unavailable, even when an old text 
 });
 
 test('untriggered images are described immediately; multiple text followups carry references without original pixels and tools inspect the selected image', async () => {
-  const options = config(); options.memory = settings;
+  const options = config(); options.memory = { ...settings, imageDescriptionThinking: 'off' };
   const adapter = new FakeAdapter(), described = deferred<void>(), calls = { value: 0 };
   const background = new FakeModel(async messages => {
     const current = messages.at(-1)!;
@@ -84,6 +84,8 @@ test('untriggered images are described immediately; multiple text followups carr
       return { role: 'assistant', content: '第二行是128元。' };
     }
     assert.ok(!messages.some(message => message.images?.length), 'later turns must not inherit original pixels');
+    assert.ok(messages[0]!.content?.includes('本轮开始时实际附带的原图（按顺序）：无'));
+    assert.ok(messages.some(message => message.content?.includes('历史图片索引；后台模型生成的描述')));
     if (last.content?.includes('第二行')) return { role: 'assistant', content: null, tool_calls: [{ id: 'see-first-image', type: 'function', function: { name: 'inspect_chat_image', arguments: '{"imageId":"img_1_1","question":"第二行的价格？"}' } }] };
     return { role: 'assistant', content: '记得，是商品价格表。' };
   });
@@ -92,6 +94,8 @@ test('untriggered images are described immediately; multiple text followups carr
     const image = event('', 1); image.segments = [{ type: 'image', url: 'https://example.qpic.cn/table.png' }];
     app.ctx.intake.receive(image);
     await described.promise; await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(background.options[0]?.thinking, false);
+    assert.equal(background.options[0]?.reasoningEffort, undefined);
     assert.equal(adapter.sent.length, 0);
     assert.equal(calls.value, 1);
     app.ctx.intake.receive(event('小狼，你记得这张图吗？', 2)); await app.ctx.chat.idle();
