@@ -45,6 +45,7 @@ export class MemoryRepository {
       CREATE TABLE IF NOT EXISTS memory_suppressed(seq INTEGER PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS memory_forgotten(content TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS memory_summaries(session TEXT PRIMARY KEY,through INTEGER NOT NULL,body TEXT NOT NULL,updated INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS memory_summary_retries(session TEXT PRIMARY KEY,stamp TEXT NOT NULL,attempts INTEGER NOT NULL,retry_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_recalls(turn TEXT PRIMARY KEY,payload TEXT NOT NULL,created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_images(hash TEXT PRIMARY KEY,caption TEXT NOT NULL,updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_image_failures(url_hash TEXT PRIMARY KEY,image_hash TEXT NOT NULL,attempts INTEGER NOT NULL,error TEXT NOT NULL,retry_at INTEGER);
@@ -203,6 +204,15 @@ export class MemoryRepository {
   }
   setSummary(session: string, through: number, body: string): void {
     this.db.prepare('INSERT INTO memory_summaries VALUES (?,?,?,?) ON CONFLICT(session) DO UPDATE SET through=excluded.through,body=excluded.body,updated=excluded.updated').run(session, through, body, Date.now());
+    this.db.prepare('DELETE FROM memory_summary_retries WHERE session=?').run(session);
+  }
+  summaryRetry(session: string, stamp: string): { attempts: number; retryAt: number } | undefined {
+    const row = this.db.prepare('SELECT attempts,retry_at FROM memory_summary_retries WHERE session=? AND stamp=?').get(session, stamp);
+    return row ? { attempts: Number(row.attempts), retryAt: Number(row.retry_at) } : undefined;
+  }
+  deferSummary(session: string, stamp: string, attempts: number, retryAt: number): void {
+    this.db.prepare('INSERT INTO memory_summary_retries VALUES (?,?,?,?) ON CONFLICT(session) DO UPDATE SET stamp=excluded.stamp,attempts=excluded.attempts,retry_at=excluded.retry_at')
+      .run(session, stamp, attempts, retryAt);
   }
   image(hash: string, caption?: string): string | undefined {
     if (caption !== undefined) this.db.prepare('INSERT INTO memory_images VALUES (?,?,?) ON CONFLICT(hash) DO UPDATE SET caption=excluded.caption,updated=excluded.updated').run(hash, caption, Date.now());

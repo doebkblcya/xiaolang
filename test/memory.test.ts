@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { Failure } from '../src/errors.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -217,9 +218,48 @@ test('older chat is summarized behind the current turn; correcting its source in
     assert.ok(result!.context.includes('骑行计划'));
     const summaryIndex = background.requests.findIndex(messages => messages[0]!.content!.startsWith('将旧摘要'));
     assert.equal(background.options[summaryIndex]?.thinking, true); assert.equal(background.options[summaryIndex]?.reasoningEffort, 'high');
+    assert.equal(background.options[summaryIndex]?.maxOutputTokens, 32768);
+    assert.equal(background.options[summaryIndex]?.timeoutMs, 180000); assert.equal(background.options[summaryIndex]?.retries, 0);
     assert.equal(result!.history.length, 5);
     const item = await app.ctx.memory.mutate({ action: 'remember', value: { content: '用户喜欢骑行', kind: 'profile', people: ['200'], sources: [1], importance: 3 } }) as { item: MemoryItem };
     await app.ctx.memory.mutate({ action: 'forget', id: item.item.id, version: item.item.version });
     assert.equal(app.ctx.memory.status().summaries, 0);
+  } finally { await app.stop(); }
+});
+
+test('summary failures preserve progress and persistent backoff despite new messages; successful recovery clears it', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'xiaolang-summary-backoff-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const options = config(); options.database = join(directory, 'chat.sqlite'); options.chatEnabled = false;
+  options.memory = { ...memoryDefaults, enabled: true, recentMessages: 5, summaryThinking: 'high' };
+  let now = Date.now(), recover = false;
+  t.mock.method(Date, 'now', () => now);
+  const background = new FakeModel(async messages => {
+    if (messages[0]!.content!.startsWith('将旧摘要')) {
+      if (!recover) throw new Failure('model_output_truncated');
+      return { role: 'assistant', content: '先前聊过蓝莓。' };
+    }
+    return { role: 'assistant', content: '{"memories":[]}' };
+  });
+  const count = () => background.requests.filter(messages => messages[0]!.content!.startsWith('将旧摘要')).length;
+  const open = () => createApp(options, { adapter: new FakeAdapter(), model: new FakeModel(), memoryModel: background });
+  let app = await open();
+  const prepare = async () => {
+    const message = app.ctx.store.records({ limit: 1 })[0]!.message;
+    await app.ctx.memory.prepare({ id: randomUUID(), message, reason: 'test' }, signal());
+    await new Promise<void>(resolve => setImmediate(resolve));
+  };
+  try {
+    for (let i = 1; i <= 7; i++) app.ctx.intake.receive(event('聊天'+i, i, null));
+    await prepare(); assert.equal(count(), 1); assert.equal(app.ctx.memory.status().summaries, 0);
+    app.ctx.intake.receive(event('新的消息不会取消冷却', 8, null));
+    await prepare(); assert.equal(count(), 1);
+    now += 5 * 60000; await prepare(); assert.equal(count(), 2);
+    now += 15 * 60000; await prepare(); assert.equal(count(), 3);
+    await app.stop(); app = await open();
+    now += 59 * 60000; await prepare(); assert.equal(count(), 3, 'restart must preserve the one-hour pause');
+    now += 60000; recover = true; await prepare(); assert.equal(count(), 4);
+    assert.equal(app.ctx.memory.status().summaries, 1); assert.equal(app.ctx.memory.status().summaryError, null);
+    await prepare(); assert.equal(count(), 4);
   } finally { await app.stop(); }
 });

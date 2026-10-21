@@ -51,7 +51,7 @@ export interface Model {
   stream?(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>): Promise<ModelMessage>;
   complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage>;
 }
-export interface ModelOptions { thinking?: boolean; reasoningEffort?: 'low' | 'high' | 'max'; maxOutputTokens?: number; retries?: number; temperature?: number; stop?: string[] }
+export interface ModelOptions { thinking?: boolean; reasoningEffort?: 'low' | 'high' | 'max'; maxOutputTokens?: number; timeoutMs?: number; retries?: number; temperature?: number; stop?: string[] }
 export interface Adapter {
   platform: string;
   account: string;
@@ -96,6 +96,7 @@ export interface Reminders {
 }
 export interface Persona {
   prompt(message: Message): string;
+  promptParts?(message: Message): { instructions: string; reference: string };
   status(): Record<string, unknown>;
   list(): unknown;
   detail(id: string): unknown;
@@ -106,7 +107,8 @@ export interface Persona {
 export interface Memory {
   sourceAllowed?(seq: number): boolean;
   imageContext?(message: Message): string;
-  prepare(turn: Turn, signal: AbortSignal): Promise<{ history: ModelMessage[]; context: string; images: { url: string }[] } | undefined>;
+  prepare(turn: Turn, signal: AbortSignal): Promise<{ history: ModelMessage[]; context: string; images: { url: string }[];
+    parts?: { instructions: string; summary: string; recall: string; current: string } } | undefined>;
   status(): Record<string, unknown>;
   list(query: string, kind?: string, before?: number): Record<string, unknown>;
   detail(id: string, beforeVersion?: number): unknown;

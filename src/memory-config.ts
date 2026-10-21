@@ -1,5 +1,7 @@
 import type { Fields, ThinkingLevel } from './contracts.js';
 
+export const summaryLimits = { maxOutputTokens: 32768, timeoutMs: 180000 } as const;
+
 export interface MemoryConfig {
   enabled: boolean;
   extractionThinking?: ThinkingLevel;
@@ -32,7 +34,7 @@ export const memoryProperties = {
   batchSize: { type: 'integer', title: '每批整理聊天条数', minimum: 1, maximum: 50 },
   batchSeconds: { type: 'integer', title: '后台整理间隔（秒）', minimum: 15, maximum: 3600 },
   extractionThinking: { type: 'string', title: '记忆提炼思考档位', enum: ['off', 'low', 'high', 'max'], default: 'low', description: '只影响记忆提炼，不影响图片、摘要或聊天回复。思考与结果共享 8192 Token 上限，每次请求限时 60 秒。高档更耗时，可能触及上限。' },
-  summaryThinking: { type: 'string', title: '聊天摘要思考档位', enum: ['off', 'low', 'high', 'max'], default: 'off', description: '只影响较早聊天的摘要，思考与摘要共用 8192 Token 上限、60 秒请求时限。' },
+  summaryThinking: { type: 'string', title: '聊天摘要思考档位', enum: ['off', 'low', 'high', 'max'], default: 'off', description: '只影响较早聊天的摘要，思考与摘要共用 32768 Token 上限、180 秒请求时限。失败后按进度冷却，不因下一条聊天立刻重试。' },
   imageDescriptionThinking: { type: 'string', title: '图片描述思考档位', enum: ['off', 'low', 'high', 'max'], default: 'off', description: '只影响给历史和摘要使用的图片短描述。重看图片直接交给回复模型，沿用回复模型的思考设置。' },
   images: { type: 'boolean', title: '理解聊天图片' },
   maxImages: { type: 'integer', title: '单轮最多图片数', minimum: 1, maximum: 5 },

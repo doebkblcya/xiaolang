@@ -148,7 +148,7 @@ test('untriggered images are described immediately; multiple text followups carr
       return { role: 'assistant', content: '第二行是128元。' };
     }
     assert.ok(!messages.some(message => message.images?.length), 'later turns must not inherit original pixels');
-    assert.ok(messages[0]!.content?.includes('本轮开始时实际附带的原图（按顺序）：无'));
+    assert.ok(messages.at(-1)!.content?.includes('本轮开始时实际附带的原图（按顺序）：无'));
     assert.ok(messages.some(message => message.content?.includes('历史图片索引；后台模型生成的描述')));
     if (last.content?.includes('第二行')) return { role: 'assistant', content: null, tool_calls: [{ id: 'see-first-image', type: 'function', function: { name: 'inspect_chat_image', arguments: '{"imageId":"img_1_1","question":"第二行的价格？"}' } }] };
     return { role: 'assistant', content: '记得，是商品价格表。' };

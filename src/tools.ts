@@ -29,7 +29,8 @@ export class ToolRegistry implements Tools {
     source: tool.source ?? 'external', access: this.access(tool), effect: tool.effect ?? 'write' as const })); }
   timeout(name: string): number | undefined { return this.entries.get(name)?.tool.timeoutMs; }
   schemas(message?: Message): ToolSchema[] {
-    return [...this.entries.values()].filter(({ tool }) => !message || this.allowed(tool, message)).map(({ tool }) => ({
+    return [...this.entries.values()].filter(({ tool }) => !message || this.allowed(tool, message))
+      .sort((a, b) => a.tool.name < b.tool.name ? -1 : a.tool.name > b.tool.name ? 1 : 0).map(({ tool }) => ({
       type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.parameters },
     }));
   }

@@ -34,6 +34,9 @@ test('learning is a separate batch request; anchor stays fixed and grounded refe
     const data = s.learning.list() as { items: { id: string; version: number }[] };
     assert.equal(data.items.length, 1);
     const prompt = s.learning.prompt(s.store.record(1)!.message);
+    const parts = s.learning.promptParts(s.store.record(1)!.message);
+    assert.ok(!parts.instructions.includes('humanReply'));
+    assert.ok(parts.reference.includes('humanReply'));
     assert.match(prompt, /四个多月的母猫/); assert.match(prompt, /QQ 聊天/); assert.match(prompt, /短句接住夸奖/);
     assert.equal(model.requests.length, 1);
     assert.throws(() => s.learning.mutate({ action: 'update', id: data.items[0]!.id, version: 1, anchor: '变成人' }), { code: 'invalid_persona_request' });

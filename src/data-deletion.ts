@@ -60,6 +60,7 @@ export function deleteData(db: DatabaseSync, raw: unknown) {
         db.prepare('DELETE FROM memory_items WHERE id=?').run(id);
       }
       db.exec('DELETE FROM memory_summaries; DELETE FROM memory_recalls');
+      if (exists('memory_summary_retries')) db.exec('DELETE FROM memory_summary_retries');
       db.prepare("INSERT INTO memory_meta VALUES ('revision','1') ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)").run();
     }
     if (exists('persona_styles')) {

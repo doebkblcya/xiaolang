@@ -105,7 +105,7 @@ test('an unmentioned follow-up is judged promptly, reuses normal delivery, and c
       assert.ok(messages[1]?.content?.includes('修好了吗'));
       return { role: 'assistant', content: '{"reply":true,"addressed":true,"reason":"正在回应小狼的问题"}' };
     }
-    if (messages[0]?.content?.includes('你正在自主参与群聊')) {
+    if (messages.at(-1)?.content?.includes('你正在自主参与群聊')) {
       assert.ok(!tools.some(tool => tool.function.name === 'sensitive_write'));
       return { role: 'assistant', content: '那就好！' };
     }
