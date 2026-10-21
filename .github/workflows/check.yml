@@ -19,8 +19,8 @@ jobs:
       - run: docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$GITHUB_SHA" -t xiaolang:check -t "xiaolang:$GITHUB_SHA" .
       - name: Load an external plugin in the built container without network access
         run: |
-          docker run --rm --network none --entrypoint node \
-            -v "$GITHUB_WORKSPACE/examples/plugins:/app/plugins:ro" \
+          docker run --rm --network none --user "$(id -u):$(id -g)" --entrypoint node \
+            -v "$GITHUB_WORKSPACE/dist/plugins:/app/plugins:rw" \
             -v "$GITHUB_WORKSPACE/config.example.json:/app/config.example.json:ro" \
             -v "$GITHUB_WORKSPACE/test/container-smoke.mjs:/smoke.mjs:ro" \
             xiaolang:check /smoke.mjs
@@ -29,8 +29,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/xiaolang-image"
           docker save "xiaolang:$GITHUB_SHA" | gzip > "$RUNNER_TEMP/xiaolang-image/xiaolang-linux-amd64.tar.gz"
+          tar -czf "$RUNNER_TEMP/xiaolang-image/xiaolang-plugins.tar.gz" -C dist/plugins .
           cd "$RUNNER_TEMP/xiaolang-image"
-          sha256sum xiaolang-linux-amd64.tar.gz > SHA256SUMS
+          sha256sum xiaolang-linux-amd64.tar.gz xiaolang-plugins.tar.gz > SHA256SUMS
       - name: Upload the Docker image archive
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4

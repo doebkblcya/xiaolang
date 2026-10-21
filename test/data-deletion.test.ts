@@ -1,3 +1,5 @@
+import { cleanup as memoryCleanup } from '../src/memory-cleanup.js';
+import { cleanup as personaCleanup } from '../src/persona-cleanup.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -13,7 +15,7 @@ import { event, FakeAdapter } from './fixtures.js';
 
 test('deleting an incoming message removes its reply, traces and memories including superseded versions, without deleting other chats', async () => {
   const root = await mkdtemp(join(tmpdir(), 'xiaolang-delete-')), path = join(root,'chat.sqlite');
-  const store = new SqliteStore(path), memory = new MemoryRepository(path, { ...memoryDefaults, embeddingDimensions: 3 });
+  const store = new SqliteStore(path, new Map([['memory', memoryCleanup], ['persona', personaCleanup]])), memory = new MemoryRepository(path, { ...memoryDefaults, embeddingDimensions: 3 });
   const raw = new DatabaseSync(path, { allowExtension: true }); vec.load(raw);
   try {
     const original = normalize(event('旧偏好',1,'G'),new FakeAdapter(),[])!, message=store.admit(original)!;
@@ -35,7 +37,7 @@ test('deleting an incoming message removes its reply, traces and memories includ
 
 test('manual memory deletion erases text, vector and all versions while keeping source chats and blocking re-extraction', async () => {
   const root=await mkdtemp(join(tmpdir(),'xiaolang-delete-')),path=join(root,'chat.sqlite');
-  const store=new SqliteStore(path),memory=new MemoryRepository(path,{...memoryDefaults,embeddingDimensions:3});
+  const store=new SqliteStore(path, new Map([['memory', memoryCleanup], ['persona', personaCleanup]])),memory=new MemoryRepository(path,{...memoryDefaults,embeddingDimensions:3});
   const raw=new DatabaseSync(path,{allowExtension:true});vec.load(raw);
   try {
     const message=store.admit(normalize(event('不想再记住的事',1),new FakeAdapter(),[])!)!;
@@ -49,7 +51,7 @@ test('manual memory deletion erases text, vector and all versions while keeping 
 });
 
 test('deleting a learned expression erases every version, protects its source examples and invalidates in-flight learning', async () => {
-  const root=await mkdtemp(join(tmpdir(),'xiaolang-delete-')),path=join(root,'chat.sqlite');const store=new SqliteStore(path),raw=new DatabaseSync(path);
+  const root=await mkdtemp(join(tmpdir(),'xiaolang-delete-')),path=join(root,'chat.sqlite');const store=new SqliteStore(path, new Map([['memory', memoryCleanup], ['persona', personaCleanup]])),raw=new DatabaseSync(path);
   try {
     raw.exec('CREATE TABLE persona_styles(id TEXT PRIMARY KEY,payload TEXT);CREATE TABLE persona_versions(id TEXT,version INTEGER,payload TEXT,reason TEXT);CREATE TABLE persona_state(key TEXT PRIMARY KEY,payload TEXT)');
     const id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',style={id,version:2,rule:'待删除的表达',examples:[{prompt:1,reply:2}]};

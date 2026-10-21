@@ -64,13 +64,16 @@ test('dependencies resolve regardless of entry order, including dependencies on 
   assert.ok(app.plugins.every(plugin => plugin.state === 'active'));
 });
 
-test('a missing dependency fails startup with plugin ID and missing service names', async t => {
+test('a missing dependency waits without stopping the host and exposes missing service names', async t => {
   const directory = await workspace(t);
   await writeFile(join(directory, 'missing.mjs'), `export const inject=['doesNotExist', 'tools']; export function apply() { throw new Error('must not activate'); }`);
   const settings = config();
   settings.plugins = { directory, entries: [{ id: 'missing', module: './missing.mjs' }] };
   const logs: Log[] = [];
-  await assert.rejects(createApp(settings, { ...mocks(), report: entry => logs.push(entry) }), { code: 'plugin_dependency_missing' });
+  const app = await createApp(settings, { ...mocks(), report: entry => logs.push(entry) });
+  t.after(() => app.stop());
+  assert.equal(app.ctx.inspection.status().state, 'ready');
+  assert.equal(app.plugins.find(plugin => plugin.id === 'missing')?.state, 'pending');
   assert.ok(logs.some(entry => entry.plugin === 'missing' && entry.dependencies?.join(',') === 'doesNotExist'));
 });
 

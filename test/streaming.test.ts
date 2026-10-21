@@ -102,13 +102,13 @@ test('streamed tool execution continues to final reply through the ordinary main
   assert.equal(app.ctx.inspection.recent(1).items[0]?.state, 'completed');
 });
 
-test('builtin output settings survive reload while its disable control remains locked', async t => {
+test('builtin output settings survive reload and its disable control is available', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'xiaolang-stream-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const value = config(); value.database = join(directory, 'data', 'db.sqlite'); const path = join(directory, 'config.json'); await writeFile(path, JSON.stringify(value));
   const store = await ConfigurationStore.load(path, () => {}, () => true, {});
   store.bindPlugins(() => [{ id: 'xiaolang-output', title: '统一发送', module: 'builtin', kind: 'builtin', state: 'active', dependencies: [], provides: ['output'] }]);
   store.registerPlugin('xiaolang-output', outputSchema);
-  const detail = await store.plugin('xiaolang-output'); assert.equal(detail.canToggle, false);
+  const detail = await store.plugin('xiaolang-output'); assert.equal(detail.canToggle, true);
   await store.savePlugin('xiaolang-output', { revision: detail.revision, config: { mode: 'streaming' } });
   const boot = await ConfigurationStore.load(path, () => {}, () => true, {}); assert.equal(boot.config.output?.mode, 'streaming');
 });

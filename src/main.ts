@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     }, 300);
   }, () => {
     if (!app) return false;
-    const counts = app.ctx.historyReader.counts();
+    const counts = app.ctx.get('historyReader')?.counts() ?? {};
     return !['running', 'queued', 'sending'].some(state => counts[state]);
   });
   const config = configuration.config;
@@ -38,7 +38,6 @@ async function main(): Promise<void> {
   if (configuration.secrets.embedding) process.env.BAILIAN_API_KEY = configuration.secrets.embedding;
   if (configuration.secrets.qq && typeof config.adapter.config?.secretEnv === 'string') process.env[config.adapter.config.secretEnv] = configuration.secrets.qq;
   try {
-    if (!process.env.DEEPSEEK_API_KEY) throw new Failure('missing_model_key');
     app = await createApp(config, {
       apiKey: process.env.DEEPSEEK_API_KEY, embeddingKey: process.env.BAILIAN_API_KEY, signal: controller.signal,
       configuration,

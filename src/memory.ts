@@ -5,7 +5,6 @@ import type { ChatRecord, Memory, Message, Model, ModelMessage, Turn } from './c
 import { log, object } from './contracts.js';
 import { abortable, check, code, Failure } from './errors.js';
 import { render } from './messages.js';
-import { DeepSeekModel } from './model.js';
 import { BailianEmbeddings } from './embedding.js';
 import type { Embeddings } from './embedding.js';
 import { memoryDefaults, memorySchema, summaryLimits } from './memory-config.js';
@@ -84,7 +83,7 @@ export class ChatMemory implements Memory {
   constructor(private ctx: Context, private config: Config, options: { apiKey?: string; embeddingKey?: string; model?: Model; embeddings?: Embeddings; imageFetch?: typeof fetch } = {}) {
     this.settings = config.memory ?? memoryDefaults;
     this.repository = new MemoryRepository(config.database, this.settings);
-    this.background = options.model ?? new DeepSeekModel({ ...config.model, thinking: false, stop: undefined, maxOutputTokens: 4096, timeoutMs: 60000, retries: 1 }, options.apiKey ?? '', undefined, ctx.get('usage'));
+    this.background = options.model ?? { complete: (messages, tools, signal, overrides) => ctx.model.complete(messages, tools, signal, { thinking: false, stop: [], maxOutputTokens: 4096, timeoutMs: 60000, retries: 1, ...overrides }) };
     this.images = new ChatImages(this.settings, this.repository, this.background, (event, message, error) => {
       log(this.ctx, event === 'completed' ? 'memory_image_described' : 'memory_image_unavailable', undefined, 'memory', {
         messageId: message.key, ...(error ? { errorCode: code(error) } : {}),

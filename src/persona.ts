@@ -5,7 +5,6 @@ import type { Config } from './config.js';
 import type { ChatRecord, Message, Model, Persona } from './contracts.js';
 import { log, object } from './contracts.js';
 import { Failure, abortable, code } from './errors.js';
-import { DeepSeekModel } from './model.js';
 import { personaSettings, personaSchema } from './persona-config.js';
 
 interface Example { prompt: number; reply: number }
@@ -192,7 +191,7 @@ export class PersonaLearning implements Persona {
 export const personaPlugin: Plugin.Object<{ config: Config; apiKey?: string; model?: Model }> = {
   name: 'xiaolang-persona', inject: ['store', 'model'], apply(ctx, options) {
     ctx.get('configuration')?.registerPlugin('xiaolang-persona', personaSchema);
-    const model = options.model ?? (options.apiKey ? new DeepSeekModel({ ...options.config.model, thinking: false, stop: undefined, retries: 0, timeoutMs: 60_000, maxOutputTokens: 3000 }, options.apiKey, undefined, ctx.get('usage')) : ctx.model);
+    const model: Model = options.model ?? { complete: (messages, tools, signal, overrides) => ctx.model.complete(messages, tools, signal, { thinking: false, stop: [], retries: 0, timeoutMs: 60_000, maxOutputTokens: 3000, ...overrides }) };
     const learning = new PersonaLearning(ctx, options.config, model);
     ctx.provide('persona', learning); learning.start();
     ctx.effect(() => async () => { await learning.stop(); learning.close(); });

@@ -1,14 +1,10 @@
 import type { Plugin } from 'cordis';
 import type { Config } from './config.js';
 import { ProactiveTrigger } from './proactive.js';
-import { proactiveDefaults, migrateProactiveConfig } from './trigger-config.js';
 import { emitLog } from './contracts.js';
 
-export function triggerSettings(config: Config) {
-  config = migrateProactiveConfig(config) as Config;
-  return structuredClone({ ...(config.trigger ?? { privateReply: true, groupMention: true, groupKeywords: true, words: config.triggerWords }),
-    proactive: config.trigger?.proactive ?? proactiveDefaults });
-}
+export { triggerSettings } from './trigger-config.js';
+import { triggerSettings } from './trigger-config.js';
 
 /** The only default trigger provider. Custom providers replace it, never run beside it. */
 export const triggerPlugin: Plugin.Object<Config> = {

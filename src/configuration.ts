@@ -4,14 +4,15 @@ import { dirname, resolve, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Config } from './config.js';
 import { loadConfig, validateConfig } from './config.js';
-import { validateQQConfig } from './adapters/qq-official.js';
+import { validateQQConfig } from './qq-config.js';
 import type { Configuration } from './contracts.js';
 import { Failure } from './errors.js';
-import { triggerSettings } from './trigger.js';
+import { triggerSettings } from './trigger-config.js';
 import { Ajv } from 'ajv';
 import type { Fields, PluginInfo } from './contracts.js';
 import { memoryDefaults } from './memory-config.js';
 import { toolingDefaults, toolingSections } from './tooling-config.js';
+import { builtinTitles, pluginEntries, toggleImpact } from './plugin-catalog.js';
 
 interface QQSettings { appId: string; environment: 'production' | 'sandbox'; groupMessages: 'all' | 'mentions'; connectTimeoutMs: number; groupIds: string[] }
 interface PluginSettings { chatEnabled?: boolean; entries?: Record<string, { enabled?: boolean; config?: Fields }> }
@@ -39,14 +40,14 @@ function combine(base: Config, settings: Settings): Config {
   config.triggerWords = [...config.trigger.words];
   if (settings.plugins) {
     if (settings.plugins.chatEnabled !== undefined) config.chatEnabled = settings.plugins.chatEnabled;
-    if (config.plugins) config.plugins.entries = config.plugins.entries.map(entry => ({ ...entry, ...settings.plugins?.entries?.[entry.id] }));
   }
-  if (settings.qq) {
-    if (config.adapter.module !== 'builtin:qq-official') throw new Failure('qq_configuration_unavailable');
+  if (settings.qq && config.adapter.module === 'builtin:qq-official') {
     const { groupIds, ...qq } = settings.qq;
     config.adapter.config = { ...validateQQConfig({ ...config.adapter.config, ...qq }) };
     config.groupIds = [...groupIds];
   }
+  const entries = [...pluginEntries(config), ...Object.keys(builtinTitles).map(id => ({ id, module: 'builtin:host' }))];
+  config.plugins = { ...config.plugins, directory: config.plugins?.directory ?? 'plugins', entries: entries.map(entry => ({ ...entry, ...settings.plugins?.entries?.[entry.id] })) };
   return validateConfig(config);
 }
 function checkSettings(raw: unknown, base: Config): Settings {
@@ -181,21 +182,23 @@ export class ConfigurationStore implements Configuration {
     const config = combine(this.base, settings);
     const info = this.catalog().find(plugin => plugin.id === id);
     if (!info) throw new Failure('plugin_not_found');
-    const entry = id === 'xiaolang-memory' ? { id, module: 'builtin', config: { ...memoryDefaults, ...config.memory, apiKey: settings.secrets.embedding ?? this.environment.BAILIAN_API_KEY ?? '' } as Fields }
+    const configured = config.plugins?.entries.find(item => item.id === id);
+    const special = id === 'xiaolang-memory' ? { id, module: 'builtin', config: { ...memoryDefaults, ...config.memory, apiKey: settings.secrets.embedding ?? this.environment.BAILIAN_API_KEY ?? '' } as Fields }
       : id === 'xiaolang-persona' ? { id, module: 'builtin', config: personaSettings(config) as unknown as Fields }
       : id === 'xiaolang-output' ? { id, module: 'builtin', config: config.output as unknown as Fields }
       : toolingSections[id] ? { id, module: 'builtin', config: (config.tooling ?? toolingDefaults)[toolingSections[id]!] as unknown as Fields }
-      : config.plugins?.entries.find(item => item.id === id);
+      : undefined;
+    const entry = configured || special ? { ...special, ...configured, config: { ...special?.config, ...configured?.config } } : undefined;
     const chat = id === config.plugins?.chat;
-    const toggleable = info.kind === 'external' && !!entry && id !== config.plugins?.trigger && id !== 'panel' && entry.module !== './panel/index.mjs';
-    const enabled = chat ? config.chatEnabled : entry ? entry.enabled !== false : info.state !== 'disabled';
+    const toggleable = !!entry;
+    const enabled = chat ? config.chatEnabled && entry?.enabled !== false : entry ? entry.enabled !== false : info.state !== 'disabled';
     const consumers = enabled ? this.catalog().filter(other => other.id !== id && other.state === 'active'
       && !(other.id === 'xiaolang-chat' && !config.chatEnabled) && !(other.id === config.plugins?.chat && !config.chatEnabled)
       && config.plugins?.entries.find(item => item.id === other.id)?.enabled !== false
       && other.dependencies.some(service => info.provides.includes(service))) : [];
-    return { config, info, entry, chat, enabled, canToggle: toggleable && !consumers.length,
-      toggleReason: info.kind === 'builtin' ? '内置插件不提供启停操作。' : !toggleable ? '当前接入、触发或管理入口所必需，不能直接停用。'
-        : consumers.length ? `被以下插件依赖：${consumers.map(item => item.title).join('、')}` : '' };
+    return { config, info, entry, chat, enabled, canToggle: toggleable,
+      toggleReason: [toggleImpact(id), consumers.length ? `依赖方：${consumers.map(item => item.title).join('、')}。` : ''].filter(Boolean).join(' ') };
+
   }
   async plugin(id: string): Promise<Record<string, unknown>> {
     const { document, revision } = await ConfigurationStore.read(this.path, this.base);
@@ -226,7 +229,7 @@ export class ConfigurationStore implements Configuration {
       if (raw.enabled !== undefined && raw.enabled !== options.enabled) {
         if (!options.canToggle) throw new Failure('plugin_required');
         if (options.chat) next.plugins.chatEnabled = raw.enabled;
-        else { next.plugins.entries ??= {}; next.plugins.entries[id] = { ...next.plugins.entries[id], enabled: raw.enabled }; }
+        next.plugins.entries ??= {}; next.plugins.entries[id] = { ...next.plugins.entries[id], enabled: raw.enabled };
       }
       if (raw.config !== undefined) {
         const registered = this.schemas.get(id);
@@ -236,13 +239,26 @@ export class ConfigurationStore implements Configuration {
           if (record(field) && field.writeOnly === true && (values[key] === '' || values[key] === undefined) && options.entry.config?.[key] !== undefined) values[key] = options.entry.config[key];
         }
         if (!registered.validate(values)) throw new Failure('invalid_plugin_config');
+        next.plugins.entries ??= {};
+        const publicValues = { ...values };
+        if (id === 'xiaolang-memory') delete publicValues.apiKey;
+        next.plugins.entries[id] = { ...next.plugins.entries[id], config: publicValues };
+        const known = (values: Fields, original: object): Fields => Object.fromEntries(Object.entries(values).filter(([key]) => key in original));
+        const legacyCompatible = (section: string, value: unknown) => { try { validateConfig({ ...this.config, [section]: value }); return true; } catch { return false; } };
         if (id === 'xiaolang-memory') {
           const { apiKey, ...memory } = values;
           if (typeof apiKey === 'string' && apiKey.trim()) next.secrets.embedding = apiKey.trim();
-          next.memory = memory as unknown as Config['memory'];
-        } else if (id === 'xiaolang-persona') next.character = values as unknown as Config['character'];
+          const legacy = known(memory, memoryDefaults);
+          if (legacyCompatible('memory', legacy)) next.memory = legacy as unknown as Config['memory'];
+        } else if (id === 'xiaolang-persona') {
+          const legacy = known(values, personaSettings(this.config));
+          if (legacyCompatible('character', legacy)) next.character = legacy as unknown as Config['character'];
+        }
         else if (id === 'xiaolang-output') next.output = values as unknown as Config['output'];
-        else if (toolingSections[id]) { next.tooling ??= structuredClone(this.config.tooling ?? toolingDefaults); Object.assign(next.tooling, { [toolingSections[id]!]: values }); }
+        else if (toolingSections[id]) {
+          const legacy = { ...(next.tooling ?? this.config.tooling ?? toolingDefaults), [toolingSections[id]!]: known(values, toolingDefaults[toolingSections[id]!]) };
+          if (legacyCompatible('tooling', legacy)) next.tooling = legacy;
+        }
         else { next.plugins.entries ??= {}; next.plugins.entries[id] = { ...next.plugins.entries[id], config: values }; }
       }
       checkSettings(next, this.base);

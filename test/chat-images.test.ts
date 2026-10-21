@@ -1,3 +1,5 @@
+import { cleanup as memoryCleanup } from '../src/memory-cleanup.js';
+import { cleanup as personaCleanup } from '../src/persona-cleanup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ChatImages, pictures } from '../src/chat-images.js';
@@ -116,7 +118,7 @@ test('temporary caption failures retry only when reused after backoff and stop a
 test('deleting an image source also deletes its persisted failure state', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'xiaolang-image-delete-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const path = join(directory, 'chat.sqlite'), store = new SqliteStore(path), repository = new MemoryRepository(path, settings);
+  const path = join(directory, 'chat.sqlite'), store = new SqliteStore(path, new Map([['memory', memoryCleanup], ['persona', personaCleanup]])), repository = new MemoryRepository(path, settings);
   const message = store.admit(pictureMessage())!, picture = pictures(message)[0]!;
   const urlHash = createHash('sha256').update(picture.url).digest('hex');
   repository.failImage(urlHash, picture.key, 1, 'image_url_expired', null);
@@ -195,7 +197,7 @@ test('QQ download fileids cannot share captions; renewing an access key preserve
 test('legacy caption migration discards derived image context but preserves chat and long-term memory', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'xiaolang-caption-migration-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const path = join(directory, 'chat.sqlite'), store = new SqliteStore(path);
+  const path = join(directory, 'chat.sqlite'), store = new SqliteStore(path, new Map([['memory', memoryCleanup], ['persona', personaCleanup]]));
   store.admit(pictureMessage()); store.close();
   const old = new MemoryRepository(path, settings);
   old.image('old-colliding-hash', 'wrong caption'); old.setSummary('a-chat', 1, 'wrong summary');
@@ -208,5 +210,5 @@ test('legacy caption migration discards derived image context but preserves chat
   migrated.image('v2:new', 'correct caption'); migrated.close();
   const reopened = new MemoryRepository(path, settings);
   assert.equal(reopened.image('v2:new'), 'correct caption'); reopened.close();
-  const chats = new SqliteStore(path); assert.equal(chats.records({ limit: 10 }).length, 1); chats.close();
+  const chats = new SqliteStore(path, new Map([['memory', memoryCleanup], ['persona', personaCleanup]])); assert.equal(chats.records({ limit: 10 }).length, 1); chats.close();
 });

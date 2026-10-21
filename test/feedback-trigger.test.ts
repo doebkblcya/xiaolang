@@ -58,7 +58,7 @@ test('trigger settings survive restart and a custom provider replaces the defaul
   assert.equal(adapter.sent.length, 1);
   const plugins = app.ctx.inspection.status().plugins;
   for (const id of ['xiaolang-trigger', 'xiaolang-scheduler', 'xiaolang-store', 'xiaolang-output', 'xiaolang-chat', 'xiaolang-fault-feedback']) {
-    assert.ok(plugins.some(plugin => plugin.id === id && plugin.kind === 'builtin' && plugin.state === 'active'));
+    assert.ok(plugins.some(plugin => plugin.id === id && plugin.kind === (id === 'xiaolang-trigger' ? 'external' : 'builtin') && plugin.state === 'active'));
   }
   assert.ok(plugins.find(plugin => plugin.id === 'xiaolang-chat')?.dependencies.includes('trigger'));
   assert.deepEqual(plugins.find(plugin => plugin.id === 'xiaolang-chat')?.provides, ['chat']);
@@ -75,7 +75,7 @@ test('trigger settings survive restart and a custom provider replaces the defaul
   assert.equal(replacement.ctx.inspection.status().plugins.filter(plugin => plugin.id === 'custom-trigger').length, 1);
 });
 
-test('plugin settings protect builtins and dependencies, preserve write-only fields and persist external config and disable state', async t => {
+test('plugin settings allow disabling builtins and dependencies, preserve write-only fields and persist external config and disable state', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'xiaolang-plugin-settings-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(join(directory, 'provider.mjs'), `export function apply(ctx,config){ctx.provide('exampleValue',config.greeting)}`);
@@ -94,11 +94,14 @@ test('plugin settings protect builtins and dependencies, preserve write-only fie
   t.after(() => app.stop());
   store.bindPlugins(() => app.ctx.inspection.status().plugins);
   const builtin = await store.plugin('xiaolang-store');
-  assert.equal(builtin.canToggle, false);
-  await assert.rejects(store.savePlugin('xiaolang-store', { revision: builtin.revision, enabled: false }), { code: 'plugin_required' });
+  assert.equal(builtin.canToggle, true);
+  await store.savePlugin('xiaolang-store', { revision: builtin.revision, enabled: false });
+  const restored = await store.plugin('xiaolang-store');
+  await store.savePlugin('xiaolang-store', { revision: restored.revision, enabled: true });
   const provider = await store.plugin('provider');
-  assert.equal(provider.canToggle, false); assert.ok(!JSON.stringify(provider).includes('stored-test-secret'));
-  await assert.rejects(store.savePlugin('provider', { revision: provider.revision, enabled: false }), { code: 'plugin_required' });
+  assert.equal(provider.canToggle, true); assert.ok(!JSON.stringify(provider).includes('stored-test-secret'));
+  assert.ok(String(provider.toggleReason).includes('consumer'));
+  await store.savePlugin('provider', { revision: provider.revision, enabled: false });
   const consumer = await store.plugin('consumer');
   await store.savePlugin('consumer', { revision: consumer.revision, enabled: false });
   const editable = await store.plugin('provider');
@@ -106,7 +109,7 @@ test('plugin settings protect builtins and dependencies, preserve write-only fie
   const saved = await store.savePlugin('provider', { revision: editable.revision, config: { greeting: 'after', apiKey: '' } });
   assert.ok(!JSON.stringify(saved).includes('stored-test-secret'));
   const next = await ConfigurationStore.load(path, () => {}, () => true, {});
-  assert.equal(next.config.plugins?.entries[0]?.config?.greeting, 'after');
-  assert.equal(next.config.plugins?.entries[0]?.config?.apiKey, 'stored-test-secret');
-  assert.equal(next.config.plugins?.entries[1]?.enabled, false);
+  assert.equal(next.config.plugins?.entries.find(entry => entry.id === 'provider')?.config?.greeting, 'after');
+  assert.equal(next.config.plugins?.entries.find(entry => entry.id === 'provider')?.config?.apiKey, 'stored-test-secret');
+  assert.equal(next.config.plugins?.entries.find(entry => entry.id === 'consumer')?.enabled, false);
 });

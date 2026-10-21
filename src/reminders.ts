@@ -224,6 +224,7 @@ export const remindersPlugin: Plugin.Object<Config> = { name: 'xiaolang-reminder
   const manager = new ReminderManager(config.database, ctx.adapter, ctx.scheduler, ctx.store, config.tooling?.access.adminIds,
     entry => emitLog(ctx, entry));
   ctx.provide('reminders', manager);
+  ctx.on('xiaolang/start', () => manager.start());
   ctx.effect(() => () => manager.close());
   ctx.effect(() => ctx.tools.register({ name: 'create_reminder', source: 'xiaolang-reminders', access: 'everyone', effect: 'write',
     description: '用户明确要求时创建提醒，只发送到当前群或私聊。默认北京时间，at 必须是含时区的未来日期（如 2026-10-19T08:00:00+08:00）。repeat 为 once/daily/weekly，重复保持首次北京时间。时间不明确先询问；工具返回成功后才能告知已创建。',

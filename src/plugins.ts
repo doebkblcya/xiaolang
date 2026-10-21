@@ -1,4 +1,4 @@
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { FiberState } from 'cordis';
@@ -7,8 +7,10 @@ import type { EntryOptions } from '@cordisjs/plugin-loader';
 import type { PluginConfig, PluginEntry } from './config.js';
 import { emitLog, object } from './contracts.js';
 import { Failure } from './errors.js';
+import { officialIds, officialModule } from './plugin-catalog.js';
+import { fileURLToPath } from 'node:url';
 
-export interface PluginStatus { id: string; state: 'active' | 'disabled' }
+export interface PluginStatus { id: string; state: 'active' | 'disabled' | 'pending' }
 
 function fail(ctx: Context, code: string, plugin: string, dependencies?: string[]): never {
   emitLog(ctx, { code, plugin, dependencies });
@@ -25,7 +27,7 @@ async function moduleName(ctx: Context, directory: string, entry: PluginEntry): 
   const name = entry.module;
   if (name.startsWith('builtin:')) {
     if (name !== 'builtin:qq-official') return fail(ctx, 'plugin_unknown_builtin', entry.id);
-    return new URL('./adapters/qq-official.js', import.meta.url).href;
+    return moduleName(ctx, directory, { ...entry, module: officialModule('xiaolang-adapter') });
   }
   if (name.startsWith('./')) {
     try {
@@ -35,6 +37,10 @@ async function moduleName(ctx: Context, directory: string, entry: PluginEntry): 
       return pathToFileURL(file).href;
     } catch (error) {
       if (error instanceof Failure) throw error;
+      if (officialIds.includes(entry.id) && name === officialModule(entry.id)) {
+        const bundled = new URL('../plugins/' + entry.id + '/index.mjs', import.meta.url);
+        try { await stat(bundled); return bundled.href; } catch { /* development output is absent in production */ }
+      }
       return fail(ctx, 'plugin_file_missing', entry.id);
     }
   }
@@ -54,30 +60,41 @@ export async function configurePlugins(ctx: Context, settings: PluginConfig, cha
   const workspaceEntries = enabled.filter(entry => !entry.module.startsWith('builtin:'));
   if (workspaceEntries.length) {
     try { directory = await realpath(directory); }
-    catch { return fail(ctx, 'plugin_directory_missing', workspaceEntries[0]!.id); }
+    catch { if (workspaceEntries.some(entry => !officialIds.includes(entry.id))) return fail(ctx, 'plugin_directory_missing', workspaceEntries[0]!.id); }
   }
   const rows: EntryOptions[] = [];
+  // One shared host API keeps error types and usage attribution consistent across packages.
+  try { await writeFile(join(directory, '_runtime.mjs'), `export * from ${JSON.stringify(new URL('./plugin-api.js', import.meta.url).href)};\n`); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   for (const entry of settings.entries) {
-    // A sidecar lets disabled file plugins describe configuration without executing their code.
-    if (ctx.get('configuration') && entry.module.startsWith('./')) {
-      const source = resolve(directory, entry.module);
-      if (contains(directory, source)) {
-        try {
-          const manifest = await realpath(join(dirname(source), 'xiaolang.plugin.json'));
-          if (!contains(directory, manifest)) return fail(ctx, 'plugin_invalid_path', entry.id);
-          const raw: unknown = JSON.parse(await readFile(manifest, 'utf8'));
-          const schema = object(raw)?.configSchema;
-          if (object(schema)) ctx.configuration.registerPlugin(entry.id, schema as Record<string, unknown>);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return fail(ctx, 'invalid_plugin_config_schema', entry.id);
+    // Cleanup modules are data lifecycle hooks, not plugin activation. Load even when disabled.
+    let resolved: string | undefined;
+    try { resolved = await moduleName(ctx, directory, entry); }
+    catch (error) { if (!disabled(entry, settings, chatEnabled)) throw error; }
+    if (resolved?.startsWith('file:')) {
+      const folder = dirname(fileURLToPath(resolved));
+      try {
+        const manifest = await realpath(join(folder, 'xiaolang.plugin.json'));
+        if (!contains(folder, manifest)) return fail(ctx, 'plugin_invalid_path', entry.id);
+        const raw = object(JSON.parse(await readFile(manifest, 'utf8')));
+        if (raw?.apiVersion !== undefined && raw.apiVersion !== 1) return fail(ctx, 'plugin_api_incompatible', entry.id);
+        if (ctx.get('configuration') && object(raw?.configSchema)) ctx.configuration.registerPlugin(entry.id, raw!.configSchema as Record<string, unknown>);
+        if (typeof raw?.cleanup === 'string') {
+          const cleanup = await realpath(resolve(folder, raw.cleanup));
+          if (!contains(folder, cleanup)) return fail(ctx, 'plugin_invalid_path', entry.id);
+          const hook = await import(pathToFileURL(cleanup).href);
+          if (typeof hook.cleanup?.erase !== 'function' || (hook.cleanup.prepare !== undefined && typeof hook.cleanup.prepare !== 'function')) return fail(ctx, 'invalid_plugin_config_schema', entry.id);
+          ctx.xiaolangHost.cleanups.set(entry.id, hook.cleanup);
         }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { if (error instanceof Failure) throw error; return fail(ctx, 'invalid_plugin_config_schema', entry.id); }
       }
     }
     if (disabled(entry, settings, chatEnabled)) {
       rows.push({ id: entry.id, name: entry.module, disabled: true, config: entry.config ?? {} });
       continue;
     }
-    const name = await moduleName(ctx, directory, entry);
+    const name = resolved ?? await moduleName(ctx, directory, entry);
     let exports: unknown;
     try { exports = await ctx.loader.import(name); }
     catch { return fail(ctx, 'plugin_import_failed', entry.id); }
@@ -101,7 +118,8 @@ export async function checkPlugins(ctx: Context, settings: PluginConfig, chatEna
     const fiber = ctx.loader.store[entry.id]?.fiber;
     if (fiber?.state === FiberState.PENDING) {
       const missing = Object.keys(fiber.inject).filter(name => fiber.parent.get(name) === undefined);
-      return fail(ctx, 'plugin_dependency_missing', entry.id, missing);
+      emitLog(ctx, { code: 'plugin_dependency_missing', plugin: entry.id, dependencies: missing });
+      return { id: entry.id, state: 'pending' as const };
     }
     if (fiber?.state !== FiberState.ACTIVE) return fail(ctx, 'plugin_activation_failed', entry.id);
     return { id: entry.id, state: 'active' };

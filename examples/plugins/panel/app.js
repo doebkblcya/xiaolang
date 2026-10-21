@@ -206,7 +206,7 @@ const settingsErrors = {
   invalid_url: 'API 地址格式不正确，不能包含账号、密码或查询参数。',
   write_authorization_required: '页面连接已更新，请重新读取配置后再保存。', configuration_unavailable: '当前运行方式没有启用配置写入服务。',
   trigger_configuration_unavailable: '当前使用外部触发插件，请配置该插件。',
-  plugin_required: '该插件仍被使用或属于管理入口，不能停用。', plugin_not_configurable: '插件尚未声明可编辑的配置。', invalid_plugin_config: '插件配置不符合声明的格式，请检查。', plugin_not_found: '插件不存在，请刷新列表。',
+  plugin_required: '该插件没有可保存的启停配置。', plugin_not_configurable: '插件尚未声明可编辑的配置。', invalid_plugin_config: '插件配置不符合声明的格式，请检查。', plugin_not_found: '插件不存在，请刷新列表。',
   settings_write_failed: '配置未保存成功，请检查数据目录权限。', invalid_settings_request: '配置格式不正确，请重新读取后重试。',
 };
 async function settingsRequest(path, body) {
@@ -334,6 +334,8 @@ function renderPlugin(detail) {
   meta.append(badge(detail.state), element('span', '', detail.kind === 'builtin' ? '内置 · 镜像内' : '外挂 · 挂载加载'));
   body.replaceChildren(meta, element('p', 'mono', `${detail.id} · ${detail.module}`),
     detailSection('依赖服务', detail.dependencies.join('、') || '无'), detailSection('提供服务', detail.provides.join('、') || '无'));
+  if (detail.missingDependencies?.length) body.append(detailSection('等待服务', detail.missingDependencies.join('、')));
+  if (detail.impact) body.append(detailSection('停用影响', detail.impact));
   if (detail.id === 'xiaolang-persona') {
     const button = element('button', 'secondary detail-log-button', '查看学习记录'); button.type = 'button';
     button.addEventListener('click', () => { $('plugin-detail').close(); showView('persona'); }); body.append(button);
@@ -347,12 +349,12 @@ function renderPlugin(detail) {
     button.type = 'button'; button.addEventListener('click', () => { $('plugin-detail').close(); showView(detail.settingsPage); }); body.append(button);
   }
   const form = element('form', 'plugin-form'), fields = element('div', 'form-grid');
-  if (detail.kind === 'external') {
+  if (detail.canToggle) {
     const line = element('label', 'switch-line'), text = element('span');
     text.append(element('strong', '', '启用插件'), element('small', '', detail.toggleReason || '保存并应用后生效；停用不删除插件文件或数据。'));
     const enabled = element('input'); enabled.type = 'checkbox'; enabled.name = '_enabled'; enabled.checked = detail.enabled; enabled.disabled = !detail.canToggle;
     line.append(text, enabled); form.append(line);
-  } else form.append(element('p', 'muted', '内置插件不开放启停操作；后续可按需要调整部署归属。'));
+  }
   for (const [name, definition] of Object.entries(detail.schema?.properties ?? {})) {
     const label = element('label', 'field'), required = detail.schema.required?.includes(name);
     label.append(element('span', '', definition.title || name));

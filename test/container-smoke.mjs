@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { createApp } from '/app/dist/src/app.js';
 
 // CI only: an actual Linux container with externally mounted code and zero network access.
+assert.ok(!(await readdir('/app/dist/src')).includes('memory.js'));
+assert.ok(!(await readdir('/app/dist/src')).includes('model.js'));
 const config = JSON.parse(await readFile('/app/config.example.json', 'utf8'));
 config.database = ':memory:';
 config.plugins = {

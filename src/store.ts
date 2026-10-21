@@ -6,10 +6,11 @@ import type { HistoryReader, ConversationView, TimelineItem, Message, ModelMessa
 import { render } from './messages.js';
 import { Failure } from './errors.js';
 import { deleteData } from './data-deletion.js';
+import type { DataCleanup } from './data-cleanup.js';
 
 export class SqliteStore implements Store {
   private db: DatabaseSync;
-  constructor(path: string) {
+  constructor(path: string, private cleanups: Map<string, DataCleanup> = new Map()) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(path, { allowExtension: true });
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;');
@@ -74,7 +75,7 @@ export class SqliteStore implements Store {
     });
   }
   record(seq: number) { return this.records({ after: seq - 1, before: seq + 1, limit: 1 })[0]; }
-  deleteData(input: unknown) { return deleteData(this.db, input); }
+  deleteData(input: unknown) { return deleteData(this.db, input, this.cleanups.values()); }
   admit(message: Message): Message | undefined {
     if (this.db.prepare('SELECT 1 FROM message_tombstones WHERE key=?').get(message.key)) return;
     this.ensureConversation(message.session);

@@ -41,7 +41,7 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
         return result;
       },
       status() {
-        return { started, uptimeMs: Math.max(0, Date.now() - started), state, connection, lastMessage,
+        return { started, uptimeMs: Math.max(0, Date.now() - started), state, connection: ctx.get('adapter') ? connection : 'disabled', lastMessage,
           model: config.model.name, platform: ctx.get('adapter')?.platform, chatEnabled: !!ctx.get('chat'),
           contextBudget: { unit: config.limits.contextTokens === undefined ? 'characters' : 'tokens',
             max: config.limits.contextTokens ?? config.limits.contextChars,

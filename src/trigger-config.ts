@@ -1,3 +1,4 @@
+import type { Config } from './config.js';
 export interface ProactiveSettings {
   enabled: boolean;
   excludedGroupIds: string[];
@@ -34,4 +35,10 @@ export function migrateProactiveConfig(raw: unknown): unknown {
     || new Set(previous.groupIds).size !== previous.groupIds.length) return raw;
   const { groupIds: _oldGroups, ...settings } = previous;
   return { ...raw, trigger: { ...raw.trigger, proactive: { ...settings, excludedGroupIds: [] } } };
+}
+
+export function triggerSettings(config: Config) {
+  config = migrateProactiveConfig(config) as Config;
+  return structuredClone({ ...(config.trigger ?? { privateReply: true, groupMention: true, groupKeywords: true, words: config.triggerWords }),
+    proactive: config.trigger?.proactive ?? proactiveDefaults });
 }

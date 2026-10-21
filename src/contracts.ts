@@ -199,7 +199,7 @@ export interface HistoryReader {
   detail(id: string): TurnDetail | undefined;
 }
 export interface LogItem { seq: number; entry: Log }
-export interface PluginInfo { id: string; title: string; module: string; kind: 'builtin' | 'external'; state: string; dependencies: string[]; provides: string[] }
+export interface PluginInfo { id: string; title: string; module: string; kind: 'builtin' | 'external'; state: string; dependencies: string[]; provides: string[]; missingDependencies?: string[]; impact?: string }
 export interface Inspection {
   usage?(query: UsageQuery): ReturnType<UsageMeter['view']>;
   deleteData(input: unknown): Promise<unknown>;
@@ -226,6 +226,7 @@ export interface Configuration {
 
 declare module 'cordis' {
   interface Context {
+    xiaolangHost: { config: import('./config.js').Config; options: import('./app.js').AppOptions; cleanups: Map<string, import('./data-cleanup.js').DataCleanup> };
     store: Store;
     scheduler: Scheduler;
     trigger: Trigger;
@@ -248,6 +249,7 @@ declare module 'cordis' {
     usage: UsageMeter;
   }
   interface Events {
+    'xiaolang/start'(): void | Promise<void>;
     'xiaolang/message'(message: Message): void;
     'xiaolang/observed'(message: Message): void | Promise<void>;
     'xiaolang/log'(entry: Log): void;

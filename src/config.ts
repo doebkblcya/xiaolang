@@ -116,10 +116,9 @@ export function validateConfig(raw: unknown): Config {
   if (raw.tooling) mcpConnections(raw.tooling.mcp.servers);
   if (raw.plugins) {
     const ids = raw.plugins.entries.map(entry => entry.id);
-    if (ids.includes('xiaolang-adapter')) throw new Failure('reserved_plugin_id');
     if (new Set(ids).size !== ids.length) throw new Failure('duplicate_plugin_id');
-    if (raw.plugins.chat && !raw.plugins.entries.some(entry => entry.id === raw.plugins!.chat && entry.enabled !== false)) throw new Failure('invalid_chat_plugin');
-    if (raw.plugins.trigger && !raw.plugins.entries.some(entry => entry.id === raw.plugins!.trigger && entry.enabled !== false)) throw new Failure('invalid_trigger_plugin');
+    if (raw.plugins.chat && !raw.plugins.entries.some(entry => entry.id === raw.plugins!.chat)) throw new Failure('invalid_chat_plugin');
+    if (raw.plugins.trigger && !raw.plugins.entries.some(entry => entry.id === raw.plugins!.trigger)) throw new Failure('invalid_trigger_plugin');
   }
   return raw;
 }
