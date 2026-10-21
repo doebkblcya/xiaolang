@@ -168,6 +168,6 @@ HTTPS／Key 为面板插件的部署配置，例如当前 NAS：
 
 ### 官方外挂交付
 
-`npm run build` 同时生成 `dist/host/src/` 宿主运行代码和 `dist/plugins/` 独立插件包。镜像仅复制宿主，QQ、DeepSeek、触发、记忆、人设及具体工具的业务实现不在镜像内。CI 分别产出 `xiaolang-linux-amd64.tar.gz` 与 `xiaolang-plugins.tar.gz`，并附校验和；后者部署到 NAS 的 `plugins/` 挂载目录。
+`npm run build` 同时生成 `dist/host/src/` 宿主运行代码和 `dist/plugins/` 独立插件包。镜像仅复制宿主，QQ、DeepSeek、触发、记忆、人设及具体工具的业务实现不在镜像内。CI 分别产出 `xiaolang-linux-amd64.tar.gz` 与 `xiaolang-plugins.tar.gz`，并附校验和；后者部署到 NAS 的 `plugins/` 挂载目录。后续 CI 另上传 `xiaolang-plugins-<提交号>` 独立 Artifact，普通外挂更新无需下载完整镜像。
 
 普通外挂更新替换对应目录后重启即可；变更宿主公共 API、Node 或镜像依赖才需新镜像。`src/plugin-api.ts` 是 v1 公共接口，宿主生成 `_runtime.mjs` 供外挂复用类型身份和用量统计上下文。外挂通过 Cordis `inject` 等待服务，通过 `ctx.effect()` 释放资源。侧车可声明 `cleanup` 相对模块，导出 `cleanup` 对象，在宿主删除事务内清理自己拥有的数据；这个接口在插件停用时仍保留。
