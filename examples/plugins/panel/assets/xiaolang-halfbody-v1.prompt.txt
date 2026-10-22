@@ -1,0 +1,14 @@
+用途：管理面板首页立绘；侧栏头像可通过 CSS 从同一素材取景。
+产物：xiaolang-halfbody-v1.png，保留生成结果的透明通道。
+生成方式：内置 image_gen；依据用户提供的正面角色图与文字设定生成。
+状态：已接入首页、侧栏头像和访问验证页；页面使用保留透明度的 WebP 版本。
+
+Use case: stylized-concept
+Asset type: 小狼 QQ 机器人管理面板首页的角色立绘，可同时在侧栏以 CSS 取景作为头像。
+Input image 1: 角色身份与画风参考，请忠实延续参考图的同一个角色，而不是生成另一个猫娘。
+Primary request: 基于参考图，绘制一张精致日系二次元、细腻厚涂的三花猫拟人少女半身插画。真实透明背景，单一完整角色，无其他物件。
+Subject: 小狼，娇小、面容稚嫩，圆润精致的脸，明亮琥珀金色大眼睛，平静清冷的眼神，微抿的嘴，有一点点倔强而非生气。保留参考图左右不对称的三花短发：画面左侧深褐近黑，画面右侧奶白，额前有焦糖橘交错发束；头发蓬松微卷至下巴，发尾略翘。宽大竖立的猫耳，柔和淡粉内耳，一颗细小泪痣。保持参考图面孔、发色布局、猫耳形状和辨识度。
+Clothing: 完整穿着奶白色娃娃领、蓬袖洋裙，白色精致蕾丝和少量荷叶边，领口深巧克力蝴蝶结与焦糖橘小花装饰，深色收腰。服装细节比参考图略简洁，适合在网页中缩小显示。端庄、全年龄、自然着装。
+Composition: 竖幅，头顶到腰下/胯部的半身，猫耳尖完整留在画面内，左右轮廓不裁切；双手自然轻轻交叠于身前，完整显示双手，肩膀放松，正面为主略微侧身，看向观者。主体居中，画面上方与两侧保留少量透明边距。脸部清晰突出，保留精致发丝，底部是自然裁切的腰下衣裙。插画本体，无卡片、无背景框。
+Color palette: warm ivory 奶白、dark chocolate 深巧克力、caramel orange 焦糖橘，琥珀眼睛；柔和漫射光，克制高光、细腻笔触、自然浅肤色。
+Constraints: background must be genuinely transparent with alpha, not a white background or painted checkerboard. No text, no logo, no watermark, no UI, no sheet of multiple views, no decorative background, no floating hearts, no extra limbs. Maintain the supplied character's identity.

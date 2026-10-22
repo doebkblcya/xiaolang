@@ -60,6 +60,8 @@ function showView(view) {
 }
 for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => showView(button.dataset.view));
 function renderStatus(status) {
+  $('hero-state').textContent = status.state === 'ready' && status.connection === 'connected' ? '小狼在线，聊天链路已就绪' : status.state === 'ready' ? '面板已就绪，接入状态请看下方' : '小狼正在启动中';
+  $('today-date').textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
   $('qq-state').textContent = words[status.connection] ?? status.connection;
   $('platform').textContent = status.platform?.includes('sandbox') ? 'QQ 官方机器人 · 沙箱环境' : status.platform === 'qq-official' ? 'QQ 官方机器人 · 正式环境' : status.platform ?? '正在启动接入';
   $('model').textContent = status.model;

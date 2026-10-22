@@ -1,29 +1,36 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>小狼 · 控制台</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#faf6f0"><title>小狼 · 控制台</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="/"><span class="brand-mark">狼</span><span>小狼<small>XIAOLANG</small></span></a>
-    <nav aria-label="主导航">
-      <button class="nav active" data-view="overview" aria-current="page"><span>◈</span>运行概览</button>
-      <button class="nav" data-view="chats"><span>▤</span>聊天记录</button>
-      <button class="nav" data-view="logs"><span>≋</span>过程日志</button>
-      <button class="nav" data-view="usage"><span>▥</span>模型用量</button>
-      <button class="nav" data-view="model-settings"><span>◉</span>回复模型</button>
-      <button class="nav" data-view="qq-settings"><span>↔</span>QQ 接入</button>
-      <button class="nav" data-view="memories"><span>◇</span>聊天与记忆</button>
-      <button class="nav" data-view="persona"><span>♧</span>人设与学习</button>
-      <button class="nav" data-view="tooling"><span>⚒</span>工具与行动</button>
-      <button class="nav" data-view="reminders"><span>◷</span>定时提醒</button>
-      <button class="nav" data-view="plugins"><span>⊞</span>插件列表</button>
+    <a class="brand" href="/"><span class="brand-mark"><img src="/assets/xiaolang-halfbody-v1.webp" alt="" width="52" height="69"></span><span>小狼<small>一点猫脾气，一直在这里</small></span></a>
+    <nav aria-label="主导航"><p class="nav-label">日常 · DAILY</p>
+      <button class="nav active" data-view="overview" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>运行概览</button>
+      <button class="nav" data-view="chats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5a9.5 9.5 0 0 1 19 0Z"/><path d="M7 10h9M7 14h6"/></svg>聊天记录</button>
+      <button class="nav" data-view="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M7 11h10M7 16h7"/></svg>过程日志</button>
+      <button class="nav" data-view="usage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v17h17M8 15v-4M13 15V7M18 15V4"/></svg>模型用量</button>
+      <p class="nav-label">连接 · CONNECTION</p>
+      <button class="nav" data-view="model-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></svg>回复模型</button>
+      <button class="nav" data-view="qq-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7H6a5 5 0 0 0 0 10h3m6 0h3a5 5 0 0 0 0-10h-3M8 12h8"/></svg>QQ 接入</button>
+      <p class="nav-label">能力 · CAPABILITIES</p>
+      <button class="nav" data-view="memories"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4Zm16 0h-4a3 3 0 0 0-3 3m0 14a4 4 0 0 1 4-2h3V4"/></svg>聊天与记忆</button>
+      <button class="nav" data-view="persona"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 10 3 3l7 3m4 0 7-3-2 7"/><path d="M21 13c0 5-4 8-9 8s-9-3-9-8 4-8 9-8 9 3 9 8Z"/><path d="M8 12v1m8-1v1m-6 3 2 1 2-1"/></svg>人设与学习</button>
+      <button class="nav" data-view="tooling"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 7 3 3m-8 5-5 5a2 2 0 0 1-3-3l5-5m2-4A6 6 0 0 1 16 2l-3 4 5 5 4-3a6 6 0 0 1-8 8Z"/></svg>工具与行动</button>
+      <button class="nav" data-view="reminders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 8v5l3 2M4 3 1 6m19-3 3 3M9 2h6"/></svg>定时提醒</button>
+      <button class="nav" data-view="plugins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>插件列表</button>
     </nav>
     <div class="sidebar-bottom"><span class="dot"></span> 小狼控制台<small>仅向可信设备开放访问</small><button id="logout" type="button" class="link" hidden>退出访问</button></div>
   </aside>
   <main>
-    <header><div><p class="eyebrow">你的聊天伙伴</p><h1 id="page-title">运行概览</h1><p id="page-description">看看小狼现在怎么样。</p></div><span id="connection" class="badge neutral">正在连接面板</span></header>
+    <header><div><p class="eyebrow">XIAOLANG / 小狼的工作台</p><h1 id="page-title">运行概览</h1><p id="page-description">看看小狼现在怎么样。</p></div><span id="connection" class="badge neutral">正在连接面板</span></header>
     <div id="notice" class="notice" role="status" hidden></div>
     <div id="settings-banner" class="settings-banner" hidden><span id="settings-banner-text">配置已保存，应用后生效。</span><button id="apply-settings" class="primary" type="button">应用配置并重启</button></div>
     <section id="overview" class="view">
+      <article class="welcome">
+        <div class="welcome-copy"><p class="welcome-kicker"><span class="welcome-line"></span> LITTLE CAT, LITTLE WORLD</p><h2>小狼，在这里<span>。</span></h2><p class="welcome-description">聊过的天，记住的事，还有一点小脾气。</p><div class="welcome-status"><span class="dot"></span><span id="hero-state">正在看看小狼的状态…</span></div><div class="welcome-actions"><button class="primary" data-view="chats">翻翻聊天记录 <span aria-hidden="true">↗</span></button><button class="welcome-link" data-view="plugins">管理插件 <span aria-hidden="true">→</span></button></div></div>
+        <div class="welcome-portrait" aria-hidden="true"><div class="portrait-halo"></div><img src="/assets/xiaolang-halfbody-v1.webp" alt="" width="1086" height="1448" fetchpriority="high"><span class="portrait-caption">XIAOLANG<span>三花 · 冷淡一点点</span></span></div>
+        <span id="today-date" class="welcome-date"></span>
+      </article>
       <div class="cards">
         <article class="card"><span>QQ 连接</span><strong id="qq-state">—</strong><small id="platform">等待状态</small><button class="link card-link" data-view="qq-settings">配置连接 →</button></article>
         <article class="card"><span>回复模型</span><strong id="model">—</strong><small id="chat-state">等待状态</small><button class="link card-link" data-view="model-settings">配置模型 →</button></article>
@@ -31,8 +38,8 @@
         <article class="card"><span>本次运行</span><strong id="uptime">—</strong><small id="memory">内存 —</small></article>
       </div>
       <div class="overview-grid">
-        <article class="panel"><div class="panel-title"><h2>最近动态</h2><button class="link" data-view="logs">查看日志 →</button></div><div id="recent-events" class="recent-events"><p class="empty">等待小狼的第一条动态</p></div></article>
-        <article class="panel"><h2>运行摘要</h2><dl class="summary"><div><dt>应用状态</dt><dd id="app-state">—</dd></div><div><dt>异常轮次</dt><dd id="failures">—</dd></div><div><dt>启用插件</dt><dd id="plugin-count">—</dd></div><div><dt>最近收到消息</dt><dd id="last-message">—</dd></div></dl><p class="muted">这里只查看运行情况。聊天记录会保留，过程日志显示本次启动的最近 500 条。</p></article>
+        <article class="panel"><div class="panel-title"><h2><span class="section-dot"></span>最近动态</h2><button class="link" data-view="logs">查看日志 →</button></div><div id="recent-events" class="recent-events"><p class="empty">等待小狼的第一条动态</p></div></article>
+        <article class="panel"><h2><span class="section-dot"></span>此刻的小狼</h2><dl class="summary"><div><dt>应用状态</dt><dd id="app-state">—</dd></div><div><dt>异常轮次</dt><dd id="failures">—</dd></div><div><dt>启用插件</dt><dd id="plugin-count">—</dd></div><div><dt>最近收到消息</dt><dd id="last-message">—</dd></div></dl><p class="muted">聊天会好好留下。这里的过程日志记录本次启动的最近 500 条动态。</p></article>
       </div>
     </section>
     <section id="usage" class="view" hidden>
@@ -113,7 +120,7 @@
       </article>
     </section>
     <section id="plugins" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>插件列表</h2><p class="muted">点击查看详情与配置。内置表示镜像内，外挂表示从挂载目录加载；内置不提供启停按钮，外挂启停会检查依赖。</p></div><span id="plugins-summary" class="badge neutral">—</span></div><div class="table-wrap"><table class="plugin-table"><thead><tr><th>插件</th><th>来源 / 模块</th><th>依赖服务</th><th>状态</th></tr></thead><tbody id="plugin-rows"></tbody></table></div><p id="plugin-empty" class="empty" hidden>尚无插件状态</p></article>
+      <article class="panel"><div class="panel-title"><div><h2>插件列表</h2><p class="muted">点击查看详情、配置和启停。内置与外挂表示代码位置；停用前可查看影响，缺少依赖的插件会等待服务。</p></div><span id="plugins-summary" class="badge neutral">—</span></div><div class="table-wrap"><table class="plugin-table"><thead><tr><th>插件</th><th>来源 / 模块</th><th>依赖服务</th><th>状态</th></tr></thead><tbody id="plugin-rows"></tbody></table></div><p id="plugin-empty" class="empty" hidden>尚无插件状态</p></article>
     </section>
     <section id="model-settings" class="view" hidden>
       <form id="model-form" class="panel settings-form">

@@ -110,7 +110,7 @@ export function createAccess(auth, now = Date.now, options = {}) {
         if (token) sessions.delete(sha256(token));
         send(200, { authenticated: false }, undefined, { 'Set-Cookie': cookie(name, secure, '', 0) }); return true;
       }
-      if (request.method === 'GET' && ['/login.js', '/style.css'].includes(url.pathname)) return false;
+      if (request.method === 'GET' && ['/login.js', '/style.css', '/assets/xiaolang-halfbody-v1.webp'].includes(url.pathname)) return false;
       if (authenticated) return false;
       request.resume?.();
       if (url.pathname === '/' && request.method === 'GET') return 'login';

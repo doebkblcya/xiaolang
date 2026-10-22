@@ -64,7 +64,7 @@ XIAOLANG_CONFIG=config.example.json node dist/src/main.js --check-config
 
 ## 私有后台面板与配置
 
-页面和 Node.js 内置 HTTP 服务位于外挂的 `examples/plugins/panel/`。复制整个目录到运行目录的 `plugins/panel/`，在 `plugins.entries` 添加：
+页面和 Node.js 内置 HTTP 服务位于外挂的 `examples/plugins/panel/`。面板采用奶白、巧克力棕与焦糖色，小狼透明立绘用于首页、头像和访问验证页，功能页面保持清晰阅读。复制整个目录到运行目录的 `plugins/panel/`，在 `plugins.entries` 添加：
 
 ```json
 { "id": "panel", "module": "./panel/index.mjs", "config": { "host": "0.0.0.0", "port": 18080 } }
