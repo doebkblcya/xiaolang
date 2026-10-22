@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, copyFile, mkdir, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { formatText } from '../src/log-format.js';
 import { createApp } from '../src/app.js';
 import { createReporter } from '../src/logging.js';
 import { emitLog } from '../src/contracts.js';
@@ -123,18 +123,15 @@ test('logging bounds Unicode previews, redacts credentials before truncation, an
   assert.equal(hidden[0]?.preview, undefined);
 });
 
-test('external console formatter loads from the plugin directory, can be replaced, and failures never interrupt chat', async t => {
+test('unified console formatting preserves legacy settings and sink failures never interrupt chat', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'xiaolang-log-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  await mkdir(join(directory, 'console-logger'));
-  await copyFile('examples/plugins/console-logger/index.mjs', join(directory, 'console-logger/index.mjs'));
   const settings = config();
   settings.plugins = { directory, entries: [{ id: 'console-logger', module: './console-logger/index.mjs', config: { format: 'text' } }] };
   const app = await createApp(settings, { model: new FakeModel(), adapter: new FakeAdapter(), report: () => { throw new Error('broken observer'); } });
   t.after(() => app.stop());
   const lines: string[] = [];
-  const module = await import(pathToFileURL(resolve('examples/plugins/console-logger/index.mjs')).href);
-  app.ctx.logOutput.write = entry => { lines.push(module.formatText(entry)); };
+  app.ctx.logOutput.write = entry => { lines.push(formatText(entry)); };
   app.ctx.intake.receive(event('Hello', 1, null));
   await app.ctx.chat.idle();
   assert.ok(lines.some(line => line.includes('收到消息') && line.includes('Hello')));

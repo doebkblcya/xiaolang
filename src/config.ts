@@ -38,7 +38,7 @@ export interface Config {
   tooling?: ToolingConfig;
   failureFeedback?: { enabled: boolean };
   plugins?: PluginConfig;
-  logging?: { content?: boolean; previewChars?: number };
+  logging?: { content?: boolean; previewChars?: number; console?: boolean; format?: 'text' | 'json'; retentionDays?: number; maxRecords?: number };
   model: { baseUrl: string; name: string; thinking: boolean; timeoutMs: number; maxOutputTokens: number; retries: number;
     temperature?: number; topP?: number; reasoningEffort?: 'low' | 'high' | 'max'; stop?: string[] };
   limits: { concurrency: number; queue: number; queueAgeMs: number; turnTimeoutMs: number; contextTokens?: number; contextChars?: number; history: number; steps: number; toolTimeoutMs: number; toolResultChars: number; replyChars: number };
@@ -65,6 +65,8 @@ const schema = {
     tooling: { type: 'object', additionalProperties: false, required: Object.keys(toolingSchemas), properties: toolingSchemas },
     failureFeedback: { type: 'object', additionalProperties: false, required: ['enabled'], properties: { enabled: { type: 'boolean' } } },
     logging: { type: 'object', additionalProperties: false, properties: {
+      console: { type: 'boolean' }, format: { enum: ['text', 'json'] },
+      retentionDays: { type: 'integer', minimum: 1, maximum: 365 }, maxRecords: { type: 'integer', minimum: 1000, maximum: 1000000 },
       content: { type: 'boolean' },
       previewChars: { type: 'integer', minimum: 1, maximum: 1000 },
     } },

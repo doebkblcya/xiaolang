@@ -160,6 +160,7 @@ export interface Output {
 export interface FaultFeedback { notify(turn: Turn, failure: string, signal: AbortSignal): Promise<void> }
 export interface Chat { idle(): Promise<void>; stop(): Promise<void> }
 export interface Log {
+  label?: string; fields?: { label: string; value: string | number }[];
   code: string; time?: string; level?: 'info' | 'warn' | 'error';
   turn?: string; stage?: string; plugin?: string; dependencies?: string[];
   messageId?: string; taskId?: string; scope?: 'private' | 'group'; sender?: string; group?: string;
@@ -237,6 +238,7 @@ declare module 'cordis' {
     tools: Tools;
     output: Output;
     chat: Chat;
+    processLogs: import('./log-journal.js').LogJournal;
     logOutput: { write(entry: Log): void };
     historyReader: HistoryReader;
     inspection: Inspection;

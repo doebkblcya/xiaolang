@@ -11,7 +11,7 @@ import { emitLog, log, messageLog } from './contracts.js';
 import { chatPlugin } from './chat.js';
 import { faultFeedbackPlugin } from './fault-feedback.js';
 import { inspectMessage } from './messages.js';
-import { loggingPlugin } from './logging.js';
+import { loggingPlugin, loggingSchema, loggingCleanup } from './logging.js';
 import { inspectionPlugin } from './inspection.js';
 import { SessionQueue } from './scheduler.js';
 import { SqliteStore } from './store.js';
@@ -113,6 +113,8 @@ export async function createApp(config: Config, options: AppOptions) {
   }
   const entries = pluginEntries(config).filter(entry => !options.adapter || entry.id !== 'xiaolang-adapter');
   ctx.provide('xiaolangHost', { config, options, cleanups: new Map(), panels: new Map(), pluginDependencies: new Map() });
+  ctx.xiaolangHost.cleanups.set('xiaolang-logging', loggingCleanup);
+  options.configuration?.registerPlugin('xiaolang-logging', loggingSchema);
   const beforeReady: IncomingMessage[] = [];
   async function mount<T>(plugin: Plugin<T>, config: T): Promise<Fiber | undefined> {
     const id = typeof plugin === 'object' && plugin.name;
@@ -145,7 +147,7 @@ export async function createApp(config: Config, options: AppOptions) {
     }
   }
   try {
-    await mount(loggingPlugin, { settings: config.logging, report: options.report, write: options.writeLog,
+    await mount(loggingPlugin, { database: config.database, settings: config.logging, report: options.report, write: options.writeLog,
       secrets: [...(options.secrets ?? []), ...(options.apiKey ? [options.apiKey] : []), ...(options.embeddingKey ? [options.embeddingKey] : [])] });
     await mount(storePlugin, config);
     await mount(usagePlugin, config);

@@ -91,7 +91,7 @@ HTTPS／Key 为面板插件的部署配置，例如当前 NAS：
 
 `panel-auth.json` 仅含 `keyHash`（64 位小写 SHA-256 十六进制摘要），权限 `0600`；原 Key 使用加密随机数生成，至少 32 字节。当前 Compose 额外挂载 `/usr/trim/var/trim_connect/ssls/nas.doebkblcya.com:/app/panel-certificates:ro`，只让小狼读取这个域名的证书目录，不改系统证书或证书权限。自备证书也可用 `tls.certFile`／`tls.keyFile` 和可选 `tls.chainFile` 指定绝对路径。配置了鉴权却没有 HTTPS、摘要文件无效或启动时无法读取有效证书，面板会拒绝启动。未配置这两项的示例仍用于本机／可信内网，不应直接映射到公网。
 
-面板依赖主链路的 `inspection` 只读服务；不直接操作 SQLite。聊天来自持久化记录，日志仅缓存本次启动的最近 500 条。重启后页面会自动重连，日志缓存重新开始。改变页面或 HTTP 展示逻辑后更新外挂文件并重启即可；改变主链路查询能力才需要更新镜像。Mac 的离线测试不会启动 HTTP 监听；实际 HTTP 验证在 Linux 容器和运行宿主机执行。
+面板通过各服务的只读接口展示信息，不直接操作 SQLite。聊天来自会话存储，过程日志直接查询日志插件的持久化记录，页面支持增量更新与历史分页。改变页面或 HTTP 展示逻辑后更新外挂文件并重启即可；改变主链路查询能力才需要更新镜像。Mac 的离线测试不会启动 HTTP 监听；实际 HTTP 验证在 Linux 容器和运行宿主机执行。
 
 模型页支持 API 地址、模型、API Key、思考开关／强度、温度、Top P、输出 Token、请求超时、重试和停止词；QQ 页支持 AppID、AppSecret、正式／沙箱环境、群接收能力声明、连接超时和群 OpenID 范围，连接方式固定 WebSocket。参数范围按 [DeepSeek 官方文档](https://api-docs.deepseek.com/api/create-chat-completion/) 核对：温度仅非思考模式生效，Top P 与思考强度仅思考模式生效；已弃用的频率／存在惩罚不暴露。
 
@@ -132,13 +132,11 @@ HTTPS／Key 为面板插件的部署配置，例如当前 NAS：
 
 本体在处理边界发出结构化事件，由独立的日志处理插件筛选字段、脱敏、限制预览长度，再发布 `xiaolang/logged` 事件。默认预览 200 个 Unicode 字符；`logging.content: false` 可关闭所有正文预览。提示词、历史、思考内容、工具参数和工具结果不作为日志字段输出。已知环境密钥及常见凭证形式会脱敏，这不等于对任意个人信息自动匿名化。
 
-终端中文格式由外挂的 `examples/plugins/console-logger/index.mjs` 提供。复制到运行目录的 `plugins/console-logger/index.mjs`，并将下面条目加入 `plugins.entries`：
+日志插件统一提供控制台输出、SQLite 持久化和查询服务 `ctx.processLogs`。过程日志使用现有数据库中的独立 `process_logs` 表，默认保留 7 天、最多 100000 条，定期清理；正文预览仍先脱敏、截断再写入。日志插件详情中可调整正文预览、保留天数、最多条数、控制台开关及 `text`／`json` 格式。旧 `console-logger` 的开关和格式配置自动兼容，不再加载独立终端日志插件。
 
-```json
-{ "id": "console-logger", "module": "./console-logger/index.mjs", "config": { "format": "text" } }
-```
+`ctx.processLogs.query({ after?, before?, limit?, q? })` 支持最新记录、增量游标、更早分页与归档搜索；游标单调递增，服务重启后记录保留。面板只显示有限窗口，点击“更早”浏览历史、点击“最新”恢复增量更新；普通“跟随最新”只控制滚动。停留在其他页面时不查询日志。日志服务停用或查询失败只影响日志区域；写入或控制台输出异常不影响聊天。写盘失败会提示，不能把临时记录声称为持久记录。
 
-插件提供 `logOutput.write(entry)` 服务，接收脱敏后的事件；`format: "json"` 可改为结构化输出。未启用展示插件时，正式入口回退到 JSON 输出。修改外挂展示文件或它的配置后重启即可；增加本体观测点或修改脱敏边界仍需更新镜像。日志输出异常不会改变消息处理结果。现有后台订阅同一套脱敏事件，并通过只读服务读取聊天记录，不需要解析终端文字。
+现有事件文字使用一份兼容字典，控制台和面板复用日志服务生成的标题与元数据。新插件可直接通过 `emitLog(ctx, { code: 'my_event', label: '事件标题', fields: [{ label: '任务', value: '任务名' }] })` 提供可读信息，无需修改面板；自定义字段同样脱敏、限长。插件仍不应把完整提示词、思考或工具参数当日志上报。删除聊天时，日志插件会在同一数据库事务中清理关联消息及轮次日志；保留轻量的 `inspection.logs()` 转发供旧调用者迁移，页面已直接查询日志服务。
 
 ## 扩展
 
@@ -159,7 +157,7 @@ HTTPS／Key 为面板插件的部署配置，例如当前 NAS：
 
 当前交付为 12 个内置运行插件、13 个官方外挂插件，显示真实生命周期状态、依赖和提供服务。内置／外挂是当前部署位置，不是固定身份；不把普通代码文件或尚未实现的能力伪装成插件。
 
-外挂插件可在入口旁提供 `xiaolang.plugin.json`，注册 `configSchema`（JSON Schema 对象）；启用插件也可导出 `xiaolangConfig`。后台按声明生成表单并校验后保存，支持标量、枚举和字符串数组。`writeOnly: true` 字段不回显，留空保留已有值；未声明的配置不直接暴露。侧车声明让停用的文件插件也能编辑配置，而不激活能力。示例见 `examples/plugins/console-logger/` 和 `examples/plugins/hello/`。配置和启停先保存再应用，两类插件均可停用；只显示依赖，不额外判断启停风险，不删除代码或用户数据，不实现在线安装／卸载。
+外挂插件可在入口旁提供 `xiaolang.plugin.json`，注册 `configSchema`（JSON Schema 对象）；启用插件也可导出 `xiaolangConfig`。后台按声明生成表单并校验后保存，支持标量、枚举和字符串数组。`writeOnly: true` 字段不回显，留空保留已有值；未声明的配置不直接暴露。侧车声明让停用的文件插件也能编辑配置，而不激活能力。示例见 `examples/plugins/hello/`。配置和启停先保存再应用，两类插件均可停用；只显示依赖，不额外判断启停风险，不删除代码或用户数据，不实现在线安装／卸载。
 
 插件导出标准 Cordis 的函数、对象或模块形式，声明 `inject` 服务依赖，用 `ctx.effect()` 管理清理函数。文件入口使用 `.mjs`、`.cjs` 或可运行的 `.js`；TypeScript 插件先编译为 JavaScript。可选导出 `xiaolangApiVersion = 1`，声明其他版本会被拒绝。启用插件缺少服务依赖时显示等待，宿主继续运行；文件缺失、导出无效或激活失败仍报告错误并触发配置回退。
 

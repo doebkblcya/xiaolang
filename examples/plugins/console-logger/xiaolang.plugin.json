@@ -1,9 +1,0 @@
-{
-  "configSchema": {
-    "type": "object",
-    "properties": {
-      "format": { "type": "string", "title": "日志格式", "enum": ["text", "json"], "default": "text", "description": "text 为中文过程日志，json 为结构化输出。" }
-    },
-    "additionalProperties": false
-  }
-}

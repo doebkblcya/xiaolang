@@ -46,6 +46,8 @@ function combine(base: Config, settings: Settings): Config {
     config.adapter.config = { ...validateQQConfig({ ...config.adapter.config, ...qq }) };
     config.groupIds = [...groupIds];
   }
+  const legacyLogger = settings.plugins?.entries?.['console-logger'] ?? base.plugins?.entries.find(entry => entry.id === 'console-logger');
+  if (legacyLogger) config.logging = { console: legacyLogger.enabled !== false, ...(legacyLogger.config?.format === 'json' ? { format: 'json' as const } : { format: 'text' as const }), ...config.logging };
   const entries = [...pluginEntries(config), ...Object.keys(builtinTitles).map(id => ({ id, module: 'builtin:host' }))];
   config.plugins = { ...config.plugins, directory: config.plugins?.directory ?? 'plugins', entries: entries.map(entry => ({ ...entry, ...settings.plugins?.entries?.[entry.id] })) };
   return validateConfig(config);

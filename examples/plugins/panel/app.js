@@ -6,26 +6,13 @@ const usageNames = { chat: '聊天回复', proactive: '插话判断', memory_ext
 const words = { connected: '已连接', disconnected: '已断开', starting: '启动中', ready: '已就绪', stopping: '停止中', failed: '失败', error: '连接异常',
   completed: '已完成', queued: '等待处理', running: '处理中', sending: '发送中', unknown: '结果未知', expired: '已过期', cancelled: '已取消',
   active: '已启用', disabled: '已停用', pending: '等待激活', scheduled: '等待到点', sent: '已确认发送', succeeded: '已成功', private: '私聊', mention: '@机器人', keyword: '触发词' };
-const stages = { application_ready: '小狼已就绪', application_stopping: '小狼正在停止', application_failed: '启动失败', qq_connected: 'QQ 已连接', qq_disconnected: 'QQ 已断开',
-  qq_connection_error: 'QQ 连接异常', qq_connection_failed: 'QQ 连接失败', adapter_group_messages_limited: '非 @ 群消息推送权限待验证', panel_listening: '面板已启动', feedback_started: '发送故障提示', feedback_sent: '故障提示已确认发送', feedback_failed: '故障提示发送失败', feedback_unknown: '故障提示结果未知', feedback_skipped: '未追加故障提示',
-  message_received: '收到消息', message_ignored: '忽略消息', trigger_matched: '触发回复', turn_queued: '等待调度', turn_started: '开始处理',
-  model_started: '调用模型', model_completed: '模型返回', model_failed: '模型调用失败', reply_generated: '生成回复',
-  tool_started: '调用工具', tool_completed: '工具完成', tool_failed: '工具失败', tool_unknown: '工具结果未知',
-  send_started: '发送回复', send_confirmed: 'QQ 已确认发送', send_failed: '发送失败', send_unknown: '发送结果未知', turn_completed: '本轮完成' };
-Object.assign(stages, { memory_recalled: '读取聊天与记忆', memory_processing_started: '开始整理记忆', memory_processing_completed: '记忆整理完成', memory_processing_failed: '记忆整理失败', memory_vector_fallback: '向量不可用，使用关键词检索', memory_summary_failed: '聊天摘要整理失败', memory_image_unavailable: '图片暂时无法读取', memory_image_described: '图片描述已生成' });
-Object.assign(stages, { persona_learning_started: '开始学习聊天表达', persona_learning_completed: '表达学习完成', persona_learning_failed: '表达学习未完成' });
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
 const viewTitles = { overview: '主页', chats: '聊天记录', logs: '过程日志', usage: '模型用量', 'model-settings': '回复模型', 'qq-settings': 'QQ 接入', memories: '聊天与记忆', persona: '人设与学习', tooling: '工具与行动', reminders: '定时提醒', plugins: '插件' };
-Object.assign(stages, { api_usage: 'API 用量记录', usage_record_failed: '用量记录写入失败' });
-Object.assign(stages, { tool_image_attached: '原图已交给回复模型' });
-Object.assign(stages, { reminder_created: '已创建提醒', reminder_cancelled: '已取消提醒', reminder_queued: '提醒等待发送', reminder_send_started: '开始发送提醒', reminder_sent: '提醒已确认发送', reminder_failed: '提醒发送失败', reminder_unknown: '提醒发送结果未知', reminder_scheduler_failed: '提醒调度异常', reminder_history_failed: '提醒已发出，聊天记录写入失败' });
-Object.assign(stages, { mcp_connected: 'MCP 已连接', mcp_connection_failed: 'MCP 连接失败', mcp_tool_rejected: 'MCP 工具注册失败' });
-Object.assign(stages, { proactive_state: '插话状态更新', proactive_observing: '收集待判断消息', proactive_judge_started: '判断是否接话', proactive_decided: '接话判断完成', proactive_skipped: '本次未接话', proactive_judge_failed: '接话判断失败，保持沉默' });
-Object.assign(stages, { panel_tls_reloaded: '面板证书已重新加载', panel_tls_reload_failed: '面板新证书暂时无法加载，保留原证书' });
 Object.assign(reasons, { proactive: '主动插话', no_trigger: '未命中直接触发条件' });
 const dateFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const timeFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 let logs = [], cursor = 0, busy = false, selected, runStarted;
+let logBefore = null, logHistory = false, logBusy = false, logVersion = 0, logGeneration;
 let settings, settingsLoading = false, applying = false;
 const dirtyForms = new Set();
 let pluginDetails, pluginDirty = false;
@@ -61,7 +48,7 @@ function showView(requested) {
   if (view === 'persona') refreshPersona();
   if (view === 'tooling') refreshTools();
   if (view === 'reminders') refreshReminders();
-  if (view === 'logs') renderLogs();
+  if (view === 'logs') { renderLogs(); if (!logHistory) refreshLogs(); }
   if (view === 'usage') refreshUsage();
   if (view.endsWith('-settings') && !settings) loadSettings();
 }
@@ -167,47 +154,55 @@ function renderPlugins(plugins = pluginCatalog) {
 $('plugin-search').addEventListener('input', () => renderPlugins());
 $('plugin-source').addEventListener('change', () => renderPlugins());
 
-function logMeta(entry) {
-  const values = [];
-  if (entry.reason) values.push(reasons[entry.reason] ?? entry.reason);
-  if (entry.code.startsWith('proactive_') && entry.state) values.push(({ active: '活跃', idle: '旁观', speak: '决定接话', silent: '保持沉默' })[entry.state] ?? entry.state);
-  if (entry.model) values.push(entry.model);
-  if (entry.imageCount !== undefined) values.push(`本次附图 ${entry.imageCount} 张`);
-  if (entry.purpose) values.push(usageNames[entry.purpose] ?? entry.purpose);
-  if (entry.inputTokens !== undefined) values.push(`输入 ${entry.inputTokens} Token`);
-  if (entry.outputTokens !== undefined) values.push(`输出 ${entry.outputTokens} Token`);
-  if (entry.totalTokens !== undefined) values.push(`合计 ${entry.totalTokens} Token`);
-  if (entry.cachedTokens !== undefined) values.push(`缓存命中 ${entry.cachedTokens}`);
-  if (entry.reasoningTokens !== undefined) values.push(`思考 ${entry.reasoningTokens}`);
-  if (entry.attempt > 1) values.push(`第 ${entry.attempt} 次尝试`);
-  if (entry.step) values.push(`步骤 ${entry.step}`);
-  if (entry.tool) values.push(`工具 ${entry.tool}`);
-  if (entry.waitMs !== undefined) values.push(`排队 ${entry.waitMs} ms`);
-  if (entry.durationMs !== undefined) values.push(`耗时 ${entry.durationMs} ms`);
-  if (entry.part) values.push(`第 ${entry.part}/${entry.parts} 段`);
-  if (entry.errorCode) values.push(entry.errorCode);
-  if (entry.turn) values.push(`turn=${entry.turn}`);
-  if (entry.taskId) values.push(`提醒 ${entry.taskId}`);
-  return values.join(' · ');
-}
 function renderLogs() {
-  const filter = $('log-filter').value.trim().toLowerCase();
-  const matched = logs.filter(({ entry }) => !filter || [stages[entry.code], JSON.stringify(entry)].join(' ').toLowerCase().includes(filter));
-  $('log-count').textContent = matched.length;
-  $('log-list').replaceChildren(...matched.map(({ entry }) => {
+  $('log-count').textContent = logs.length;
+  const box = $('log-list'), top = box.scrollTop;
+  box.replaceChildren(...logs.map(({ entry, display }) => {
     const row = element('div', `log-line ${entry.level ?? 'info'}`), body = element('div');
-    row.append(element('time', '', time(entry.time))); body.append(element('strong', '', stages[entry.code] ?? entry.code));
+    row.append(element('time', '', time(entry.time, true))); body.append(element('strong', '', display?.title ?? entry.label ?? entry.code));
     if (entry.preview !== undefined) body.append(element('p', 'log-preview', entry.preview));
-    body.append(element('div', 'log-meta', logMeta(entry))); row.append(body); return row;
+    if (display?.meta) body.append(element('div', 'log-meta', display.meta)); row.append(body); return row;
   }));
-  if (!matched.length) $('log-list').append(element('p', 'empty', '暂无匹配日志（仅显示本次启动的最近 500 条）'));
-  if ($('follow').checked) $('log-list').scrollTop = $('log-list').scrollHeight;
-  $('recent-events').replaceChildren(...logs.slice(-6).reverse().map(({ entry }) => {
-    const row = element('div', 'activity'), body = element('div');
-    body.append(element('div', '', stages[entry.code] ?? entry.code), element('p', '', entry.preview ?? logMeta({ ...entry, turn: undefined })));
-    row.append(element('span', 'dot'), body, element('time', '', time(entry.time))); return row;
-  }));
-  if (!logs.length) $('recent-events').append(element('p', 'empty', '等待小狼的第一条动态'));
+  if (!logs.length) box.append(element('p', 'empty', '暂无日志'));
+  $('log-older').disabled = logBusy || !logBefore;
+  $('log-latest').hidden = !logHistory;
+  box.scrollTop = !logHistory && $('follow').checked ? box.scrollHeight : top;
+}
+function resetLogs() {
+  logVersion++; logs = []; cursor = 0; logBefore = null; logHistory = false; renderLogs(); refreshLogs();
+}
+async function refreshLogs(older = false) {
+  if (logBusy || logHistory && !older) return;
+  logBusy = true; const version = logVersion;
+  const box = $('log-list'), height = box.scrollHeight, top = box.scrollTop;
+  let more = false;
+  try {
+    const query = new URLSearchParams({ limit: '200', q: $('log-filter').value.trim() });
+    if (older && logBefore) query.set('before', logBefore); else if (cursor) query.set('after', cursor);
+    let page = await get(`/api/logs?${query}`);
+    if (version !== logVersion) return;
+    if (logGeneration && logGeneration !== page.generation || page.reset) {
+      logs = []; cursor = 0; logBefore = null; logHistory = false;
+      query.delete('after'); query.delete('before'); page = await get(`/api/logs?${query}`);
+      if (version !== logVersion) return;
+    }
+    logGeneration = page.generation;
+    const initial = !logs.length, merged = new Map(logs.map(item => [item.seq, item]));
+    for (const item of page.items) merged.set(item.seq, item);
+    const ordered = [...merged.values()].sort((a,b) => a.seq - b.seq);
+    logs = older ? ordered.slice(0, 500) : ordered.slice(-500);
+    if (older || initial) logBefore = page.before;
+    else if (logBefore !== null || ordered.length > 500) logBefore = logs[0]?.seq ?? null;
+    if (older) logHistory = true; else { cursor = page.cursor; more = page.hasMore; }
+    $('log-status').textContent = page.degraded ? '部分日志未能保存' : page.persistent ? '' : '临时记录';
+    renderLogs();
+    if (older) box.scrollTop = top + box.scrollHeight - height;
+  } catch (error) {
+    if (version === logVersion) $('log-status').textContent = error.message === 'HTTP 503' ? '日志服务未启用' : '日志读取失败';
+  } finally {
+    logBusy = false; $('log-older').disabled = !logBefore;
+    if (version !== logVersion || more) queueMicrotask(() => refreshLogs());
+  }
 }
 function detailSection(title, text, className = '') {
   const section = element('section', 'detail-section'); section.append(element('h3', '', title), element('div', `bubble ${className}`, text)); return section;
@@ -246,15 +241,16 @@ async function openDetail(id) {
 }
 $('close-detail').addEventListener('click', () => { selected = undefined; $('detail').close(); });
 $('detail').addEventListener('close', () => { selected = undefined; });
-$('log-filter').addEventListener('input', renderLogs);
-$('clear-filter').addEventListener('click', () => { $('log-filter').value = ''; renderLogs(); });
+let logSearchTimer;
+$('log-filter').addEventListener('input', () => { clearTimeout(logSearchTimer); logSearchTimer = setTimeout(resetLogs, 250); });
+$('clear-filter').addEventListener('click', () => { clearTimeout(logSearchTimer); $('log-filter').value = ''; resetLogs(); });
+$('log-older').addEventListener('click', () => refreshLogs(true));
+$('log-latest').addEventListener('click', resetLogs);
 $('follow').addEventListener('change', renderLogs);
 async function poll() {
   if (busy) return; busy = true;
   try {
-    const [status, initialPage] = await Promise.all([get('/api/status'), get(`/api/logs?after=${cursor}`)]);
-    let page = initialPage;
-    if (runStarted !== undefined && runStarted !== status.started) { logs = []; page = await get('/api/logs?after=0'); }
+    const status = await get('/api/status');
     if (runStarted !== undefined && runStarted !== status.started) {
       settings = undefined; dirtyForms.clear(); await loadSettings(); await loadPanel();
     }
@@ -262,9 +258,7 @@ async function poll() {
     runStarted = status.started;
     renderStatus(status);
     if (!$('overview').hidden) await Promise.all([refreshSystem(), refreshHome()]);
-    if (page.reset) logs = [];
-    if (page.items.length || page.reset) { logs = [...logs, ...page.items].slice(-500); renderLogs(); }
-    cursor = page.cursor;
+    if (!$('logs').hidden && !logHistory) refreshLogs();
     notice('');
     if (!$('chats').hidden) await refreshChats();
     if (!$('tooling').hidden) await refreshTools();
@@ -830,7 +824,7 @@ $('conversation-name-form').addEventListener('submit', async event => {
 async function eraseStoredData(input) {
   if (!settings) await loadSettings();
   const result = await settingsRequest('/api/data/delete', input);
-  logs = []; cursor = 0; selected = undefined; renderLogs(); $('detail').close();
+  logVersion++; logs = []; cursor = 0; logBefore = null; logHistory = false; selected = undefined; renderLogs(); $('detail').close();
   return result;
 }
 async function resetChatsAfterDelete() {

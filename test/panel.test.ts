@@ -56,7 +56,7 @@ test('read-only history projections paginate, filter failures, and expose only c
   assert.equal(reader.detail('missing'), undefined);
 });
 
-test('inspection status and bounded sanitized logs reflect lifecycle, reject stale cursors and resist mutation', async t => {
+test('inspection status and compatibility log queries reflect lifecycle and resist mutation', async t => {
   let connection = 'connected';
   const adapter = Object.assign(new FakeAdapter(), { connectionStatus: () => connection });
   const app = await createApp(config(), { adapter, model: new FakeModel(), secrets: ['secret-value'] });
@@ -68,14 +68,15 @@ test('inspection status and bounded sanitized logs reflect lifecycle, reject sta
   connection = 'disconnected';
   assert.equal(inspection.status().connection, 'disconnected');
   for (let i = 0; i < 600; i++) emitLog(app.ctx, { code: 'test', preview: 'secret-value', step: i });
-  const page = inspection.logs(1);
+  const page = app.ctx.processLogs.query({ after: 1, limit: 500 });
   assert.equal(page.items.length, 500);
-  assert.equal(page.reset, true);
+  assert.equal(page.reset, false);
+  assert.equal(page.hasMore, true);
   assert.ok(!JSON.stringify(page).includes('secret-value'));
   page.items[0]!.entry.preview = 'mutated';
   assert.ok(!JSON.stringify(inspection.logs()).includes('mutated'));
-  assert.equal(inspection.logs(page.cursor).items.length, 0);
-  assert.equal(inspection.logs(page.cursor + 1).reset, true);
+  assert.equal(inspection.logs(inspection.logs().cursor).items.length, 0);
+  assert.equal(inspection.logs(inspection.logs().cursor + 1).reset, true);
   assert.throws(() => inspection.logs(-1));
 });
 

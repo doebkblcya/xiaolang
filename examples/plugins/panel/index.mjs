@@ -142,7 +142,12 @@ export function createHandler(inspection, configuration, options = {}) {
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
         before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
       if (url.pathname === '/api/tools') return send(200, { items: options.tools?.list() ?? [], mcp: options.mcp?.status() ?? [], skills: options.skills?.status() ?? [] });
-      if (url.pathname === '/api/logs') return send(200, inspection.logs(integer(url.searchParams.get('after'), 0)));
+      if (url.pathname === '/api/logs') {
+        const after = integer(url.searchParams.get('after'), undefined), before = integer(url.searchParams.get('before'), undefined);
+        const limit = integer(url.searchParams.get('limit'), 200), q = url.searchParams.get('q') ?? '';
+        if (after !== undefined && after < 0 || before !== undefined && before < 1 || after !== undefined && before !== undefined || limit < 1 || limit > 500 || q.length > 200) throw new Error('invalid_log_query');
+        return options.logs ? send(200, options.logs.query({ after, before, limit, q })) : send(503, { error: 'logging_unavailable' });
+      }
       if (url.pathname === '/api/turns') {
         const limit = integer(url.searchParams.get('limit'), 25, 100);
         const before = integer(url.searchParams.get('before'), undefined);
@@ -180,8 +185,8 @@ export function createHandler(inspection, configuration, options = {}) {
       if (['plugin_required', 'plugin_not_configurable'].includes(failure)) return send(409, { error: failure });
       if (failure === 'invalid_plugin_config') return send(400, { error: failure });
       if (failure === 'body_too_large') return send(413, { error: failure });
-      return send(error.message === 'invalid_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' || error.code === 'invalid_usage_query' ? 400 : 500,
-        { error: error.message === 'invalid_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' || error.code === 'invalid_usage_query' ? 'invalid_query' : 'panel_query_failed' });
+      return send(error.message === 'invalid_query' || error.message === 'invalid_log_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' || error.code === 'invalid_usage_query' ? 400 : 500,
+        { error: error.message === 'invalid_query' || error.message === 'invalid_log_query' || error.message === 'invalid_log_cursor' || error.code === 'invalid_history_query' || error.code === 'invalid_usage_query' ? 'invalid_query' : 'panel_query_failed' });
     }
   };
   handler.close = () => access?.close();
@@ -194,7 +199,7 @@ export async function apply(ctx, config = {}) {
   if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
-  const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels,
+  const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'),
     persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   const listeners = [{ server, handler, port, host }];
@@ -203,7 +208,7 @@ export async function apply(ctx, config = {}) {
     if (!auth || !tls || !lan || !['127.0.0.1', '0.0.0.0'].includes(lan.host ?? '0.0.0.0')
       || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
       || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
-    const lanHandler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels,
+    const lanHandler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'),
       persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
     listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
   }

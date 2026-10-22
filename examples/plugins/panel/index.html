@@ -29,7 +29,6 @@
         <article class="card"><span>本次运行</span><strong id="uptime">—</strong><small id="memory">内存 —</small></article>
       </div>
       <div class="overview-grid">
-        <article class="panel" hidden><div class="panel-title"><h2>最近动态</h2><button class="link" data-view="logs">查看日志 →</button></div><div id="recent-events" class="recent-events"><p class="empty">暂无动态</p></div></article>
         <article class="panel runtime-summary"><h2>运行状态</h2><dl class="summary"><div><dt>应用状态</dt><dd id="app-state">—</dd></div><div><dt>异常轮次</dt><dd id="failures">—</dd></div><div><dt>启用插件</dt><dd id="plugin-count">—</dd></div><div><dt>最近收到消息</dt><dd id="last-message">—</dd></div></dl></article>
       </div>
       <div class="overview-grid system-grid">
@@ -88,7 +87,7 @@
     <section id="logs" class="view" hidden>
       <article class="panel"><div class="panel-title"><div><h2>过程日志 <span id="log-count" class="count">0</span></h2></div><label class="filter"><input id="follow" type="checkbox" checked>跟随最新</label></div>
         <div class="log-toolbar"><input id="log-filter" type="search" placeholder="搜索日志" aria-label="筛选日志"><button id="clear-filter" class="secondary">清除</button></div>
-        <div id="log-list" class="log-list" aria-label="过程日志"><p class="empty">暂无过程日志</p></div>
+        <div id="log-list" class="log-list" aria-label="过程日志"><p class="empty">暂无日志</p></div><div class="pagination"><button id="log-older" class="secondary" disabled>更早</button><span id="log-status" class="muted" role="status"></span><button id="log-latest" class="secondary" hidden>最新</button></div>
       </article>
     </section>
     <section id="memories" class="view" hidden>

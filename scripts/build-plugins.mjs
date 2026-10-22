@@ -78,7 +78,7 @@ export const apply = (ctx, settings) => {
   await writeFile(join(directory, 'index.mjs'), code + '\nexport const xiaolangApiVersion = 1;\n' + (panel ? `export const xiaolangPanel = ${JSON.stringify(panel)};\n` : '') + (schema ? `export const xiaolangConfig = ${JSON.stringify(schema)};\n` : ''));
   await writeFile(join(directory, 'xiaolang.plugin.json'), JSON.stringify({ id, apiVersion: 1, dependencies, ...(panel ? { panel } : {}), ...(schema ? { configSchema: schema } : {}), ...(cleanup ? { cleanup } : {}) }, null, 2) + '\n');
 }
-for (const id of ['panel', 'console-logger', 'hello']) await cp(`examples/plugins/${id}`, join(target, id), { recursive: true });
+for (const id of ['panel', 'hello']) await cp(`examples/plugins/${id}`, join(target, id), { recursive: true });
 // The image contains only the transitive host graph; feature code is delivered separately.
 await graph('main.js', resolve('dist/host/src'));
 await graph('plugin-api.js', resolve('dist/host/src'));

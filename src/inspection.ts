@@ -1,6 +1,6 @@
 import type { Plugin } from 'cordis';
 import type { Config } from './config.js';
-import type { ConversationView, LogItem, PluginInfo } from './contracts.js';
+import type { ConversationView, PluginInfo } from './contracts.js';
 
 export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => PluginInfo[] }> = {
   name: 'xiaolang-inspection', inject: ['historyReader', 'usage'],
@@ -9,15 +9,11 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
     const started = Date.now();
     let state = 'starting';
     let lastMessage: string | undefined;
-    let cursor = 0;
-    const buffer: LogItem[] = [];
     ctx.on('xiaolang/logged', entry => {
       if (entry.code === 'application_ready') state = 'ready';
       if (entry.code === 'application_stopping') state = 'stopping';
       if (entry.code === 'application_failed') state = 'failed';
       if (entry.code === 'message_received') lastMessage = entry.time;
-      buffer.push({ seq: ++cursor, entry: structuredClone(entry) });
-      if (buffer.length > 500) buffer.shift();
     });
     const nameConversation = async (item: ConversationView) => {
       const adapter = ctx.get('adapter');
@@ -33,7 +29,7 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
       deleteData: async input => {
         await ctx.get('trigger')?.clear?.();
         const result = ctx.historyReader.deleteData(input);
-        buffer.length = 0; cursor = 0;
+        ctx.get('processLogs')?.invalidate();
         return result;
       },
       status() {
@@ -57,10 +53,11 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
       renameConversation: (id, alias, version) => ctx.historyReader.renameConversation(id, alias, version),
       recent: (limit, before, failures) => ctx.historyReader.recent(limit, before, failures),
       detail: id => ctx.historyReader.detail(id),
+      // Compatibility for callers migrating to the owning log service.
       logs(after = 0) {
-        if (!Number.isSafeInteger(after) || after < 0) throw new Error('invalid_log_cursor');
-        const reset = after > cursor || (buffer.length > 0 && after > 0 && after < buffer[0]!.seq - 1);
-        return { items: structuredClone(buffer.filter(item => reset || item.seq > after)), cursor, reset };
+        const journal = ctx.get('processLogs');
+        if (!journal) throw new Error('logging_unavailable');
+        return journal.query({ after, limit: 500 });
       },
     });
   },
