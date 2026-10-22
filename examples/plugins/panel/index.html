@@ -15,7 +15,7 @@
     <div class="sidebar-bottom"><button id="logout" type="button" class="link" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H5v14h4m5-14 7 7-7 7m-5-7h12"/></svg>退出访问</button></div>
   </aside>
   <main>
-    <header class="page-header"><h1 id="page-title">主页</h1><span id="connection" class="badge neutral">连接中</span></header>
+    <header class="page-header"><h1 id="page-title">主页</h1></header>
     <div id="notice" class="notice" role="status" hidden></div>
     <div id="settings-banner" class="settings-banner" hidden><span id="settings-banner-text">配置已保存，应用后生效。</span><button id="apply-settings" class="primary" type="button">应用配置并重启</button></div>
     <section id="overview" class="view">
@@ -35,7 +35,7 @@
       </div>
       <div class="overview-grid system-grid">
         <article class="panel"><h2>宿主机</h2><dl class="summary"><div><dt>处理器</dt><dd id="host-cpu">—</dd></div><div><dt>逻辑核心</dt><dd id="host-cores">—</dd></div><div><dt>总内存</dt><dd id="host-memory">—</dd></div><div><dt>系统 / 架构</dt><dd id="host-system">—</dd></div></dl></article>
-        <article class="panel"><h2>小狼进程</h2><div class="resource-meter"><span id="process-memory">—</span><span id="process-memory-ratio">—</span><progress id="process-memory-bar" max="100" value="0" aria-label="小狼占总内存比例"></progress></div><dl class="summary"><div><dt>CPU 占用</dt><dd id="process-cpu">—</dd></div><div><dt>堆内存</dt><dd id="process-heap">—</dd></div><div><dt>Node.js</dt><dd id="process-node">—</dd></div><div id="container-limit-row" hidden><dt>容器内存上限</dt><dd id="container-limit">—</dd></div></dl></article>
+        <article class="panel"><h2>进程</h2><dl class="summary"><div><dt>内存</dt><dd id="process-memory">—</dd></div><div><dt>CPU 占用</dt><dd id="process-cpu">—</dd></div><div><dt>堆内存</dt><dd id="process-heap">—</dd></div><div><dt>Node.js</dt><dd id="process-node">—</dd></div><div id="container-limit-row" hidden><dt>容器内存上限</dt><dd id="container-limit">—</dd></div></dl></article>
       </div>
     </section>
     <section id="usage" class="view" hidden>
@@ -181,7 +181,6 @@
         <div class="form-footer"><p id="trigger-settings-message" role="status" class="muted">保存后应用配置生效。</p><div class="form-actions"><button class="secondary" type="button" data-reload-settings="trigger">重置</button><button class="primary" type="submit">保存</button></div></div>
       </form>
     </section>
-    <footer><span>北京时间</span><span>同步 <time id="synced">—</time></span></footer>
   </main>
   <dialog id="detail"><div class="dialog-head"><div><h2 id="detail-title">处理记录</h2></div><button id="close-detail" class="secondary" aria-label="关闭详情">关闭</button></div><div id="detail-body"></div></dialog>
   <dialog id="plugin-detail"><div class="dialog-head"><div><h2 id="plugin-title">插件</h2></div><button id="close-plugin" class="secondary" aria-label="关闭插件详情">关闭</button></div><div id="plugin-detail-body"></div></dialog>

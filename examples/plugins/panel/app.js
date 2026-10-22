@@ -91,9 +91,8 @@ async function refreshSystem() {
     const data = await get('/api/panel/system');
     $('host-cpu').textContent = data.machine.cpuModel; $('host-cores').textContent = data.machine.logicalCpus;
     $('host-memory').textContent = bytes(data.machine.memoryTotal); $('host-system').textContent = `${data.machine.platform} / ${data.machine.arch}`;
-    $('process-memory').textContent = `${bytes(data.process.memoryBytes)} / ${bytes(data.machine.memoryTotal)}`;
-    $('process-memory-ratio').textContent = `${data.process.memoryPercent.toFixed(2)}%`;
-    $('process-memory-bar').value = data.process.memoryPercent; $('process-cpu').textContent = `${data.process.cpuPercent.toFixed(2)}%`;
+    $('process-memory').textContent = bytes(data.process.memoryBytes);
+    $('process-cpu').textContent = `${data.process.cpuPercent.toFixed(2)}%`;
     $('process-cpu').title = '相对于全部逻辑核心'; $('process-heap').textContent = bytes(data.process.heapBytes); $('process-node').textContent = data.process.nodeVersion;
     $('container-limit-row').hidden = !data.container.memoryLimit; $('container-limit').textContent = data.container.memoryLimit ? bytes(data.container.memoryLimit) : '—';
   } catch { $('process-memory').textContent = '暂时无法读取'; }
@@ -242,12 +241,12 @@ async function poll() {
     if (page.reset) logs = [];
     if (page.items.length || page.reset) { logs = [...logs, ...page.items].slice(-500); renderLogs(); }
     cursor = page.cursor;
-    $('connection').textContent = '面板在线'; $('connection').className = 'badge good'; $('synced').textContent = time(Date.now()); notice('');
+    notice('');
     if (!$('chats').hidden) await refreshChats();
     if (!$('tooling').hidden) await refreshTools();
     if (!$('reminders').hidden) await refreshReminders();
     if (!$('usage').hidden && Date.now() - usageUpdated > 10000) await refreshUsage(false);
-  } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('连接中断，显示上次数据。'); }
+  } catch { notice('连接中断，显示上次数据。'); }
   finally { busy = false; }
 }
 
