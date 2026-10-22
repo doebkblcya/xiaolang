@@ -86,7 +86,7 @@
     </section>
     <section id="logs" class="view" hidden>
       <article class="panel"><div class="panel-title"><div><h2>过程日志 <span id="log-count" class="count">0</span></h2></div><label class="filter"><input id="follow" type="checkbox" checked>跟随最新</label></div>
-        <div class="log-toolbar"><input id="log-filter" type="search" placeholder="搜索日志" aria-label="筛选日志"><button id="clear-filter" class="secondary">清除</button></div>
+        <div class="log-toolbar"><input id="log-filter" type="search" placeholder="搜索日志" aria-label="筛选日志"><select id="log-event" aria-label="事件"><option value="">全部事件</option></select><select id="log-level" aria-label="级别"><option value="">全部级别</option><option value="info">信息</option><option value="warn">警告</option><option value="error">错误</option></select><button id="clear-filter" class="secondary">清除</button></div>
         <div id="log-list" class="log-list" aria-label="过程日志"><p class="empty">暂无日志</p></div><div class="pagination"><button id="log-older" class="secondary" disabled>更早</button><span id="log-status" class="muted" role="status"></span><button id="log-latest" class="secondary" hidden>最新</button></div>
       </article>
     </section>

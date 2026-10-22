@@ -6,7 +6,7 @@ import type { Log, LogItem } from './contracts.js';
 import { presentLog } from './log-format.js';
 import { Failure } from './errors.js';
 
-export interface LogQuery { after?: number; before?: number; limit?: number; q?: string }
+export interface LogQuery { after?: number; before?: number; limit?: number; q?: string; event?: string; level?: string }
 /** Owns the bounded log archive; no application service depends on successful writes. */
 export class LogJournal {
   private db?: DatabaseSync;
@@ -25,7 +25,8 @@ export class LogJournal {
         CREATE TABLE IF NOT EXISTS process_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,recorded INTEGER NOT NULL,body TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS process_logs_recorded ON process_logs(recorded);
         CREATE INDEX IF NOT EXISTS process_logs_message ON process_logs(json_extract(body,'$.messageId'));
-        CREATE INDEX IF NOT EXISTS process_logs_turn ON process_logs(json_extract(body,'$.turn'));`);
+        CREATE INDEX IF NOT EXISTS process_logs_turn ON process_logs(json_extract(body,'$.turn'));
+        CREATE INDEX IF NOT EXISTS process_logs_event ON process_logs(json_extract(body,'$.code'));`);
       this.seq = Number(this.db.prepare("SELECT seq FROM sqlite_sequence WHERE name='process_logs'").get()?.seq ?? 0);
       this.prune();
     } catch { this.db?.close(); this.db = undefined; this.failed(); }
@@ -49,21 +50,36 @@ export class LogJournal {
   }
   invalidate() { this.recent = []; if (!this.persistent) this.db?.exec('DELETE FROM process_logs'); this.generation = randomUUID(); }
   close() { this.db?.close(); this.db = undefined; }
+  events() {
+    if (this.db) {
+      const events = this.db.prepare(`SELECT json_extract(p.body,'$.code') code,json_extract(p.body,'$.label') label,c.n count
+        FROM (SELECT COUNT(*) n,MAX(id) latest FROM process_logs GROUP BY json_extract(body,'$.code')) c
+        JOIN process_logs p ON p.id=c.latest ORDER BY code`).all();
+      return { events, total: events.length };
+    }
+    const events = new Map<string, { code: string; label: string; count: number }>();
+    for (const { entry } of this.recent) { const previous = events.get(entry.code); events.set(entry.code, { code: entry.code, label: entry.label ?? entry.code, count: (previous?.count ?? 0) + 1 }); }
+    return { events: [...events.values()].sort((a, b) => a.code.localeCompare(b.code)), total: events.size };
+  }
   query(query: LogQuery = {}) {
-    const { after, before } = query, limit = query.limit ?? 200, q = query.q?.trim() ?? '';
+    const { after, before } = query, limit = query.limit ?? 200, q = query.q?.trim() ?? '', event = query.event ?? '', level = query.level ?? '';
     if ((after !== undefined && (!Number.isSafeInteger(after) || after < 0))
       || (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) || (after !== undefined && before !== undefined)
-      || !Number.isSafeInteger(limit) || limit < 1 || limit > 500 || typeof q !== 'string' || q.length > 200) throw new Failure('invalid_log_query');
+      || !Number.isSafeInteger(limit) || limit < 1 || limit > 500 || typeof q !== 'string' || q.length > 200 || typeof event !== 'string' || event.length > 100
+      || !['', 'info', 'warn', 'error'].includes(level)) throw new Failure('invalid_log_query');
+    const where = "instr(lower(body),lower(?))>0 AND (?='' OR json_extract(body,'$.code')=?) AND (?='' OR json_extract(body,'$.level')=?)";
+    const args = [q, event, event, level, level];
+    const matches = (item: LogItem) => (!event || item.entry.code === event) && (!level || item.entry.level === level) && JSON.stringify(item.entry).toLowerCase().includes(q.toLowerCase());
     const first = this.db ? Number(this.db.prepare('SELECT MIN(id) n FROM process_logs').get()?.n ?? 0) : this.recent[0]?.seq ?? 0;
     const reset = after !== undefined && (after > this.seq || (first > 0 && after > 0 && after < first - 1));
     const incremental = after !== undefined && after > 0 && !reset;
     let items: LogItem[];
     if (this.db) {
-      const rows = this.db.prepare(`SELECT id,body FROM process_logs WHERE instr(lower(body),lower(?))>0 AND id${incremental ? '>' : '<'}? ORDER BY id ${incremental ? 'ASC' : 'DESC'} LIMIT ?`)
-        .all(q, incremental ? after! : before ?? Number.MAX_SAFE_INTEGER, limit + 1);
+      const rows = this.db.prepare(`SELECT id,body FROM process_logs WHERE ${where} AND id${incremental ? '>' : '<'}? ORDER BY id ${incremental ? 'ASC' : 'DESC'} LIMIT ?`)
+        .all(...args, incremental ? after! : before ?? Number.MAX_SAFE_INTEGER, limit + 1);
       items = rows.map(row => ({ seq: Number(row.id), entry: JSON.parse(String(row.body)) as Log }));
     } else {
-      items = this.recent.filter(item => JSON.stringify(item.entry).toLowerCase().includes(q.toLowerCase()) && (incremental ? item.seq > after! : item.seq < (before ?? Infinity)));
+      items = this.recent.filter(item => matches(item) && (incremental ? item.seq > after! : item.seq < (before ?? Infinity)));
       if (!incremental) items.reverse();
     }
     const more = items.length > limit;
@@ -71,8 +87,8 @@ export class LogJournal {
     const cursor = incremental && more ? items.at(-1)?.seq ?? after! : this.seq;
     const oldest = items[0]?.seq;
     const older = oldest !== undefined && (this.db
-      ? !!this.db.prepare('SELECT 1 FROM process_logs WHERE id<? AND instr(lower(body),lower(?))>0 LIMIT 1').get(oldest, q)
-      : this.recent.some(item => item.seq < oldest && JSON.stringify(item.entry).toLowerCase().includes(q.toLowerCase())));
+      ? !!this.db.prepare(`SELECT 1 FROM process_logs WHERE ${where} AND id<? LIMIT 1`).get(...args, oldest)
+      : this.recent.some(item => item.seq < oldest && matches(item)));
     return { items: items.map(item => ({ ...structuredClone(item), display: presentLog(item.entry) })), cursor, reset, generation: this.generation,
       before: older ? oldest : null, hasMore: incremental && more, persistent: !!this.db && this.persistent, degraded: this.degraded };
   }

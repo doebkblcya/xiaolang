@@ -149,11 +149,13 @@ export function createHandler(runtime, configuration, options = {}) {
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
         before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
       if (url.pathname === '/api/tools') return send(200, { items: options.tools?.list() ?? [], mcp: options.mcp?.status() ?? [], skills: options.skills?.status() ?? [] });
+      if (url.pathname === '/api/logs/events') return options.logs ? send(200, options.logs.events()) : send(503, { error: 'logging_unavailable' });
       if (url.pathname === '/api/logs') {
         const after = integer(url.searchParams.get('after'), undefined), before = integer(url.searchParams.get('before'), undefined);
         const limit = integer(url.searchParams.get('limit'), 200), q = url.searchParams.get('q') ?? '';
-        if (after !== undefined && after < 0 || before !== undefined && before < 1 || after !== undefined && before !== undefined || limit < 1 || limit > 500 || q.length > 200) throw new Error('invalid_log_query');
-        return options.logs ? send(200, options.logs.query({ after, before, limit, q })) : send(503, { error: 'logging_unavailable' });
+        const event = url.searchParams.get('event') ?? '', level = url.searchParams.get('level') ?? '';
+        if (after !== undefined && after < 0 || before !== undefined && before < 1 || after !== undefined && before !== undefined || limit < 1 || limit > 500 || q.length > 200 || event.length > 100 || !['', 'info', 'warn', 'error'].includes(level)) throw new Error('invalid_log_query');
+        return options.logs ? send(200, options.logs.query({ after, before, limit, q, event, level })) : send(503, { error: 'logging_unavailable' });
       }
       if (url.pathname === '/api/turns') {
         const limit = integer(url.searchParams.get('limit'), 25, 100);

@@ -169,6 +169,22 @@ function renderLogs() {
   $('log-latest').hidden = !logHistory;
   box.scrollTop = !logHistory && $('follow').checked ? box.scrollHeight : top;
 }
+let logEventsBusy = false, logEventsUpdated = 0;
+async function refreshLogEvents() {
+  if (logEventsBusy || Date.now() - logEventsUpdated < 10000) return;
+  logEventsBusy = true;
+  try {
+    const data = await get('/api/logs/events'), select = $('log-event'), selected = select.value;
+    const options = [element('option', '', `全部事件（${data.total}）`)]; options[0].value = '';
+    const labels = new Map(); for (const item of data.events) labels.set(item.label ?? item.code, (labels.get(item.label ?? item.code) ?? 0) + 1);
+    for (const item of data.events) { const label = item.label ?? item.code; const option = element('option', '', labels.get(label) > 1 ? `${label} · ${item.code}` : label); option.value = item.code; options.push(option); }
+    if (selected && !data.events.some(item => item.code === selected)) { const option = element('option', '', select.selectedOptions[0]?.textContent ?? selected); option.value = selected; options.push(option); }
+    const snapshot = JSON.stringify(options.map(option => [option.value, option.textContent]));
+    if (select.dataset.snapshot !== snapshot) { select.replaceChildren(...options); select.value = selected; select.dataset.snapshot = snapshot; }
+    logEventsUpdated = Date.now();
+  } catch { /* Keep the current selection; log reads have their own error state. */ }
+  finally { logEventsBusy = false; }
+}
 function resetLogs() {
   logVersion++; logs = []; cursor = 0; logBefore = null; logHistory = false; renderLogs(); refreshLogs();
 }
@@ -178,7 +194,8 @@ async function refreshLogs(older = false) {
   const box = $('log-list'), height = box.scrollHeight, top = box.scrollTop;
   let more = false;
   try {
-    const query = new URLSearchParams({ limit: '200', q: $('log-filter').value.trim() });
+    const query = new URLSearchParams({ limit: '200', q: $('log-filter').value.trim(), event: $('log-event').value, level: $('log-level').value });
+    refreshLogEvents();
     if (older && logBefore) query.set('before', logBefore); else if (cursor) query.set('after', cursor);
     let page = await get(`/api/logs?${query}`);
     if (version !== logVersion) return;
@@ -237,14 +254,16 @@ async function openDetail(id) {
       ].join('\n') : '这轮没有用量记录（更新前的调用无法补算）。'));
     } catch { /* Usage may be unavailable on an older server. */ }
     const button = element('button', 'secondary detail-log-button', '查看这一轮的过程日志');
-    button.addEventListener('click', () => { $('detail').close(); selected = undefined; $('log-filter').value = detail.id; showView('logs'); }); body.append(button);
+    button.addEventListener('click', () => { $('detail').close(); selected = undefined; $('log-filter').value = detail.id; $('log-event').value = ''; $('log-level').value = ''; resetLogs(); showView('logs'); }); body.append(button);
   } catch { $('detail-body').replaceChildren(element('p', 'error-box', '暂时无法读取详情，请关闭后重试。')); }
 }
 $('close-detail').addEventListener('click', () => { selected = undefined; $('detail').close(); });
 $('detail').addEventListener('close', () => { selected = undefined; });
 let logSearchTimer;
 $('log-filter').addEventListener('input', () => { clearTimeout(logSearchTimer); logSearchTimer = setTimeout(resetLogs, 250); });
-$('clear-filter').addEventListener('click', () => { clearTimeout(logSearchTimer); $('log-filter').value = ''; resetLogs(); });
+$('clear-filter').addEventListener('click', () => { clearTimeout(logSearchTimer); $('log-filter').value = ''; $('log-event').value = ''; $('log-level').value = ''; resetLogs(); });
+$('log-event').addEventListener('change', resetLogs);
+$('log-level').addEventListener('change', resetLogs);
 $('log-older').addEventListener('click', () => refreshLogs(true));
 $('log-latest').addEventListener('click', resetLogs);
 $('follow').addEventListener('change', renderLogs);
