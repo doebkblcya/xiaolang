@@ -8,7 +8,6 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
     const { config } = options;
     const started = Date.now();
     let state = 'starting';
-    let connection = 'starting';
     let lastMessage: string | undefined;
     let cursor = 0;
     const buffer: LogItem[] = [];
@@ -16,9 +15,6 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
       if (entry.code === 'application_ready') state = 'ready';
       if (entry.code === 'application_stopping') state = 'stopping';
       if (entry.code === 'application_failed') state = 'failed';
-      if (entry.code === 'qq_connected') connection = 'connected';
-      if (entry.code === 'qq_disconnected') connection = 'disconnected';
-      if (entry.code === 'qq_connection_failed' || entry.code === 'qq_connection_error') connection = 'error';
       if (entry.code === 'message_received') lastMessage = entry.time;
       buffer.push({ seq: ++cursor, entry: structuredClone(entry) });
       if (buffer.length > 500) buffer.shift();
@@ -41,7 +37,7 @@ export const inspectionPlugin: Plugin.Object<{ config: Config; plugins: () => Pl
         return result;
       },
       status() {
-        return { started, uptimeMs: Math.max(0, Date.now() - started), state, connection: ctx.get('adapter') ? connection : 'disabled', lastMessage,
+        return { started, uptimeMs: Math.max(0, Date.now() - started), state, connection: ctx.get('adapter') ? ctx.get('adapter')?.connectionStatus?.() ?? 'unknown' : 'disabled', lastMessage,
           model: config.model.name, platform: ctx.get('adapter')?.platform, chatEnabled: !!ctx.get('chat'),
           contextBudget: { unit: config.limits.contextTokens === undefined ? 'characters' : 'tokens',
             max: config.limits.contextTokens ?? config.limits.contextChars,

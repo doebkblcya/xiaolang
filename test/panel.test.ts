@@ -57,13 +57,15 @@ test('read-only history projections paginate, filter failures, and expose only c
 });
 
 test('inspection status and bounded sanitized logs reflect lifecycle, reject stale cursors and resist mutation', async t => {
-  const app = await createApp(config(), { adapter: new FakeAdapter(), model: new FakeModel(), secrets: ['secret-value'] });
+  let connection = 'connected';
+  const adapter = Object.assign(new FakeAdapter(), { connectionStatus: () => connection });
+  const app = await createApp(config(), { adapter, model: new FakeModel(), secrets: ['secret-value'] });
   t.after(() => app.stop());
   const inspection = app.ctx.inspection;
   assert.equal(inspection.status().state, 'ready');
   emitLog(app.ctx, { code: 'qq_connected' });
   assert.equal(inspection.status().connection, 'connected');
-  emitLog(app.ctx, { code: 'qq_disconnected' });
+  connection = 'disconnected';
   assert.equal(inspection.status().connection, 'disconnected');
   for (let i = 0; i < 600; i++) emitLog(app.ctx, { code: 'test', preview: 'secret-value', step: i });
   const page = inspection.logs(1);

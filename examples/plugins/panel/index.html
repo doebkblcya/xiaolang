@@ -23,9 +23,8 @@
         <div class="welcome-copy"><time id="today-date" class="welcome-date"></time><h2 id="hero-state">连接中</h2><div class="welcome-actions"><button class="welcome-link" data-view="plugins">插件目录 <span aria-hidden="true">↗</span></button></div></div>
         <div class="welcome-portrait" aria-hidden="true"><div class="portrait-halo"></div><img src="/assets/xiaolang-halfbody-v1.webp" alt="" width="1086" height="1448" fetchpriority="high"></div>
       </article>
-      <div class="cards">
-        <article class="card"><span>QQ 连接</span><strong id="qq-state">—</strong><small id="platform">等待状态</small><button class="link card-link" data-open-plugin="xiaolang-adapter">配置连接 →</button></article>
-        <article class="card"><span>回复模型</span><strong id="model">—</strong><small id="chat-state">等待状态</small><button class="link card-link" data-open-plugin="xiaolang-deepseek">配置模型 →</button></article>
+      <div id="home-modules" class="home-modules" hidden></div>
+      <div class="cards runtime-cards">
         <article class="card"><span>处理中 / 排队</span><strong id="pending">—</strong><small id="completed">已完成 — 轮</small></article>
         <article class="card"><span>本次运行</span><strong id="uptime">—</strong><small id="memory">内存 —</small></article>
       </div>

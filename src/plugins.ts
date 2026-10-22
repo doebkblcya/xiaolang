@@ -104,6 +104,11 @@ export async function configurePlugins(ctx: Context, settings: PluginConfig, cha
     const module = object(exports);
     if (ctx.get('configuration') && object(module?.xiaolangConfig)) ctx.configuration.registerPlugin(entry.id, module!.xiaolangConfig as Record<string, unknown>);
     if (module?.xiaolangPanel !== undefined) registerPanel(ctx.xiaolangHost.panels, entry.id, module.xiaolangPanel, resolved?.startsWith('file:') ? dirname(fileURLToPath(resolved)) : undefined);
+    const panel = ctx.xiaolangHost.panels.get(entry.id);
+    if (panel && typeof module?.xiaolangPanelHome === 'function') {
+      const read = module.xiaolangPanelHome as import('./panel.js').PanelHomeReader;
+      panel.readHome = id => read(ctx, id);
+    }
     if (module?.xiaolangApiVersion !== undefined && module.xiaolangApiVersion !== 1) return fail(ctx, 'plugin_api_incompatible', entry.id);
     const plugin: unknown = ctx.loader.unwrapExports(exports);
     const dependencies = object(plugin)?.inject ?? module?.inject;

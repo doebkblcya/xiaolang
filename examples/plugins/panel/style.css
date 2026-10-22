@@ -228,3 +228,12 @@ dialog::backdrop{background:#54402e44;backdrop-filter:blur(5px)}.dialog-head{dis
 .runtime-summary .summary dd{text-align:left;margin-top:10px;font-size:17px}
 .system-grid .summary dd{max-width:70%;overflow-wrap:anywhere}
 @media(max-width:700px){#plugin-navigation{display:flex;flex-shrink:0;gap:5px}.plugin-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.plugin-card{padding:16px;min-height:175px}.plugin-card>strong{font-size:13px}.plugin-card .badge{font-size:9px;padding:4px 8px}.plugin-card>small{font-size:9px;overflow-wrap:anywhere}.plugin-relations{grid-template-columns:1fr}.runtime-summary .summary{grid-template-columns:repeat(2,minmax(0,1fr))}.runtime-summary .summary dd{font-size:15px}}
+
+.home-modules{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;margin-bottom:24px}
+.home-module{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.home-module-title{font-size:12px;color:var(--muted)}
+.home-module-value{display:block;background:none;font-size:25px;font-weight:450;line-height:1.5;overflow-wrap:anywhere;max-width:100%;color:var(--ink)}
+.home-module-value.bad{color:#a86951}.home-module-value.good{color:#65704c}
+.home-module .card-link{margin-top:auto!important;padding-top:8px}
+.runtime-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:700px){.home-modules{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.home-module{padding:18px}.home-module-value{font-size:20px}}

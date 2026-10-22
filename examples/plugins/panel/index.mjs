@@ -133,6 +133,7 @@ export function createHandler(inspection, configuration, options = {}) {
         return send(200, await readFile(new URL(file, import.meta.url)), type);
       }
       if (url.pathname === '/api/panel') return send(200, registry.describe());
+      if (url.pathname === '/api/panel/home') return send(200, await registry.home());
       if (url.pathname === '/api/panel/system') return send(200, await system());
       const panelAsset = /^\/api\/panel\/assets\/([a-zA-Z0-9_-]{1,64})\/(.+)$/.exec(url.pathname);
       if (panelAsset) { const asset = await registry.asset(panelAsset[1], panelAsset[2]); return asset ? send(200, asset.body, asset.type) : send(404, { error: 'not_found' }); }

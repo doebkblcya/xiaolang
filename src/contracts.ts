@@ -58,6 +58,7 @@ export interface Adapter {
   capabilities: { groupMessages: 'all' | 'mentions'; maxTextChars: number; maxReplyParts?: number; nativeStreaming?: boolean };
   start(receive: (message: IncomingMessage) => void): Promise<void> | void;
   stop(): Promise<void> | void;
+  connectionStatus?(): string;
   groupName?(group: string): Promise<string | undefined>;
   streamReply?(message: Message, text: string, index: number, done: boolean, streamId: string | undefined, signal: AbortSignal): Promise<{ id: string }>;
   reply(message: Message, text: string, part: number, signal: AbortSignal): Promise<{ id: string }>;

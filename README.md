@@ -116,6 +116,8 @@ HTTPS／Key 为面板插件的部署配置，例如当前 NAS：
 
 `detail` 是插件详情中的自定义配置区；`pages` 是插件主动注册的完整页面，均可省略。仅有 `configSchema` 的简单插件继续自动生成配置表单。复杂插件可自行编写 `panel/` 下的 JavaScript 模块，导出 `mount({ root, plugin, api, signal, navigate, openPlugin })`，可返回清理函数；`api.get(path)` 和 `api.request(path, body)` 复用面板鉴权与写令牌。两个位置可以复用同一模块、同一套配置接口。完整示例见 `examples/plugins/hello/panel/config.js`。静态资源只从该插件的 `panel/` 目录读取，页面、资源和采集接口均受原有鉴权保护。
 
+主页模块同样由插件按需声明：在 `panel.home` 中添加 `{ "id": "status", "title": "模块标题", "action": "detail" }`。`action` 可省略；`detail` 打开该插件详情，也可填写此插件 `pages` 中的页面 ID。入口导出 `xiaolangPanelHome(ctx, id)`，返回 `{ value, detail?, tone? }`；其中 `value` 最长 120 字、`detail` 最长 160 字，`tone` 为 `good`、`neutral`、`waiting` 或 `bad`。声明同步放进侧车，停用时即可展示“已停用”，无需执行插件。运行值由插件直接读取自身服务的内存状态，不应发起模型请求或其他业务操作。宿主仅保存读取回调，面板统一布局、样式和跳转，默认按插件目录及声明数组顺序展示。缺失／卸载的插件没有卡片；停用不调用回调；启动失败和依赖等待显示对应状态；单模块超时（1 秒）或错误只显示“暂不可用”。
+
 官方插件也各自声明所需页面。`view` 用于复用面板已提供的官方视图；第三方插件通过 `entry` 编写自己的内容。页面 ID 带插件命名空间，未注册页面不会自动出现在侧栏。
 
 ## 故障反馈与触发

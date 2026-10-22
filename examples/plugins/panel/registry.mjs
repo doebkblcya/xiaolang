@@ -16,6 +16,30 @@ export function createPanelRegistry(inspection, registrations = new Map()) {
       }
       return { pages, details };
     },
+    async home() {
+      const modules = [];
+      for (const plugin of inspection.status().plugins) {
+        const registration = registrations.get(plugin.id);
+        for (const item of (registration?.definition ?? plugin.panel)?.home ?? []) modules.push({ plugin, item, registration });
+      }
+      return { items: await Promise.all(modules.map(async ({ plugin, item, registration }) => {
+        const card = { id: `${plugin.id}:${item.id}`, plugin: plugin.id, title: item.title, state: plugin.state,
+          ...(item.action ? { action: item.action === 'detail' ? { plugin: plugin.id } : { page: `${plugin.id}:${item.action}` } } : {}) };
+        const inactive = { disabled: '已停用', failed: '启动失败', pending: '等待依赖', stopping: '停止中' };
+        if (plugin.state !== 'active') return { ...card, value: inactive[plugin.state] ?? '启动中', tone: plugin.state === 'failed' ? 'bad' : 'neutral' };
+        let timer;
+        try {
+          if (!registration?.readHome) throw new Error('missing_home_reader');
+          const value = await Promise.race([Promise.resolve().then(() => registration.readHome(item.id)),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('home_timeout')), 1000); })]);
+          if (!value || typeof value.value !== 'string' || value.value.length > 120
+            || (value.detail !== undefined && (typeof value.detail !== 'string' || value.detail.length > 160))) throw new Error('invalid_home_value');
+          return { ...card, value: value.value, ...(value.detail ? { detail: value.detail } : {}),
+            tone: ['good', 'neutral', 'waiting', 'bad'].includes(value.tone) ? value.tone : 'neutral' };
+        } catch { return { ...card, value: '暂不可用', tone: 'neutral' }; }
+        finally { clearTimeout(timer); }
+      })) };
+    },
     async asset(id, path) {
       const registration = registrations.get(id);
       if (!registration?.directory || !/^(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+$/.test(path) || path.split('/').some(part => part.startsWith('.'))) return undefined;

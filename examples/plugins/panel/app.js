@@ -55,7 +55,7 @@ function showView(requested) {
   document.title = `小狼 · ${$('page-title').textContent}`;
   window.scrollTo(0, 0);
   if (page?.entry) mountPanelContent(page, $(view)).then(cleanup => { if (version === customPageVersion) customCleanup = cleanup; else cleanup?.(); }).catch(() => notice('页面加载失败'));
-  if (view === 'overview') refreshSystem();
+  if (view === 'overview') { refreshSystem(); refreshHome(); }
   if (view === 'chats') refreshChats();
   if (view === 'memories') refreshMemory();
   if (view === 'persona') refreshPersona();
@@ -85,6 +85,34 @@ async function loadPanel() {
     }));
   } catch { notice('插件页面加载失败'); }
 }
+let homeBusy = false;
+async function refreshHome() {
+  if (homeBusy) return;
+  homeBusy = true;
+  try {
+    const data = await get('/api/panel/home');
+    const cards = data.items.map(item => {
+      const card = element('article', 'panel home-module'); card.dataset.home = item.id;
+      card.append(element('span', 'home-module-title', item.title), element('strong', `home-module-value ${item.tone}`, item.value));
+      if (item.detail) card.append(element('small', 'muted', item.detail));
+      if (item.action) {
+        const button = element('button', 'link card-link', '配置 →'); button.type = 'button';
+        button.addEventListener('click', () => item.action.page ? showView(item.action.page) : openPlugin(item.action.plugin));
+        card.append(button);
+      }
+      return card;
+    });
+    const root = $('home-modules');
+    // Preserve focused controls while unchanged polling results arrive.
+    const snapshot = JSON.stringify(data.items);
+    if (root.dataset.snapshot !== snapshot) { root.replaceChildren(...cards); root.dataset.snapshot = snapshot; }
+    root.hidden = !cards.length;
+  } catch {
+    for (const value of document.querySelectorAll('.home-module-value')) { value.textContent = '暂不可用'; value.className = 'home-module-value neutral'; }
+    for (const detail of document.querySelectorAll('.home-module small')) detail.remove();
+    delete $('home-modules').dataset.snapshot;
+  } finally { homeBusy = false; }
+}
 function bytes(value) { return value >= 1073741824 ? `${(value / 1073741824).toFixed(1)} GB` : `${(value / 1048576).toFixed(1)} MB`; }
 async function refreshSystem() {
   try {
@@ -103,12 +131,8 @@ for (const button of document.querySelectorAll('[data-view]')) button.addEventLi
 });
 for (const button of document.querySelectorAll('[data-open-plugin]')) button.addEventListener('click', () => openPlugin(button.dataset.openPlugin));
 function renderStatus(status) {
-  $('hero-state').textContent = status.state === 'ready' && status.connection === 'connected' ? '运行正常' : status.state === 'ready' ? '等待连接' : '启动中';
+  $('hero-state').textContent = ({ ready: '运行正常', starting: '启动中', stopping: '停止中', failed: '启动失败' })[status.state] ?? '暂不可用';
   $('today-date').textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
-  $('qq-state').textContent = words[status.connection] ?? status.connection;
-  $('platform').textContent = status.platform?.includes('sandbox') ? 'QQ 官方机器人 · 沙箱环境' : status.platform === 'qq-official' ? 'QQ 官方机器人 · 正式环境' : status.platform ?? '正在启动接入';
-  $('model').textContent = status.model;
-  $('chat-state').textContent = status.chatEnabled ? '聊天链路已启用' : '聊天链路已停用';
   $('pending').textContent = `${(status.counts.running ?? 0) + (status.counts.sending ?? 0)} / ${status.counts.queued ?? 0}`;
   $('completed').textContent = `已完成 ${status.counts.completed ?? 0} 轮`;
   const seconds = Math.floor(status.uptimeMs / 1000), minutes = Math.floor(seconds / 60), hours = Math.floor(minutes / 60);
@@ -237,7 +261,7 @@ async function poll() {
     if (applying && status.state === 'ready') { await loadSettings(); if (settings && !settings.pendingRestart) { applying = false; fillSettings(settings); } }
     runStarted = status.started;
     renderStatus(status);
-    if (!$('overview').hidden) await refreshSystem();
+    if (!$('overview').hidden) await Promise.all([refreshSystem(), refreshHome()]);
     if (page.reset) logs = [];
     if (page.items.length || page.reset) { logs = [...logs, ...page.items].slice(-500); renderLogs(); }
     cursor = page.cursor;

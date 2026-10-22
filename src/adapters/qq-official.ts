@@ -47,6 +47,8 @@ export class QQOfficialAdapter implements Adapter {
   readonly capabilities: Adapter['capabilities'];
   private client: QQClient;
   private ready = false;
+  private connection = 'starting';
+  connectionStatus() { return this.connection; }
   private running?: Promise<void>;
   private cancelStart?: () => void;
   private receive?: (message: IncomingMessage) => void;
@@ -104,9 +106,9 @@ export class QQOfficialAdapter implements Adapter {
     let resolve!: () => void;
     let reject!: (reason: Failure) => void;
     const connected = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
-    const onReady = () => { this.ready = true; this.report('qq_connected'); resolve(); };
-    const onDisconnect = () => { this.ready = false; this.report('qq_disconnected'); };
-    const onError = () => { this.report('qq_connection_error'); };
+    const onReady = () => { this.ready = true; this.connection = 'connected'; this.report('qq_connected'); resolve(); };
+    const onDisconnect = () => { this.ready = false; this.connection = 'disconnected'; this.report('qq_disconnected'); };
+    const onError = () => { this.connection = 'error'; this.report('qq_connection_error'); };
     const onMessage = (_ctx: unknown, event: QQBotInboundMessage) => {
       try {
         const message = normalizeQQ(event, this.account);
@@ -121,7 +123,7 @@ export class QQOfficialAdapter implements Adapter {
       reject(new Failure('qq_stopped'));
     }, () => {
       this.ready = false;
-      this.report('qq_connection_failed');
+      this.connection = 'error'; this.report('qq_connection_failed');
       reject(new Failure('qq_connection_failed'));
     }).finally(() => {
       this.client.off('ready', onReady).off('resumed', onReady).off('disconnected', onDisconnect).off('error', onError).off('message', onMessage);
@@ -132,6 +134,7 @@ export class QQOfficialAdapter implements Adapter {
   }
   async stop(): Promise<void> {
     this.ready = false;
+    this.connection = 'disconnected';
     this.receive = undefined;
     this.cancelStart?.();
     this.client.stop();
@@ -215,4 +218,13 @@ export function apply(ctx: Context, raw: unknown): void {
 }
 
 /** Optional management-panel surfaces owned by this plugin. */
-export const xiaolangPanel = { detail: { view: 'qq-settings' }, pages: [{ id: 'qq-settings', title: 'QQ 接入', view: 'qq-settings' }] };
+export const xiaolangPanel = { home: [{ id: 'connection', title: 'QQ 连接', action: 'detail' }], detail: { view: 'qq-settings' }, pages: [{ id: 'qq-settings', title: 'QQ 接入', view: 'qq-settings' }] };
+
+export const xiaolangPanelHome: import('../panel.js').PanelHomeReader = ctx => {
+  const adapter = ctx.get('adapter');
+  if (!adapter) throw new Error('adapter_unavailable');
+  const state = adapter.connectionStatus?.() ?? 'unknown';
+  const values: Record<string, string> = { connected: '已连接', disconnected: '已断开', starting: '连接中', error: '连接异常', unknown: '暂不可用' };
+  return { value: values[state] ?? '暂不可用', detail: adapter.platform === 'qq-official-sandbox' ? '沙箱环境' : '正式环境',
+    tone: state === 'connected' ? 'good' : state === 'error' ? 'bad' : 'neutral' };
+};

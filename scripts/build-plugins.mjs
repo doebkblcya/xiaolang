@@ -73,6 +73,7 @@ export const apply = (ctx, settings) => {
   if (cleanup) await graph(id.replace('xiaolang-','') + '-cleanup.js', join(directory, 'impl'), true);
   const owner = await import(new URL('../dist/src/' + entry, import.meta.url));
   const panel = owner.xiaolangPanel;
+  if (typeof owner.xiaolangPanelHome === 'function') code += `\nexport { xiaolangPanelHome } from './impl/${entry}';\n`;
   const dependencies = id === 'xiaolang-adapter' ? [] : id === 'xiaolang-deepseek' ? ['xiaolangHost'] : [...(owner[exported]?.inject ?? []), 'xiaolangHost'];
   await writeFile(join(directory, 'index.mjs'), code + '\nexport const xiaolangApiVersion = 1;\n' + (panel ? `export const xiaolangPanel = ${JSON.stringify(panel)};\n` : '') + (schema ? `export const xiaolangConfig = ${JSON.stringify(schema)};\n` : ''));
   await writeFile(join(directory, 'xiaolang.plugin.json'), JSON.stringify({ id, apiVersion: 1, dependencies, ...(panel ? { panel } : {}), ...(schema ? { configSchema: schema } : {}), ...(cleanup ? { cleanup } : {}) }, null, 2) + '\n');

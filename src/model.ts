@@ -1,3 +1,4 @@
+import type { Context } from 'cordis';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Config } from './config.js';
 import type { Model, ModelMessage, ModelOptions, ToolCall, ToolSchema } from './contracts.js';
@@ -8,6 +9,7 @@ import type { UsageMeter } from './usage.js';
 
 export class DeepSeekModel implements Model {
   constructor(private config: Config['model'], private apiKey: string, private fetcher: typeof fetch = fetch, private meter?: UsageMeter) {}
+  panelHome(ctx: Context) { return { value: this.config.name, detail: ctx.get('chat') ? '聊天链路已启用' : '聊天链路已停用' }; }
   async complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage> {
     const config = { ...this.config, ...options };
     for (let attempt = 0; ; attempt++) {
@@ -162,4 +164,10 @@ export class DeepSeekModel implements Model {
 }
 
 /** Optional management-panel surfaces owned by this plugin. */
-export const xiaolangPanel = { detail: { view: 'model-settings' }, pages: [{ id: 'model-settings', title: '回复模型', view: 'model-settings' }] };
+export const xiaolangPanel = { home: [{ id: 'model', title: '回复模型', action: 'detail' }], detail: { view: 'model-settings' }, pages: [{ id: 'model-settings', title: '回复模型', view: 'model-settings' }] };
+
+export const xiaolangPanelHome: import('./panel.js').PanelHomeReader = ctx => {
+  const model = ctx.get('model') as DeepSeekModel | undefined;
+  if (typeof model?.panelHome !== 'function') throw new Error('model_unavailable');
+  return model.panelHome(ctx);
+};

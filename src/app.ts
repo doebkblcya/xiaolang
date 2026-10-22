@@ -118,6 +118,11 @@ export async function createApp(config: Config, options: AppOptions) {
     const id = typeof plugin === 'object' && plugin.name;
     if (id && typeof plugin === 'object') ctx.xiaolangHost.pluginDependencies.set(id, Array.isArray(plugin.inject) ? [...plugin.inject] : Object.keys(plugin.inject ?? {}));
     if (id && typeof plugin === 'object' && 'panel' in plugin) registerPanel(ctx.xiaolangHost.panels, id, plugin.panel);
+    if (id && typeof plugin === 'object' && 'panelHome' in plugin && typeof plugin.panelHome === 'function') {
+      const registration = ctx.xiaolangHost.panels.get(id);
+      const read = plugin.panelHome as import('./panel.js').PanelHomeReader;
+      if (registration) registration.readHome = key => read(ctx, key);
+    }
     if (id && !builtinEnabled(ctx.xiaolangHost.config, id)) return undefined;
     const fiber = await ctx.plugin(plugin, config);
     fibers.push(fiber);
