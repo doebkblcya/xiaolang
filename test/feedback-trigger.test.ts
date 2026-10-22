@@ -56,14 +56,14 @@ test('trigger settings survive restart and a custom provider replaces the defaul
   app.ctx.intake.receive(event('小狼你好', 2));
   app.ctx.intake.receive(event('今天嗷呜怎么没说话', 3)); await app.ctx.chat.idle();
   assert.equal(adapter.sent.length, 1);
-  const plugins = app.ctx.runtime.status().plugins;
+  const plugins = app.ctx.xiaolangRuntime.status().plugins;
   for (const id of ['xiaolang-trigger', 'xiaolang-scheduler', 'xiaolang-store', 'xiaolang-output', 'xiaolang-chat', 'xiaolang-fault-feedback']) {
     assert.ok(plugins.some(plugin => plugin.id === id && plugin.kind === (id === 'xiaolang-trigger' ? 'external' : 'builtin') && plugin.state === 'active'));
   }
   assert.ok(plugins.find(plugin => plugin.id === 'xiaolang-chat')?.dependencies.includes('trigger'));
   assert.deepEqual(plugins.find(plugin => plugin.id === 'xiaolang-chat')?.provides, ['chat']);
   await app.stopChat();
-  assert.equal(app.ctx.runtime.status().plugins.find(plugin => plugin.id === 'xiaolang-chat')?.state, 'disabled');
+  assert.equal(app.ctx.xiaolangRuntime.status().plugins.find(plugin => plugin.id === 'xiaolang-chat')?.state, 'disabled');
   await app.stop();
   await writeFile(join(directory, 'trigger.mjs'), `export function apply(ctx){ctx.provide('trigger',{match:message=>message.text==='custom'?'custom':undefined})}`);
   const custom = config(); custom.plugins = { directory, trigger: 'custom-trigger', entries: [{ id: 'custom-trigger', module: './trigger.mjs' }] };
@@ -71,8 +71,8 @@ test('trigger settings survive restart and a custom provider replaces the defaul
   t.after(() => replacement.stop());
   replacement.ctx.intake.receive(event('小狼', 1)); replacement.ctx.intake.receive(event('custom', 2)); await replacement.ctx.chat.idle();
   assert.equal(target.sent.length, 1);
-  assert.ok(!replacement.ctx.runtime.status().plugins.some(plugin => plugin.id === 'xiaolang-trigger'));
-  assert.equal(replacement.ctx.runtime.status().plugins.filter(plugin => plugin.id === 'custom-trigger').length, 1);
+  assert.ok(!replacement.ctx.xiaolangRuntime.status().plugins.some(plugin => plugin.id === 'xiaolang-trigger'));
+  assert.equal(replacement.ctx.xiaolangRuntime.status().plugins.filter(plugin => plugin.id === 'custom-trigger').length, 1);
 });
 
 test('plugin settings allow disabling builtins and dependencies, preserve write-only fields and persist external config and disable state', async t => {
@@ -92,7 +92,7 @@ test('plugin settings allow disabling builtins and dependencies, preserve write-
   const store = await ConfigurationStore.load(path, () => {}, () => true, {});
   const app = await createApp(store.config, { adapter: new FakeAdapter(), model: new FakeModel(), configuration: store });
   t.after(() => app.stop());
-  store.bindPlugins(() => app.ctx.runtime.status().plugins);
+  store.bindPlugins(() => app.ctx.xiaolangRuntime.status().plugins);
   const builtin = await store.plugin('xiaolang-store');
   assert.equal(builtin.canToggle, true);
   await store.savePlugin('xiaolang-store', { revision: builtin.revision, enabled: false });

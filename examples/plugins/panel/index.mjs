@@ -8,7 +8,7 @@ import { createAccess, readAuth, readTls, isPrivateAddress } from './security.mj
 
 export const name = 'xiaolang-panel';
 export const xiaolangApiVersion = 1;
-export const inject = ['runtime'];
+export const inject = ['xiaolangRuntime'];
 const assets = { '/assets/xiaolang-halfbody-v1.webp': ['assets/xiaolang-halfbody-v1.webp', 'image/webp'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/login.js': ['login.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
 const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
@@ -207,7 +207,7 @@ export async function apply(ctx, config = {}) {
   if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
-  const handler = createHandler(ctx.runtime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
+  const handler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
     persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   const listeners = [{ server, handler, port, host }];
@@ -216,7 +216,7 @@ export async function apply(ctx, config = {}) {
     if (!auth || !tls || !lan || !['127.0.0.1', '0.0.0.0'].includes(lan.host ?? '0.0.0.0')
       || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
       || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
-    const lanHandler = createHandler(ctx.runtime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
+    const lanHandler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
       persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
     listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
   }

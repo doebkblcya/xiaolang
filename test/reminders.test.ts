@@ -54,7 +54,7 @@ test('tools create idempotent reminders bound to the actual sender and conversat
     assert.throws(() => app.ctx.reminders.cancel(created.id, otherChat), { code: 'reminder_not_found' });
     assert.equal(app.ctx.reminders.cancel(created.id, admin).state, 'cancelled');
     await assert.rejects(app.ctx.tools.execute(call('create_reminder', { ...args, recipient: 'another-group' }), own, signal()), { code: 'invalid_tool_arguments' });
-    assert.ok(app.ctx.runtime.status().plugins.some(plugin => plugin.id === 'xiaolang-reminders' && plugin.state === 'active'));
+    assert.ok(app.ctx.xiaolangRuntime.status().plugins.some(plugin => plugin.id === 'xiaolang-reminders' && plugin.state === 'active'));
   } finally { await app.stop(); }
 });
 

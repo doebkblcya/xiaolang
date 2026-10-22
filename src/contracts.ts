@@ -230,7 +230,7 @@ declare module 'cordis' {
     processLogs: import('./log-journal.js').LogJournal;
     logOutput: { write(entry: Log): void };
     historyReader: HistoryReader;
-    runtime: Runtime;
+    xiaolangRuntime: Runtime;
     configuration: Configuration;
     faultFeedback: FaultFeedback;
     memory: Memory;

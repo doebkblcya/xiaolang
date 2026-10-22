@@ -44,7 +44,7 @@ async function main(): Promise<void> {
       writeLog: line => console.info(line),
       secrets: Object.entries(process.env).filter(([key, value]) => value && /KEY|SECRET|TOKEN|PASSWORD/i.test(key)).map(([, value]) => value!),
     });
-    configuration.bindPlugins(() => app!.ctx.runtime.status().plugins);
+    configuration.bindPlugins(() => app!.ctx.xiaolangRuntime.status().plugins);
     await configuration.confirm();
   } catch (error) {
     if (controller.signal.aborted) { process.exitCode = 0; return; }

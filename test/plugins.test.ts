@@ -72,7 +72,7 @@ test('a missing dependency waits without stopping the host and exposes missing s
   const logs: Log[] = [];
   const app = await createApp(settings, { ...mocks(), report: entry => logs.push(entry) });
   t.after(() => app.stop());
-  assert.equal(app.ctx.runtime.status().state, 'ready');
+  assert.equal(app.ctx.xiaolangRuntime.status().state, 'ready');
   assert.equal(app.plugins.find(plugin => plugin.id === 'missing')?.state, 'pending');
   assert.ok(logs.some(entry => entry.plugin === 'missing' && entry.dependencies?.join(',') === 'doesNotExist'));
 });

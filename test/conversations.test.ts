@@ -65,7 +65,7 @@ test('conversation endpoints use existing write authorization and aliases take e
   const cfg = config(); cfg.chatEnabled = false;
   const app = await createApp(cfg, { adapter: new FakeAdapter(), model: new FakeModel() });
   const { createHandler } = await import(pathToFileURL(resolve('examples/plugins/panel/index.mjs')).href);
-  const handle = createHandler(app.ctx.runtime, { view: () => ({ revision: 'test' }) }, { history: app.ctx.historyReader });
+  const handle = createHandler(app.ctx.xiaolangRuntime, { view: () => ({ revision: 'test' }) }, { history: app.ctx.historyReader });
   async function request(url: string, method = 'GET', data?: unknown, headers: Record<string, string> = {}) {
     let status = 0, body = '';
     const req = Object.assign(Readable.from(data === undefined ? [] : [JSON.stringify(data)]), { url, method, headers: { host: 'localhost:18080', ...headers } });

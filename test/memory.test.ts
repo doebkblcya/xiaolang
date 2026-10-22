@@ -142,7 +142,7 @@ test('memory plugin configuration preserves blank credentials, masks them and su
     const settings = await ConfigurationStore.load(path, () => {}, () => true, {});
     const app = await createApp(settings.config, { adapter: new FakeAdapter(), model: new FakeModel(), configuration: settings });
     try {
-      settings.bindPlugins(() => app.ctx.runtime.status().plugins);
+      settings.bindPlugins(() => app.ctx.xiaolangRuntime.status().plugins);
       const plugin = await settings.plugin('xiaolang-memory');
       assert.equal(plugin.canToggle, true);
       await settings.savePlugin('xiaolang-memory', { revision: plugin.revision, config: { ...memoryDefaults, embeddingBaseUrl: 'https://space.example/v1', apiKey: 'private-embedding-key' } });

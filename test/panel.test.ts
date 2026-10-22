@@ -12,7 +12,7 @@ import type { Context } from 'cordis';
 
 async function handler(ctx: Context, allowedHosts: string[] = []) {
   const module = await import(pathToFileURL(resolve('examples/plugins/panel/index.mjs')).href);
-  const handle = module.createHandler(ctx.runtime, undefined, { allowedHosts, history: ctx.get('historyReader'), usage: ctx.get('usage'), logs: ctx.get('processLogs'), intake: ctx.get('intake') });
+  const handle = module.createHandler(ctx.xiaolangRuntime, undefined, { allowedHosts, history: ctx.get('historyReader'), usage: ctx.get('usage'), logs: ctx.get('processLogs'), intake: ctx.get('intake') });
   return async (url: string, method = 'GET', headers: Record<string, string> = {}) => {
     let status = 0, output = '', responseHeaders: Record<string, string> = {};
     // No HTTP listener on Mac: exercise the request handler with in-memory messages.
@@ -61,7 +61,7 @@ test('host runtime status and direct log queries reflect lifecycle and resist mu
   const adapter = Object.assign(new FakeAdapter(), { connectionStatus: () => connection });
   const app = await createApp(config(), { adapter, model: new FakeModel(), secrets: ['secret-value'] });
   t.after(() => app.stop());
-  const runtime = app.ctx.runtime;
+  const runtime = app.ctx.xiaolangRuntime;
   const journal = app.ctx.processLogs;
   assert.equal(runtime.status().state, 'ready');
   emitLog(app.ctx, { code: 'qq_connected' });

@@ -21,12 +21,12 @@ test('sidebar pages belong to their plugins, preserve catalog order, and disable
   const app = await createApp(settings, { adapter: new FakeAdapter(), model: new FakeModel() });
   t.after(() => app.stop());
   const { createPanelRegistry } = await import(pathToFileURL(resolve('examples/plugins/panel/registry.mjs')).href);
-  const registry = createPanelRegistry(app.ctx.runtime, app.ctx.xiaolangHost.panels);
+  const registry = createPanelRegistry(app.ctx.xiaolangRuntime, app.ctx.xiaolangHost.panels);
   const data = registry.describe();
   assert.deepEqual(data.pages.slice(0, 3).map((page: { id: string }) => page.id), ['xiaolang-logging:logs', 'xiaolang-store:chats', 'xiaolang-usage:usage']);
   assert.equal(data.pages.at(-1).id, 'custom:custom-page');
   assert.equal(data.pages.at(-1).state, 'disabled');
-  assert.deepEqual(app.ctx.runtime.status().plugins.find(plugin => plugin.id === 'custom')?.dependencies, ['store']);
+  assert.deepEqual(app.ctx.xiaolangRuntime.status().plugins.find(plugin => plugin.id === 'custom')?.dependencies, ['store']);
   assert.equal(data.details.custom.entry, '/api/panel/assets/custom/page.js');
   assert.ok(!JSON.stringify(data).includes(directory));
   assert.equal((await registry.asset('custom', 'page.js')).body.toString(), 'export function mount() {}');

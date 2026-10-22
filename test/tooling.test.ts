@@ -35,7 +35,7 @@ test('administrator IDs persist and MCP credentials remain masked when saving co
   const settings = await ConfigurationStore.load(path, () => {}, () => true, {});
   const app = await createApp(settings.config, { adapter: new FakeAdapter(), model: new FakeModel(), configuration: settings });
   try {
-    settings.bindPlugins(() => app.ctx.runtime.status().plugins);
+    settings.bindPlugins(() => app.ctx.xiaolangRuntime.status().plugins);
     const access = await settings.plugin('xiaolang-tools');
     await settings.savePlugin('xiaolang-tools', { revision: access.revision, config: { adminIds: ['owner-id'] } });
     const mcp = await settings.plugin('xiaolang-mcp');

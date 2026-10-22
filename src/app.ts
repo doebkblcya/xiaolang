@@ -143,7 +143,7 @@ export async function createApp(config: Config, options: AppOptions) {
   }
   const entries = pluginEntries(config).filter(entry => !options.adapter || entry.id !== 'xiaolang-adapter');
   ctx.provide('xiaolangHost', { config, options, cleanups: new Map(), panels: new Map(), pluginDependencies: new Map() });
-  ctx.provide('runtime', { status: () => ({ started, uptimeMs: Math.max(0, Date.now() - started), state: runtimeState, plugins: structuredClone(pluginList()) }) });
+  ctx.provide('xiaolangRuntime', { status: () => ({ started, uptimeMs: Math.max(0, Date.now() - started), state: runtimeState, plugins: structuredClone(pluginList()) }) });
   ctx.xiaolangHost.cleanups.set('xiaolang-logging', loggingCleanup);
   options.configuration?.registerPlugin('xiaolang-logging', loggingSchema);
   const beforeReady: IncomingMessage[] = [];
