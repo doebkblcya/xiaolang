@@ -71,8 +71,11 @@ export const apply = (ctx, settings) => {
   const schema = id === 'xiaolang-memory' ? memory.memorySchema : id === 'xiaolang-persona' ? persona.personaSchema : tooling.toolingSections[id] ? tooling.toolingSchemas[tooling.toolingSections[id]] : undefined;
   const cleanup = ['xiaolang-memory','xiaolang-persona','xiaolang-reminders'].includes(id) ? './impl/' + id.replace('xiaolang-','') + '-cleanup.js' : undefined;
   if (cleanup) await graph(id.replace('xiaolang-','') + '-cleanup.js', join(directory, 'impl'), true);
-  await writeFile(join(directory, 'index.mjs'), code + '\nexport const xiaolangApiVersion = 1;\n' + (schema ? `export const xiaolangConfig = ${JSON.stringify(schema)};\n` : ''));
-  await writeFile(join(directory, 'xiaolang.plugin.json'), JSON.stringify({ id, apiVersion: 1, ...(schema ? { configSchema: schema } : {}), ...(cleanup ? { cleanup } : {}) }, null, 2) + '\n');
+  const owner = await import(new URL('../dist/src/' + entry, import.meta.url));
+  const panel = owner.xiaolangPanel;
+  const dependencies = id === 'xiaolang-adapter' ? [] : id === 'xiaolang-deepseek' ? ['xiaolangHost'] : [...(owner[exported]?.inject ?? []), 'xiaolangHost'];
+  await writeFile(join(directory, 'index.mjs'), code + '\nexport const xiaolangApiVersion = 1;\n' + (panel ? `export const xiaolangPanel = ${JSON.stringify(panel)};\n` : '') + (schema ? `export const xiaolangConfig = ${JSON.stringify(schema)};\n` : ''));
+  await writeFile(join(directory, 'xiaolang.plugin.json'), JSON.stringify({ id, apiVersion: 1, dependencies, ...(panel ? { panel } : {}), ...(schema ? { configSchema: schema } : {}), ...(cleanup ? { cleanup } : {}) }, null, 2) + '\n');
 }
 for (const id of ['panel', 'console-logger', 'hello']) await cp(`examples/plugins/${id}`, join(target, id), { recursive: true });
 // The image contains only the transitive host graph; feature code is delivered separately.

@@ -213,3 +213,6 @@ export function apply(ctx: Context, raw: unknown): void {
   ctx.effect(() => () => adapter.stop());
   ctx.provide('adapter', adapter);
 }
+
+/** Optional management-panel surfaces owned by this plugin. */
+export const xiaolangPanel = { detail: { view: 'qq-settings' }, pages: [{ id: 'qq-settings', title: 'QQ 接入', view: 'qq-settings' }] };

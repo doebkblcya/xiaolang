@@ -24,3 +24,6 @@ export const triggerPlugin: Plugin.Object<Config> = {
     current: message => proactive.current(message), idle: () => proactive.idle(), clear: () => proactive.clear() });
   },
 };
+
+/** Optional management-panel surfaces owned by this plugin. */
+export const xiaolangPanel = { detail: { view: 'trigger-settings' }, pages: [{ id: 'trigger-settings', title: '触发规则', view: 'trigger-settings' }] };

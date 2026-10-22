@@ -1,45 +1,41 @@
 <!doctype html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#faf6f0"><title>小狼 · 控制台</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
-<body>
+<body class="console-page">
   <aside class="sidebar">
-    <a class="brand" href="/"><span class="brand-mark"><img src="/assets/xiaolang-halfbody-v1.webp" alt="" width="52" height="69"></span><span>小狼<small>一点猫脾气，一直在这里</small></span></a>
-    <nav aria-label="主导航"><p class="nav-label">日常 · DAILY</p>
-      <button class="nav active" data-view="overview" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>运行概览</button>
-      <button class="nav" data-view="chats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5a9.5 9.5 0 0 1 19 0Z"/><path d="M7 10h9M7 14h6"/></svg>聊天记录</button>
-      <button class="nav" data-view="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-3"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M7 11h10M7 16h7"/></svg>过程日志</button>
-      <button class="nav" data-view="usage"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v17h17M8 15v-4M13 15V7M18 15V4"/></svg>模型用量</button>
-      <p class="nav-label">连接 · CONNECTION</p>
-      <button class="nav" data-view="model-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></svg>回复模型</button>
-      <button class="nav" data-view="qq-settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7H6a5 5 0 0 0 0 10h3m6 0h3a5 5 0 0 0 0-10h-3M8 12h8"/></svg>QQ 接入</button>
-      <p class="nav-label">能力 · CAPABILITIES</p>
-      <button class="nav" data-view="memories"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h6a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4Zm16 0h-4a3 3 0 0 0-3 3m0 14a4 4 0 0 1 4-2h3V4"/></svg>聊天与记忆</button>
-      <button class="nav" data-view="persona"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 10 3 3l7 3m4 0 7-3-2 7"/><path d="M21 13c0 5-4 8-9 8s-9-3-9-8 4-8 9-8 9 3 9 8Z"/><path d="M8 12v1m8-1v1m-6 3 2 1 2-1"/></svg>人设与学习</button>
-      <button class="nav" data-view="tooling"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 7 3 3m-8 5-5 5a2 2 0 0 1-3-3l5-5m2-4A6 6 0 0 1 16 2l-3 4 5 5 4-3a6 6 0 0 1-8 8Z"/></svg>工具与行动</button>
-      <button class="nav" data-view="reminders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 8v5l3 2M4 3 1 6m19-3 3 3M9 2h6"/></svg>定时提醒</button>
-      <button class="nav" data-view="plugins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>插件列表</button>
-    </nav>
-    <div class="sidebar-bottom"><span class="dot"></span> 小狼控制台<small>仅向可信设备开放访问</small><button id="logout" type="button" class="link" hidden>退出访问</button></div>
+    <a class="brand" href="/" data-view="overview" aria-label="小狼首页"><svg class="brand-logo" viewBox="0 0 56 56" fill="none" aria-hidden="true">
+          <path d="M10 25 8 7c0-2 2-3 4-1l12 10h8L44 6c2-2 4-1 4 1l-2 18c3 5 3 14-1 19-7 9-27 9-34 0-4-5-4-14-1-19Z" fill="#eee2d3"/>
+          <path d="M10 25 8 7c0-2 2-3 4-1l12 10-2 13-12 5c-1-3-1-6 0-9Z" fill="#594336"/>
+          <path d="m32 16 9-8 5 18c1 7-5 10-11 5-4-3-6-10-3-15Z" fill="#bd885f"/>
+          <path d="m14 19-2-8 8 7m22 1 2-8-8 7" fill="#d6b0a0"/>
+          <path d="M18 35h2m16 0h2" stroke="#594336" stroke-width="3" stroke-linecap="round"/>
+          <path d="m26 40 2 2 2-2" stroke="#a77962" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg><span>小狼<span class="brand-dot" aria-hidden="true">.</span></span></a>
+    <nav aria-label="主导航"><button class="nav active" data-view="overview" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>主页</button><button class="nav" data-view="plugins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>插件</button><div id="plugin-navigation"></div></nav>
+    <div class="sidebar-bottom"><button id="logout" type="button" class="link" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H5v14h4m5-14 7 7-7 7m-5-7h12"/></svg>退出访问</button></div>
   </aside>
   <main>
-    <header><div><p class="eyebrow">XIAOLANG / 小狼的工作台</p><h1 id="page-title">运行概览</h1><p id="page-description">看看小狼现在怎么样。</p></div><span id="connection" class="badge neutral">正在连接面板</span></header>
+    <header class="page-header"><h1 id="page-title">主页</h1><span id="connection" class="badge neutral">连接中</span></header>
     <div id="notice" class="notice" role="status" hidden></div>
     <div id="settings-banner" class="settings-banner" hidden><span id="settings-banner-text">配置已保存，应用后生效。</span><button id="apply-settings" class="primary" type="button">应用配置并重启</button></div>
     <section id="overview" class="view">
       <article class="welcome">
-        <div class="welcome-copy"><p class="welcome-kicker"><span class="welcome-line"></span> LITTLE CAT, LITTLE WORLD</p><h2>小狼，在这里<span>。</span></h2><p class="welcome-description">聊过的天，记住的事，还有一点小脾气。</p><div class="welcome-status"><span class="dot"></span><span id="hero-state">正在看看小狼的状态…</span></div><div class="welcome-actions"><button class="primary" data-view="chats">翻翻聊天记录 <span aria-hidden="true">↗</span></button><button class="welcome-link" data-view="plugins">管理插件 <span aria-hidden="true">→</span></button></div></div>
-        <div class="welcome-portrait" aria-hidden="true"><div class="portrait-halo"></div><img src="/assets/xiaolang-halfbody-v1.webp" alt="" width="1086" height="1448" fetchpriority="high"><span class="portrait-caption">XIAOLANG<span>三花 · 冷淡一点点</span></span></div>
-        <span id="today-date" class="welcome-date"></span>
+        <div class="welcome-copy"><time id="today-date" class="welcome-date"></time><h2 id="hero-state">连接中</h2><div class="welcome-actions"><button class="welcome-link" data-view="plugins">插件目录 <span aria-hidden="true">↗</span></button></div></div>
+        <div class="welcome-portrait" aria-hidden="true"><div class="portrait-halo"></div><img src="/assets/xiaolang-halfbody-v1.webp" alt="" width="1086" height="1448" fetchpriority="high"></div>
       </article>
       <div class="cards">
-        <article class="card"><span>QQ 连接</span><strong id="qq-state">—</strong><small id="platform">等待状态</small><button class="link card-link" data-view="qq-settings">配置连接 →</button></article>
-        <article class="card"><span>回复模型</span><strong id="model">—</strong><small id="chat-state">等待状态</small><button class="link card-link" data-view="model-settings">配置模型 →</button></article>
-        <article class="card"><span>正在处理 / 等待</span><strong id="pending">—</strong><small id="completed">已完成 — 轮</small></article>
+        <article class="card"><span>QQ 连接</span><strong id="qq-state">—</strong><small id="platform">等待状态</small><button class="link card-link" data-open-plugin="xiaolang-adapter">配置连接 →</button></article>
+        <article class="card"><span>回复模型</span><strong id="model">—</strong><small id="chat-state">等待状态</small><button class="link card-link" data-open-plugin="xiaolang-deepseek">配置模型 →</button></article>
+        <article class="card"><span>处理中 / 排队</span><strong id="pending">—</strong><small id="completed">已完成 — 轮</small></article>
         <article class="card"><span>本次运行</span><strong id="uptime">—</strong><small id="memory">内存 —</small></article>
       </div>
       <div class="overview-grid">
-        <article class="panel"><div class="panel-title"><h2><span class="section-dot"></span>最近动态</h2><button class="link" data-view="logs">查看日志 →</button></div><div id="recent-events" class="recent-events"><p class="empty">等待小狼的第一条动态</p></div></article>
-        <article class="panel"><h2><span class="section-dot"></span>此刻的小狼</h2><dl class="summary"><div><dt>应用状态</dt><dd id="app-state">—</dd></div><div><dt>异常轮次</dt><dd id="failures">—</dd></div><div><dt>启用插件</dt><dd id="plugin-count">—</dd></div><div><dt>最近收到消息</dt><dd id="last-message">—</dd></div></dl><p class="muted">聊天会好好留下。这里的过程日志记录本次启动的最近 500 条动态。</p></article>
+        <article class="panel" hidden><div class="panel-title"><h2>最近动态</h2><button class="link" data-view="logs">查看日志 →</button></div><div id="recent-events" class="recent-events"><p class="empty">暂无动态</p></div></article>
+        <article class="panel runtime-summary"><h2>运行状态</h2><dl class="summary"><div><dt>应用状态</dt><dd id="app-state">—</dd></div><div><dt>异常轮次</dt><dd id="failures">—</dd></div><div><dt>启用插件</dt><dd id="plugin-count">—</dd></div><div><dt>最近收到消息</dt><dd id="last-message">—</dd></div></dl></article>
+      </div>
+      <div class="overview-grid system-grid">
+        <article class="panel"><h2>宿主机</h2><dl class="summary"><div><dt>处理器</dt><dd id="host-cpu">—</dd></div><div><dt>逻辑核心</dt><dd id="host-cores">—</dd></div><div><dt>总内存</dt><dd id="host-memory">—</dd></div><div><dt>系统 / 架构</dt><dd id="host-system">—</dd></div></dl></article>
+        <article class="panel"><h2>小狼进程</h2><div class="resource-meter"><span id="process-memory">—</span><span id="process-memory-ratio">—</span><progress id="process-memory-bar" max="100" value="0" aria-label="小狼占总内存比例"></progress></div><dl class="summary"><div><dt>CPU 占用</dt><dd id="process-cpu">—</dd></div><div><dt>堆内存</dt><dd id="process-heap">—</dd></div><div><dt>Node.js</dt><dd id="process-node">—</dd></div><div id="container-limit-row" hidden><dt>容器内存上限</dt><dd id="container-limit">—</dd></div></dl></article>
       </div>
     </section>
     <section id="usage" class="view" hidden>
@@ -53,143 +49,149 @@
         <p id="usage-note" class="muted">正在读取用量…</p>
       </article>
       <div class="cards usage-cards">
-        <article class="card"><span>总 Token</span><strong id="usage-total">—</strong><small>仅累计接口已返回的用量</small></article>
+        <article class="card" title="仅统计接口已返回的用量"><span>总 Token</span><strong id="usage-total">—</strong></article>
         <article class="card"><span>输入 / 输出 Token</span><strong id="usage-io">—</strong><small id="usage-detail-tokens">缓存命中 — · 思考 —</small></article>
-        <article class="card"><span>实际请求 / 失败</span><strong id="usage-calls">—</strong><small>包含每次重试；不等于聊天轮数</small></article>
-        <article class="card"><span>用量未知的请求</span><strong id="usage-unknown">—</strong><small>断流、超时或接口未返回统计；不能当作零消耗</small></article>
+        <article class="card" title="包含重试，按 API 请求统计"><span>请求 / 失败</span><strong id="usage-calls">—</strong></article>
+        <article class="card" title="请求已发出但未返回用量，不能按零消耗计算"><span>未返回用量</span><strong id="usage-unknown">—</strong></article>
       </div>
       <article class="panel"><h2>按功能统计</h2><div id="usage-functions" class="usage-table-wrap"></div></article>
       <div class="overview-grid">
-        <article class="panel"><h2>每日用量（北京时间）</h2><div id="usage-daily"></div></article>
+        <article class="panel"><h2>每日用量</h2><div id="usage-daily"></div></article>
         <article class="panel"><h2>按模型统计</h2><div id="usage-models" class="usage-table-wrap"></div></article>
       </div>
-      <article class="panel"><div class="panel-title"><h2>调用明细</h2><span class="muted">每页 50 次请求</span></div>
+      <article class="panel"><div class="panel-title"><h2>调用明细</h2></div>
         <div id="usage-requests" class="usage-table-wrap"></div><button id="usage-more" class="secondary" type="button" hidden>查看更多</button>
       </article>
     </section>
     <section id="reminders" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>定时提醒</h2><p class="muted">在 QQ 里告诉小狼何时提醒、提醒什么；到点发回创建任务的聊天。支持一次性、每天和每周。</p></div><button id="refresh-reminders" class="secondary" type="button">刷新</button></div>
+      <article class="panel"><div class="panel-title"><div><h2>定时提醒</h2></div><button id="refresh-reminders" class="secondary" type="button">刷新</button></div>
         <p id="reminder-summary" class="muted">正在读取…</p>
-        <div class="table-wrap"><table><thead><tr><th>提醒内容 / 来源</th><th>时间（北京）/ 重复</th><th>执行情况</th><th>操作</th></tr></thead><tbody id="reminder-rows"></tbody></table></div>
-        <p id="reminder-empty" class="empty" hidden>还没有提醒。试试对小狼说：“一分钟后提醒我喝水”。</p>
-        <p class="muted">QQ 需允许机器人主动发送。发送失败或结果未知时会暂停任务，请核对后取消并重新创建。取消已开始发送的任务，仍可能收到本次提醒。</p>
+        <div class="table-wrap"><table><thead><tr><th>提醒内容 / 来源</th><th>时间 / 重复</th><th>执行情况</th><th>操作</th></tr></thead><tbody id="reminder-rows"></tbody></table></div>
+        <p id="reminder-empty" class="empty" hidden>暂无提醒</p>
+
       </article>
     </section>
     <section id="chats" class="view" hidden>
       <article class="panel chat-browser">
         <aside class="conversation-sidebar" aria-label="会话列表">
-          <div class="conversation-filters"><h2>会话</h2><input id="conversation-search" type="search" placeholder="搜索备注、昵称或 ID" aria-label="搜索会话"><select id="conversation-scope" aria-label="会话类型"><option value="">全部会话</option><option value="group">群聊</option><option value="private">私聊</option></select></div>
-          <div id="conversation-list" class="conversation-list"><p class="empty">暂无会话，收到消息后会自动出现。</p></div>
+          <div class="conversation-filters"><h2>会话</h2><input id="conversation-search" type="search" placeholder="搜索会话" aria-label="搜索会话"><select id="conversation-scope" aria-label="会话类型"><option value="">全部会话</option><option value="group">群聊</option><option value="private">私聊</option></select></div>
+          <div id="conversation-list" class="conversation-list"><p class="empty">暂无会话</p></div>
           <button id="conversation-more" class="link conversation-more" hidden>更多会话</button>
         </aside>
         <section class="conversation-main" aria-label="聊天时间线">
-          <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted">包含未触发小狼回复的消息。</p></div><div class="form-actions"><button id="conversation-delete" class="secondary" disabled>删除会话</button><button id="conversation-name" class="secondary" disabled>备注名称</button><button id="conversation-refresh" class="secondary">刷新</button></div></div>
+          <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted"></p></div><div class="form-actions"><button id="conversation-delete" class="secondary" disabled>删除会话</button><button id="conversation-name" class="secondary" disabled>备注</button><button id="conversation-refresh" class="secondary">刷新</button></div></div>
           <div class="timeline-toolbar"><button id="message-older" class="link" disabled>查看更早消息</button><span id="message-page-note" class="muted"></span><label class="filter"><input id="message-follow" type="checkbox" checked>跟随新消息</label></div>
-          <div id="message-timeline" class="message-timeline"><p class="empty">选择群聊或私聊，查看完整聊天记录。</p></div>
+          <div id="message-timeline" class="message-timeline"><p class="empty">选择一个会话</p></div>
           <div class="timeline-footer"><span id="conversation-message" class="muted" role="status"></span><button id="message-latest" class="link" disabled>回到最新</button></div>
         </section>
       </article>
     </section>
     <section id="logs" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>过程日志 <span id="log-count" class="count">0</span></h2><p class="muted">每 2 秒更新 · 正文为短预览 · 重启后清空</p></div><label class="filter"><input id="follow" type="checkbox" checked>跟随最新</label></div>
-        <div class="log-toolbar"><input id="log-filter" type="search" placeholder="按轮次 ID、阶段或内容筛选" aria-label="筛选日志"><button id="clear-filter" class="secondary">清除筛选</button></div>
+      <article class="panel"><div class="panel-title"><div><h2>过程日志 <span id="log-count" class="count">0</span></h2></div><label class="filter"><input id="follow" type="checkbox" checked>跟随最新</label></div>
+        <div class="log-toolbar"><input id="log-filter" type="search" placeholder="搜索日志" aria-label="筛选日志"><button id="clear-filter" class="secondary">清除</button></div>
         <div id="log-list" class="log-list" aria-label="过程日志"><p class="empty">暂无过程日志</p></div>
       </article>
     </section>
     <section id="memories" class="view" hidden>
       <article class="panel">
-        <div class="panel-title"><div><h2>聊天与记忆</h2><p class="muted">所有已接收聊天共同形成记忆；这里可以查看、纠正和删除。</p></div><button id="memory-config" class="secondary">插件配置</button></div>
+        <div class="panel-title"><div><h2>记忆库</h2></div><button id="memory-config" class="secondary">配置</button></div>
         <p id="memory-status" class="muted" role="status">正在读取…</p>
-        <div class="log-toolbar"><input id="memory-search" type="search" placeholder="搜索记忆内容或用户 ID" aria-label="搜索记忆"><select id="memory-kind" aria-label="记忆类型"><option value="">全部类型</option><option value="profile">人物资料</option><option value="event">经历与计划</option></select><button id="memory-refresh" class="secondary">查询</button></div>
-        <div class="form-actions memory-actions"><button id="memory-add" class="primary">添加记忆</button><button id="memory-process" class="secondary">整理待处理聊天</button><button id="memory-test" class="secondary">测试向量连接</button><button id="memory-reindex" class="secondary">重建向量索引</button></div>
+        <div class="log-toolbar"><input id="memory-search" type="search" placeholder="搜索记忆" aria-label="搜索记忆"><select id="memory-kind" aria-label="记忆类型"><option value="">全部类型</option><option value="profile">人物资料</option><option value="event">经历与计划</option></select><button id="memory-refresh" class="secondary">查询</button></div>
+        <div class="form-actions memory-actions"><button id="memory-add" class="primary">添加记忆 <span aria-hidden="true">＋</span></button><details class="action-menu"><summary>维护</summary><div><button id="memory-process" class="link" aria-label="整理聊天">整理聊天</button><button id="memory-test" class="link" aria-label="测试向量连接">测试向量连接</button><button id="memory-reindex" class="link" aria-label="重建向量索引">重建向量索引</button></div></details></div>
         <div id="memory-list" class="memory-list"></div>
         <div class="pagination"><button id="memory-latest" class="secondary">回到最新</button><button id="memory-older" class="secondary" disabled>查看更早</button></div>
       </article>
     </section>
     <section id="persona" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>人设与学习</h2><p class="muted">固定身份由你设定；后台只学习适合小狼的真人表达，下一次回复即可参考。</p></div><button id="persona-config" class="secondary">插件配置</button></div>
+      <article class="panel"><div class="panel-title"><div><h2>表达习惯</h2></div><button id="persona-config" class="secondary">配置</button></div>
       <p id="persona-status" class="muted" role="status">正在读取…</p>
-      <div class="form-actions"><button id="persona-refresh" class="secondary">刷新</button><button id="persona-learn" class="secondary">学习一批聊天</button></div>
+      <div class="form-actions"><button id="persona-refresh" class="secondary">刷新</button><button id="persona-learn" class="secondary">学习一次</button></div>
       <div id="persona-list" class="memory-list"></div></article>
     </section>
     <section id="tooling" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>工具与行动</h2><p class="muted">模型按需要选择工具。敏感工具依据消息中的真实用户 ID 鉴权；管理员列表为空时无人可用。</p></div><button class="secondary" data-tool-config="xiaolang-tools">管理员设置</button></div>
-        <div class="form-actions"><button class="secondary" data-tool-config="xiaolang-web">搜索与阅读配置</button><button class="secondary" data-tool-config="xiaolang-mcp">MCP 连接配置</button><button class="secondary" data-tool-config="xiaolang-skills">Skills 配置</button></div>
+      <article class="panel"><div class="panel-title"><div><h2>可用工具</h2></div><button class="secondary" data-tool-config="xiaolang-tools">管理员设置</button></div>
+        <div class="form-actions"><button class="secondary" data-tool-config="xiaolang-web">搜索与阅读</button><button class="secondary" data-tool-config="xiaolang-mcp">MCP 连接</button><button class="secondary" data-tool-config="xiaolang-skills">Skills</button></div>
         <p id="tool-connections" class="muted"></p><p id="skill-catalog" class="muted"></p>
         <div class="table-wrap"><table><thead><tr><th>工具 / 用途</th><th>来源</th><th>执行权限</th></tr></thead><tbody id="tool-rows"></tbody></table></div>
       </article>
     </section>
     <section id="plugins" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>插件列表</h2><p class="muted">点击查看详情、配置和启停。内置与外挂表示代码位置；停用前可查看影响，缺少依赖的插件会等待服务。</p></div><span id="plugins-summary" class="badge neutral">—</span></div><div class="table-wrap"><table class="plugin-table"><thead><tr><th>插件</th><th>来源 / 模块</th><th>依赖服务</th><th>状态</th></tr></thead><tbody id="plugin-rows"></tbody></table></div><p id="plugin-empty" class="empty" hidden>尚无插件状态</p></article>
+      <article class="panel"><div class="panel-title"><div><h2>全部插件</h2></div><span id="plugins-summary" class="badge neutral">—</span></div><div class="log-toolbar plugin-filters"><input id="plugin-search" type="search" placeholder="搜索插件" aria-label="搜索插件"><select id="plugin-source" aria-label="插件来源"><option value="">全部来源</option><option value="builtin">内置</option><option value="external">外挂</option></select></div><div id="plugin-rows" class="plugin-grid" aria-label="插件目录"></div><p id="plugin-empty" class="empty" hidden>尚无插件状态</p></article>
     </section>
     <section id="model-settings" class="view" hidden>
       <form id="model-form" class="panel settings-form">
-        <div class="panel-title"><div><h2>DeepSeek 模型</h2><p class="muted">调整小狼使用的模型和生成参数。保存后应用，下一次连接使用新配置。</p></div><span id="model-active" class="badge neutral">—</span></div>
-        <div class="form-grid">
-          <label class="field">API 地址<input name="baseUrl" type="url" required placeholder="https://api.deepseek.com"><small>OpenAI 格式地址，程序自动追加 /chat/completions。</small></label>
-          <label class="field">模型标识<input name="name" list="model-names" required maxlength="200"><datalist id="model-names"><option value="deepseek-flash"><option value="deepseek-v4-pro"></datalist><small>Flash 当前对应 DeepSeek V4.1 Flash。</small></label>
-          <label class="field full">API Key<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已有密钥"><small id="model-secret-state">正在读取密钥状态</small></label>
-          <label class="field">思考模式<select name="thinking"><option value="false">关闭 · 直接回复</option><option value="true">开启 · 先思考再回复</option></select><small>思考可能增加耗时，输出上限包含思考内容。</small></label>
-          <label class="field">思考强度<select name="reasoningEffort"><option value="">使用官方默认值</option><option value="low">低 · low</option><option value="high">高 · high</option><option value="max">最高 · max</option></select><small>仅开启思考时生效。</small></label>
-          <label class="field">采样温度<input name="temperature" type="number" min="0" max="2" step="0.05" placeholder="官方默认 1"><small>0–2，仅关闭思考时生效；越高，表达越多样。</small></label>
-          <label class="field">Top P<input name="topP" type="number" min="0.95" max="1" step="0.01" placeholder="官方默认 1"><small>0.95–1，仅开启思考时生效。</small></label>
-          <label class="field">最大输出 Token<input name="maxOutputTokens" type="number" required min="1" max="393216" step="1"><small>API 允许 1–393216；QQ 回复仍受平台分段限制。</small></label>
-          <label class="field">请求超时（秒）<input name="timeoutSeconds" type="number" required min="1" max="86400" step="1"><small id="model-budget-note">仍受主链路单轮总超时约束。</small></label>
-          <label class="field">失败重试次数<input name="retries" type="number" required min="0" max="3" step="1"><small>仅对网络、超时、限流等可重试错误生效。</small></label>
-          <label class="field full">停止词（可选）<textarea name="stop" rows="3" placeholder="每行一个，最多 16 个"></textarea><small>命中后停止生成；留空使用默认结束方式。</small></label>
-        </div>
-        <div class="form-footer"><p id="model-settings-message" role="status" class="muted">密钥不会回显；留空保留原值。</p><div class="form-actions"><button class="secondary" type="button" data-reload-settings="model">重新读取</button><button class="primary" type="submit">保存模型配置</button></div></div>
-        <p class="muted docs-link">参数依据 <a href="https://api-docs.deepseek.com/api/create-chat-completion/" target="_blank" rel="noreferrer">DeepSeek 官方文档 ↗</a>；已弃用的频率／存在惩罚不提供设置。</p>
+        <div class="panel-title"><div><h2>DeepSeek 模型</h2></div><span id="model-active" class="badge neutral">—</span></div>
+        <fieldset class="settings-group"><legend>连接</legend><div class="form-grid">
+<label class="field">API 地址<input name="baseUrl" type="url" required placeholder="https://api.deepseek.com"></label>
+<label class="field">模型标识<input name="name" list="model-names" required maxlength="200"><datalist id="model-names"><option value="deepseek-flash"><option value="deepseek-v4-pro"></datalist></label>
+<label class="field full">API Key<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已有密钥"><small id="model-secret-state">正在读取密钥状态</small></label>
+</div></fieldset>
+<fieldset class="settings-group"><legend>生成</legend><div class="form-grid">
+<label class="field">思考模式<select name="thinking"><option value="false">关闭</option><option value="true">开启</option></select></label>
+<label class="field">思考强度<select name="reasoningEffort"><option value="">默认</option><option value="low">低 · low</option><option value="high">高 · high</option><option value="max">最高 · max</option></select></label>
+<label class="field">采样温度<input name="temperature" type="number" min="0" max="2" step="0.05" placeholder="官方默认 1"></label>
+<label class="field">Top P<input name="topP" type="number" min="0.95" max="1" step="0.01" placeholder="官方默认 1"></label>
+<label class="field">最大输出 Token<input name="maxOutputTokens" type="number" required min="1" max="393216" step="1"></label>
+</div></fieldset>
+<fieldset class="settings-group"><legend>请求</legend><div class="form-grid">
+<label class="field">请求超时（秒）<input name="timeoutSeconds" type="number" required min="1" max="86400" step="1"><small id="model-budget-note"></small></label>
+<label class="field">失败重试次数<input name="retries" type="number" required min="0" max="3" step="1"></label>
+<label class="field full">停止词<textarea name="stop" rows="3" placeholder="每行一个，最多 16 个"></textarea></label>
+</div></fieldset>
+        <div class="form-footer"><p id="model-settings-message" role="status" class="muted">密钥不会回显；留空保留原值。</p><div class="form-actions"><button class="secondary" type="button" data-reload-settings="model">重置</button><button class="primary" type="submit">保存</button></div></div>
+        <p class="muted docs-link"><a href="https://api-docs.deepseek.com/api/create-chat-completion/" target="_blank" rel="noreferrer">API 文档 ↗</a></p>
       </form>
     </section>
     <section id="qq-settings" class="view" hidden>
       <form id="qq-form" class="panel settings-form">
-        <div class="panel-title"><div><h2>QQ 官方机器人</h2><p class="muted">使用 WebSocket 主动连接 QQ；修改后应用配置，小狼会短暂重连。</p></div><span id="qq-active" class="badge neutral">—</span></div>
-        <div class="form-grid">
-          <label class="field">AppID<input name="appId" type="text" inputmode="numeric" pattern="[0-9]{1,32}" required><small>QQ 开放平台中对应机器人的 AppID。</small></label>
-          <label class="field">接入环境<select name="environment"><option value="production">正式环境 · 当前项目使用</option><option value="sandbox">沙箱环境 · 仅后台配置的测试范围</option></select><small>切换环境后历史分开保存，不自动合并。</small></label>
-          <label class="field full">AppSecret<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已有密钥"><small id="qq-secret-state">正在读取密钥状态</small></label>
-          <label class="field">群消息接收能力<select name="groupMessages"><option value="all">包含非 @ 群消息</option><option value="mentions">仅确认 @ 群消息</option></select><small>用于能力声明；实际权限由 QQ 平台决定，不会因此回复所有消息。</small></label>
-          <label class="field">连接超时（秒）<input name="connectTimeoutSeconds" type="number" required min="1" max="120" step="1"><small>首次连接等待时间，后续重连由官方 SDK 管理。</small></label>
-          <label class="field full">允许接收的群 OpenID（可选）<textarea name="groupIds" rows="4" placeholder="每行一个；留空允许所有平台推送的群"></textarea><small>填写日志里的群 OpenID，不是普通 QQ 群号。这里只配置接收范围，触发规则保持原样。</small></label>
-        </div>
-        <div class="form-footer"><p id="qq-settings-message" role="status" class="muted">AppSecret 不会回显；留空保留原值。</p><div class="form-actions"><button class="secondary" type="button" data-reload-settings="qq">重新读取</button><button class="primary" type="submit">保存 QQ 配置</button></div></div>
+        <div class="panel-title"><div><h2>QQ 官方机器人</h2></div><span id="qq-active" class="badge neutral">—</span></div>
+        <fieldset class="settings-group"><legend>机器人</legend><div class="form-grid">
+<label class="field">AppID<input name="appId" type="text" inputmode="numeric" pattern="[0-9]{1,32}" required></label>
+<label class="field">接入环境<select name="environment"><option value="production">正式环境</option><option value="sandbox">沙箱环境</option></select></label>
+<label class="field full">AppSecret<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已有密钥"><small id="qq-secret-state">正在读取密钥状态</small></label>
+</div></fieldset>
+<fieldset class="settings-group"><legend>消息接收</legend><div class="form-grid">
+<label class="field">群消息接收能力<select name="groupMessages"><option value="all">包含非 @ 群消息</option><option value="mentions">仅确认 @ 群消息</option></select></label>
+<label class="field">连接超时（秒）<input name="connectTimeoutSeconds" type="number" required min="1" max="120" step="1"></label>
+<label class="field full">群 OpenID<textarea name="groupIds" rows="4" placeholder="每行一个；留空允许所有平台推送的群"></textarea></label>
+</div></fieldset>
+        <div class="form-footer"><p id="qq-settings-message" role="status" class="muted">AppSecret 不会回显；留空保留原值。</p><div class="form-actions"><button class="secondary" type="button" data-reload-settings="qq">重置</button><button class="primary" type="submit">保存</button></div></div>
       </form>
     </section>
-    <div id="plugin-config-forms" hidden>
+    <section id="trigger-settings" class="view" hidden>
       <form id="trigger-form" class="panel settings-form">
-        <div class="panel-title"><div><h3>触发规则</h3><p class="muted">明确召唤直接回复；主动插话先由模型判断，再进入同一回复链路。</p></div><span id="trigger-provider" class="badge neutral">内置默认插件</span></div>
+        <div class="panel-title"><div><h3>触发规则</h3></div><span id="trigger-provider" class="badge neutral">内置默认插件</span></div>
         <div class="trigger-switches">
-          <label class="switch-line"><span><strong>私聊默认回复</strong><small>开启后，私聊普通消息也会触发回复。</small></span><input name="privateReply" type="checkbox"></label>
-          <label class="switch-line"><span><strong>群聊 @ 触发</strong><small>群内 @ 小狼时回复，@ 全体不计入。</small></span><input name="groupMention" type="checkbox"></label>
-          <label class="switch-line"><span><strong>群聊触发词</strong><small>直接文本任意位置出现配置词就触发，包括只是在谈论小狼。</small></span><input name="groupKeywords" type="checkbox"></label>
+          <label class="switch-line"><span><strong>私聊默认回复</strong></span><input name="privateReply" type="checkbox"></label>
+          <label class="switch-line"><span><strong>群聊 @ 触发</strong></span><input name="groupMention" type="checkbox"></label>
+          <label class="switch-line"><span><strong>群聊触发词</strong></span><input name="groupKeywords" type="checkbox"></label>
         </div>
-        <label class="field">触发词<textarea name="words" rows="5" placeholder="每行一个，例如：小狼"></textarea><small>精确包含匹配，英文区分大小写。多个条件命中仍只回复一次。</small></label>
+        <label class="field">触发词<textarea name="words" rows="5" placeholder="每行一个，例如：小狼"></textarea></label>
         <h3>主动插话</h3>
-        <label class="switch-line"><span><strong>允许主动参与群聊</strong><small>关闭后仍保留私聊、@ 和触发词回复。判断只看文字和已有图片描述。</small></span><input name="proactiveEnabled" type="checkbox"></label>
-        <label class="field">不主动插话的群（黑名单）<textarea name="proactiveGroups" rows="3" placeholder="每行一个 QQ 官方群 OpenID；留空则所有可接收消息的群都允许主动插话"></textarea><small>黑名单只关闭主动插话，不影响群里的 @ 和触发词回复。</small></label>
+        <label class="switch-line"><span><strong>允许主动参与群聊</strong></span><input name="proactiveEnabled" type="checkbox"></label>
+        <label class="field">不主动插话的群（黑名单）<textarea name="proactiveGroups" rows="3" placeholder="每行一个 QQ 官方群 OpenID；留空则所有可接收消息的群都允许主动插话"></textarea></label>
         <div class="form-grid">
-          <label class="field">活跃持续时间（秒）<input name="activeSeconds" type="number" min="10" max="1800" required><small>被明确召唤或成功发言后刷新。活跃时新消息约等 0.25 秒即判断，连发最多等 1 秒。</small></label>
-          <label class="field">旁观收集时间（秒）<input name="idleSeconds" type="number" min="1" max="60" required><small>从第一条新消息开始计时，只有一条也会判断；没有新消息不调用模型。</small></label>
-          <label class="field">旁观提前判断条数<input name="idleMessages" type="number" min="1" max="50" required><small>时间或条数任一满足即判断。</small></label>
-          <label class="field">判断参考的最近记录数<input name="historyMessages" type="number" min="5" max="100" required><small>包含用户和小狼发言；正式回复仍使用记忆插件的上下文预算。</small></label>
-          <label class="field">每分钟参与上限<input name="maxRepliesPerMinute" type="number" min="1" max="30" required><small>达到后暂停主动判断；明确召唤仍正常回复。</small></label>
+          <label class="field">活跃持续时间（秒）<input name="activeSeconds" type="number" min="10" max="1800" required></label>
+          <label class="field">旁观收集时间（秒）<input name="idleSeconds" type="number" min="1" max="60" required></label>
+          <label class="field">旁观提前判断条数<input name="idleMessages" type="number" min="1" max="50" required></label>
+          <label class="field">判断参考的最近记录数<input name="historyMessages" type="number" min="5" max="100" required></label>
+          <label class="field">每分钟参与上限<input name="maxRepliesPerMinute" type="number" min="1" max="30" required></label>
         </div>
-        <p class="muted">在过程日志中查看活跃状态、判断结果和接话／沉默原因。判断失败保持沉默；正式接话沿用普通或流式输出。此功能不包含无人发消息时的定时推送。</p>
-        <div class="form-footer"><p id="trigger-settings-message" role="status" class="muted">保存后应用配置生效。</p><div class="form-actions"><button class="secondary" type="button" data-reload-settings="trigger">重新读取</button><button class="primary" type="submit">保存触发规则</button></div></div>
+
+        <div class="form-footer"><p id="trigger-settings-message" role="status" class="muted">保存后应用配置生效。</p><div class="form-actions"><button class="secondary" type="button" data-reload-settings="trigger">重置</button><button class="primary" type="submit">保存</button></div></div>
       </form>
-    </div>
-    <footer>小狼控制台 <span>最近同步：<time id="synced">—</time> · 时间为北京时间</span></footer>
+    </section>
+    <footer><span>北京时间</span><span>同步 <time id="synced">—</time></span></footer>
   </main>
-  <dialog id="detail"><div class="dialog-head"><div><p class="eyebrow">对话详情</p><h2 id="detail-title">处理记录</h2></div><button id="close-detail" class="secondary" aria-label="关闭详情">关闭</button></div><div id="detail-body"></div></dialog>
-  <dialog id="plugin-detail"><div class="dialog-head"><div><p class="eyebrow">插件详情</p><h2 id="plugin-title">插件</h2></div><button id="close-plugin" class="secondary" aria-label="关闭插件详情">关闭</button></div><div id="plugin-detail-body"></div></dialog>
-  <dialog id="memory-detail"><div class="dialog-head"><div><p class="eyebrow">记忆详情</p><h2>小狼记住的事</h2></div><button id="close-memory" class="secondary">关闭</button></div>
+  <dialog id="detail"><div class="dialog-head"><div><h2 id="detail-title">处理记录</h2></div><button id="close-detail" class="secondary" aria-label="关闭详情">关闭</button></div><div id="detail-body"></div></dialog>
+  <dialog id="plugin-detail"><div class="dialog-head"><div><h2 id="plugin-title">插件</h2></div><button id="close-plugin" class="secondary" aria-label="关闭插件详情">关闭</button></div><div id="plugin-detail-body"></div></dialog>
+  <dialog id="memory-detail"><div class="dialog-head"><div><h2>小狼记住的事</h2></div><button id="close-memory" class="secondary">关闭</button></div>
     <form id="memory-form"><div class="form-grid">
       <label class="field full">记忆内容<textarea name="content" rows="5" required maxlength="2000"></textarea></label>
       <label class="field">类型<select name="kind"><option value="profile">人物资料</option><option value="event">经历与计划</option></select></label>
       <label class="field">重要程度<input name="importance" type="number" min="1" max="5" required value="3"></label>
       <label class="field full">关联用户 ID<textarea name="people" rows="2" placeholder="每行一个；使用聊天记录里的用户ID"></textarea></label>
-      <label class="field">明确有效期（可选）<input name="validUntil" type="datetime-local"></label>
+      <label class="field">有效期<input name="validUntil" type="datetime-local"></label>
       <label class="filter"><input name="pinned" type="checkbox">置顶保留</label>
     </div><p id="memory-form-message" class="muted" role="status"></p><div class="form-actions"><button id="memory-forget" type="button" class="secondary">删除这条记忆</button><button type="submit" class="primary">保存记忆</button></div></form>
     <div id="memory-history"></div><div id="memory-sources"></div>
@@ -204,6 +206,6 @@
     <div id="persona-versions"></div><div id="persona-sources"></div>
   </dialog>
   <dialog id="conversation-name-dialog"><div class="dialog-head"><h2>会话备注</h2><button id="close-conversation-name" class="secondary">关闭</button></div>
-    <form id="conversation-name-form"><label class="field">备注名称<input name="alias" maxlength="80" autocomplete="off"><small>仅用于后台显示，留空恢复默认名称。</small></label><p id="conversation-name-message" class="muted" role="status"></p><button type="submit" class="primary">保存备注</button></form>
+    <form id="conversation-name-form"><label class="field">备注名称<input name="alias" maxlength="80" autocomplete="off"></label><p id="conversation-name-message" class="muted" role="status"></p><button type="submit" class="primary">保存备注</button></form>
   </dialog>
 </body></html>

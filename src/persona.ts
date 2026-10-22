@@ -198,3 +198,6 @@ export const personaPlugin: Plugin.Object<{ config: Config; apiKey?: string; mod
   },
 };
 import { withUsage } from './usage.js';
+
+/** Optional management-panel surfaces owned by this plugin. */
+export const xiaolangPanel = { pages: [{ id: 'persona', title: '人设与学习', view: 'persona' }] };

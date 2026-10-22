@@ -137,7 +137,7 @@ test('panel Key protects pages and APIs, uses an opaque HTTPS session and revoke
   assert.ok(!login.text.includes(key) && !login.headers['Set-Cookie']!.includes(key));
   const cookie = login.headers['Set-Cookie']!.split(';')[0]!;
   assert.equal((await request('/api/status', 'GET', undefined, { cookie })).status, 200);
-  assert.ok((await request('/', 'GET', undefined, { cookie })).text.includes('运行概览'));
+  assert.ok((await request('/', 'GET', undefined, { cookie })).text.includes('plugin-navigation'));
   const settings = (await request('/api/settings', 'GET', undefined, { cookie })).json();
   assert.equal((await request('/api/settings/model', 'POST', {}, { ...post, cookie })).status, 403);
   assert.equal((await request('/api/settings/model', 'POST', {}, { ...post, cookie, 'x-xiaolang-token': settings.writeToken })).status, 200);

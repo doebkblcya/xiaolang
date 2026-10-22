@@ -401,3 +401,6 @@ export const memoryPlugin: Plugin.Object<{ config: Config; apiKey?: string; embe
 };
 import { withUsage } from './usage.js';
 import { VisualToolResult } from './contracts.js';
+
+/** Optional management-panel surfaces owned by this plugin. */
+export const xiaolangPanel = { pages: [{ id: 'memories', title: '聊天与记忆', view: 'memories' }] };

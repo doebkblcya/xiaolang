@@ -100,7 +100,8 @@ test('plugin settings allow disabling builtins and dependencies, preserve write-
   await store.savePlugin('xiaolang-store', { revision: restored.revision, enabled: true });
   const provider = await store.plugin('provider');
   assert.equal(provider.canToggle, true); assert.ok(!JSON.stringify(provider).includes('stored-test-secret'));
-  assert.ok(String(provider.toggleReason).includes('consumer'));
+  assert.ok((provider.provides as string[]).includes('exampleValue'));
+  assert.equal(provider.toggleReason, undefined);
   await store.savePlugin('provider', { revision: provider.revision, enabled: false });
   const consumer = await store.plugin('consumer');
   await store.savePlugin('consumer', { revision: consumer.revision, enabled: false });

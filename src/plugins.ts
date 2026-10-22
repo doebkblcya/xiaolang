@@ -6,6 +6,7 @@ import type { Context } from 'cordis';
 import type { EntryOptions } from '@cordisjs/plugin-loader';
 import type { PluginConfig, PluginEntry } from './config.js';
 import { emitLog, object } from './contracts.js';
+import { registerPanel } from './panel.js';
 import { Failure } from './errors.js';
 import { officialIds, officialModule } from './plugin-catalog.js';
 import { fileURLToPath } from 'node:url';
@@ -79,6 +80,8 @@ export async function configurePlugins(ctx: Context, settings: PluginConfig, cha
         const raw = object(JSON.parse(await readFile(manifest, 'utf8')));
         if (raw?.apiVersion !== undefined && raw.apiVersion !== 1) return fail(ctx, 'plugin_api_incompatible', entry.id);
         if (ctx.get('configuration') && object(raw?.configSchema)) ctx.configuration.registerPlugin(entry.id, raw!.configSchema as Record<string, unknown>);
+        if (Array.isArray(raw?.dependencies) && raw.dependencies.length <= 100 && raw.dependencies.every(name => typeof name === 'string' && /^[a-zA-Z0-9_./:-]{1,100}$/.test(name))) ctx.xiaolangHost.pluginDependencies.set(entry.id, raw.dependencies as string[]);
+        if (raw?.panel !== undefined) registerPanel(ctx.xiaolangHost.panels, entry.id, raw.panel, folder);
         if (typeof raw?.cleanup === 'string') {
           const cleanup = await realpath(resolve(folder, raw.cleanup));
           if (!contains(folder, cleanup)) return fail(ctx, 'plugin_invalid_path', entry.id);
@@ -100,8 +103,12 @@ export async function configurePlugins(ctx: Context, settings: PluginConfig, cha
     catch { return fail(ctx, 'plugin_import_failed', entry.id); }
     const module = object(exports);
     if (ctx.get('configuration') && object(module?.xiaolangConfig)) ctx.configuration.registerPlugin(entry.id, module!.xiaolangConfig as Record<string, unknown>);
+    if (module?.xiaolangPanel !== undefined) registerPanel(ctx.xiaolangHost.panels, entry.id, module.xiaolangPanel, resolved?.startsWith('file:') ? dirname(fileURLToPath(resolved)) : undefined);
     if (module?.xiaolangApiVersion !== undefined && module.xiaolangApiVersion !== 1) return fail(ctx, 'plugin_api_incompatible', entry.id);
     const plugin: unknown = ctx.loader.unwrapExports(exports);
+    const dependencies = object(plugin)?.inject ?? module?.inject;
+    if (Array.isArray(dependencies)) ctx.xiaolangHost.pluginDependencies.set(entry.id, dependencies.filter((value): value is string => typeof value === 'string'));
+    else if (object(dependencies)) ctx.xiaolangHost.pluginDependencies.set(entry.id, Object.keys(dependencies as object));
     if (typeof plugin !== 'function' && typeof object(plugin)?.apply !== 'function') return fail(ctx, 'plugin_invalid_export', entry.id);
     rows.push({ id: entry.id, name, disabled: false, config: entry.config ?? {} });
   }

@@ -131,3 +131,5 @@ export const usagePlugin: Plugin.Object<{ database: string }> = {
     ctx.provide('usage', meter);
   },
 };
+
+Object.assign(usagePlugin, { panel: { pages: [{ id: "usage", title: "模型用量", view: "usage" }] } });

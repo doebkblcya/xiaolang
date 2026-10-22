@@ -160,3 +160,6 @@ export class DeepSeekModel implements Model {
   }
 
 }
+
+/** Optional management-panel surfaces owned by this plugin. */
+export const xiaolangPanel = { detail: { view: 'model-settings' }, pages: [{ id: 'model-settings', title: '回复模型', view: 'model-settings' }] };

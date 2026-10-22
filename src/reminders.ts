@@ -240,3 +240,6 @@ export const remindersPlugin: Plugin.Object<Config> = { name: 'xiaolang-reminder
     parameters: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string', minLength: 36, maxLength: 36 } } },
     execute: async (args, { message }) => manager.cancel(args.id, message) }));
 } };
+
+/** Optional management-panel surfaces owned by this plugin. */
+export const xiaolangPanel = { pages: [{ id: 'reminders', title: '定时提醒', view: 'reminders' }] };

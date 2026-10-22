@@ -2,8 +2,25 @@
   "configSchema": {
     "type": "object",
     "properties": {
-      "greeting": { "type": "string", "title": "问候语", "maxLength": 100, "default": "你好" }
+      "greeting": {
+        "type": "string",
+        "title": "问候语",
+        "maxLength": 100,
+        "default": "你好"
+      }
     },
     "additionalProperties": false
+  },
+  "panel": {
+    "detail": {
+      "entry": "./panel/config.js"
+    },
+    "pages": [
+      {
+        "id": "greeting",
+        "title": "问候示例",
+        "entry": "./panel/config.js"
+      }
+    ]
   }
 }

@@ -1,3 +1,5 @@
+import { createSystemCollector } from './system.mjs';
+import { createPanelRegistry } from './registry.mjs';
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { readFile } from 'node:fs/promises';
@@ -29,6 +31,8 @@ async function readJson(request, maximum = 16384) {
   catch { throw new Error('invalid_json'); }
 }
 export function createHandler(inspection, configuration, options = {}) {
+  const system = options.system ?? createSystemCollector();
+  const registry = createPanelRegistry(inspection, options.panels);
   const allowedHosts = options.allowedHosts ?? [];
   if (!Array.isArray(allowedHosts) || allowedHosts.some(host => typeof host !== 'string' || !/^[a-zA-Z0-9.-]+(?::[0-9]{1,5})?$/.test(host))) throw new Error('invalid_panel_config');
   const writeToken = randomBytes(24).toString('hex');
@@ -128,6 +132,10 @@ export function createHandler(inspection, configuration, options = {}) {
         const [file, type] = assets[url.pathname];
         return send(200, await readFile(new URL(file, import.meta.url)), type);
       }
+      if (url.pathname === '/api/panel') return send(200, registry.describe());
+      if (url.pathname === '/api/panel/system') return send(200, await system());
+      const panelAsset = /^\/api\/panel\/assets\/([a-zA-Z0-9_-]{1,64})\/(.+)$/.exec(url.pathname);
+      if (panelAsset) { const asset = await registry.asset(panelAsset[1], panelAsset[2]); return asset ? send(200, asset.body, asset.type) : send(404, { error: 'not_found' }); }
       if (url.pathname === '/api/status') return send(200, inspection.status());
       if (url.pathname === '/api/usage') return inspection.usage ? send(200, inspection.usage({ range: url.searchParams.get('range') ?? 'today',
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
@@ -185,7 +193,7 @@ export async function apply(ctx, config = {}) {
   if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
-  const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth,
+  const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels,
     persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   const listeners = [{ server, handler, port, host }];
@@ -194,7 +202,7 @@ export async function apply(ctx, config = {}) {
     if (!auth || !tls || !lan || !['127.0.0.1', '0.0.0.0'].includes(lan.host ?? '0.0.0.0')
       || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
       || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
-    const lanHandler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true,
+    const lanHandler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels,
       persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
     listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
   }

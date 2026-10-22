@@ -12,7 +12,7 @@ import { Ajv } from 'ajv';
 import type { Fields, PluginInfo } from './contracts.js';
 import { memoryDefaults } from './memory-config.js';
 import { toolingDefaults, toolingSections } from './tooling-config.js';
-import { builtinTitles, pluginEntries, toggleImpact } from './plugin-catalog.js';
+import { builtinTitles, pluginEntries } from './plugin-catalog.js';
 
 interface QQSettings { appId: string; environment: 'production' | 'sandbox'; groupMessages: 'all' | 'mentions'; connectTimeoutMs: number; groupIds: string[] }
 interface PluginSettings { chatEnabled?: boolean; entries?: Record<string, { enabled?: boolean; config?: Fields }> }
@@ -192,12 +192,7 @@ export class ConfigurationStore implements Configuration {
     const chat = id === config.plugins?.chat;
     const toggleable = !!entry;
     const enabled = chat ? config.chatEnabled && entry?.enabled !== false : entry ? entry.enabled !== false : info.state !== 'disabled';
-    const consumers = enabled ? this.catalog().filter(other => other.id !== id && other.state === 'active'
-      && !(other.id === 'xiaolang-chat' && !config.chatEnabled) && !(other.id === config.plugins?.chat && !config.chatEnabled)
-      && config.plugins?.entries.find(item => item.id === other.id)?.enabled !== false
-      && other.dependencies.some(service => info.provides.includes(service))) : [];
-    return { config, info, entry, chat, enabled, canToggle: toggleable,
-      toggleReason: [toggleImpact(id), consumers.length ? `依赖方：${consumers.map(item => item.title).join('、')}。` : ''].filter(Boolean).join(' ') };
+    return { config, info, entry, chat, enabled, canToggle: toggleable };
 
   }
   async plugin(id: string): Promise<Record<string, unknown>> {
@@ -210,10 +205,9 @@ export class ConfigurationStore implements Configuration {
       if (record(field) && field.writeOnly === true) secretConfigured[key] = !!options.entry?.config?.[key];
       else if (options.entry?.config?.[key] !== undefined) values[key] = structuredClone(options.entry.config[key]);
     }
-    const settingsPage = id === 'xiaolang-trigger' ? 'trigger-settings' : id === 'xiaolang-deepseek' ? 'model-settings'
-      : id === 'xiaolang-adapter' && this.base.adapter.module === 'builtin:qq-official' ? 'qq-settings' : undefined;
-    return { revision, ...options.info, enabled: options.enabled, canToggle: options.canToggle, toggleReason: options.toggleReason,
-      schema, config: values, secretConfigured, settingsPage };
+    return { revision, ...options.info, enabled: options.enabled, canToggle: options.canToggle,
+      schema, config: values, secretConfigured };
+
   }
   async savePlugin(id: string, raw: unknown): Promise<Record<string, unknown>> {
     if (this.writing || this.restarting) throw new Failure('settings_busy');

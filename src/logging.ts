@@ -51,3 +51,5 @@ export const loggingPlugin: Plugin.Object<LoggingOptions> = {
     } }));
   },
 };
+
+Object.assign(loggingPlugin, { panel: { pages: [{ id: "logs", title: "过程日志", view: "logs" }] } });

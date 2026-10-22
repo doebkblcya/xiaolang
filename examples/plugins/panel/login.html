@@ -1,9 +1,33 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>小狼 · 访问验证</title><link rel="stylesheet" href="/style.css"><script src="/login.js" defer></script></head>
-<body class="login-page"><main class="login-main"><div class="login-art"><img src="/assets/xiaolang-halfbody-v1.webp" alt="三花猫少女小狼" width="1086" height="1448"><span>XIAOLANG</span></div><form id="access-form" class="panel">
-  <p class="eyebrow">XIAOLANG / 小狼的工作台</p><h1>欢迎回来<span class="caramel">。</span></h1><p class="muted">输入你的访问 Key，进入管理面板。</p>
-  <label class="field">访问 Key<input id="access-key" name="key" type="password" required minlength="32" maxlength="512" autocomplete="current-password" spellcheck="false" autofocus></label>
-  <p id="access-message" class="muted" role="status">Key 仅用于本次验证，不会保存在网页中。</p>
-  <button id="access-submit" class="primary" type="submit">进入面板</button>
-</form></main></body></html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f8f5ef"><title>小狼 · 访问验证</title><link rel="stylesheet" href="/style.css"><script src="/login.js" defer></script></head>
+<body class="login-page">
+  <main class="login-main">
+    <div class="login-art">
+      <span class="login-orbit" aria-hidden="true"></span>
+      <img src="/assets/xiaolang-halfbody-v1.webp" alt="三花猫少女小狼" width="1086" height="1448" fetchpriority="high">
+      <span class="login-flower" aria-hidden="true">✦</span>
+    </div>
+    <form id="access-form" class="login-form" aria-label="访问验证">
+      <div class="login-brand">
+        <svg class="login-logo" viewBox="0 0 56 56" fill="none" aria-hidden="true">
+          <path d="M10 25 8 7c0-2 2-3 4-1l12 10h8L44 6c2-2 4-1 4 1l-2 18c3 5 3 14-1 19-7 9-27 9-34 0-4-5-4-14-1-19Z" fill="#eee2d3"/>
+          <path d="M10 25 8 7c0-2 2-3 4-1l12 10-2 13-12 5c-1-3-1-6 0-9Z" fill="#594336"/>
+          <path d="m32 16 9-8 5 18c1 7-5 10-11 5-4-3-6-10-3-15Z" fill="#bd885f"/>
+          <path d="m14 19-2-8 8 7m22 1 2-8-8 7" fill="#d6b0a0"/>
+          <path d="M18 35h2m16 0h2" stroke="#594336" stroke-width="3" stroke-linecap="round"/>
+          <path d="m26 40 2 2 2-2" stroke="#a77962" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1>小狼<span class="login-brand-dot" aria-hidden="true">.</span></h1>
+      </div>
+      <div class="login-key">
+        <div class="login-input-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="9" r="4"/><path d="m11 12 8 8m-3-3 3-3m-6 0 3-3"/></svg>
+          <input id="access-key" aria-label="访问密钥" name="key" type="password" required minlength="32" maxlength="512" autocomplete="current-password" spellcheck="false" aria-describedby="access-message">
+          <button id="access-submit" class="login-submit" type="submit" aria-label="验证密钥" title="验证"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></button>
+        </div>
+      </div>
+      <p id="access-message" role="status" hidden></p>
+    </form>
+  </main>
+</body></html>

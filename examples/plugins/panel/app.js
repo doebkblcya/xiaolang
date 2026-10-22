@@ -15,13 +15,9 @@ const stages = { application_ready: '小狼已就绪', application_stopping: '�
 Object.assign(stages, { memory_recalled: '读取聊天与记忆', memory_processing_started: '开始整理记忆', memory_processing_completed: '记忆整理完成', memory_processing_failed: '记忆整理失败', memory_vector_fallback: '向量不可用，使用关键词检索', memory_summary_failed: '聊天摘要整理失败', memory_image_unavailable: '图片暂时无法读取', memory_image_described: '图片描述已生成' });
 Object.assign(stages, { persona_learning_started: '开始学习聊天表达', persona_learning_completed: '表达学习完成', persona_learning_failed: '表达学习未完成' });
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
-const descriptions = { memories: ['聊天与记忆', '看看小狼记住了什么，也可以帮它纠正。'], overview: ['运行概览', '看看小狼现在怎么样。'], chats: ['聊天记录', '按群聊和私聊查看收到的消息与小狼回复。'], logs: ['过程日志', '从收到消息到发送回复，跟着每一步看。'], plugins: ['插件列表', '查看当前的小狼由哪些插件组成。'], 'model-settings': ['回复模型', '配置模型连接与生成方式。'], 'qq-settings': ['QQ 接入', '配置小狼连接的机器人与消息范围。'] };
-Object.assign(descriptions, { persona: ['人设与学习', '基础人设保持固定，让表达逐渐自然。'] });
-Object.assign(descriptions, { usage: ['模型用量', '看看 Token 花在哪些功能上，追溯每次 API 请求。'] });
+const viewTitles = { overview: '主页', chats: '聊天记录', logs: '过程日志', usage: '模型用量', 'model-settings': '回复模型', 'qq-settings': 'QQ 接入', memories: '聊天与记忆', persona: '人设与学习', tooling: '工具与行动', reminders: '定时提醒', plugins: '插件' };
 Object.assign(stages, { api_usage: 'API 用量记录', usage_record_failed: '用量记录写入失败' });
 Object.assign(stages, { tool_image_attached: '原图已交给回复模型' });
-Object.assign(descriptions, { tooling: ['工具与行动', '查看工具、连接和权限，按插件扩展能力。'] });
-Object.assign(descriptions, { reminders: ['定时提醒', '查看提醒时间、执行结果，也可以取消任务。'] });
 Object.assign(stages, { reminder_created: '已创建提醒', reminder_cancelled: '已取消提醒', reminder_queued: '提醒等待发送', reminder_send_started: '开始发送提醒', reminder_sent: '提醒已确认发送', reminder_failed: '提醒发送失败', reminder_unknown: '提醒发送结果未知', reminder_scheduler_failed: '提醒调度异常', reminder_history_failed: '提醒已发出，聊天记录写入失败' });
 Object.assign(stages, { mcp_connected: 'MCP 已连接', mcp_connection_failed: 'MCP 连接失败', mcp_tool_rejected: 'MCP 工具注册失败' });
 Object.assign(stages, { proactive_state: '插话状态更新', proactive_observing: '收集待判断消息', proactive_judge_started: '判断是否接话', proactive_decided: '接话判断完成', proactive_skipped: '本次未接话', proactive_judge_failed: '接话判断失败，保持沉默' });
@@ -34,7 +30,7 @@ let settings, settingsLoading = false, applying = false;
 const dirtyForms = new Set();
 let pluginDetails, pluginDirty = false;
 const triggerForm = $('trigger-form');
-function parkTriggerForm() { $('plugin-config-forms').append(triggerForm); }
+function parkTriggerForm() { $('trigger-settings').append(triggerForm); }
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
 function time(value, full = false) { const date = new Date(value); return Number.isFinite(date.getTime()) ? (full ? dateFormat : timeFormat).format(date) : '—'; }
 function tone(state) { return ['completed', 'connected', 'active', 'sent', 'succeeded', 'ready'].includes(state) ? 'good' : ['failed', 'error', 'unknown'].includes(state) ? 'bad' : ['queued', 'running', 'sending', 'pending', 'starting'].includes(state) ? 'waiting' : 'neutral'; }
@@ -45,10 +41,21 @@ function checkAccess(response) {
   if (response.status === 401 && !authenticationLost) { authenticationLost = true; location.reload(); }
 }
 async function get(path) { const response = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(7000) }); checkAccess(response); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
-function showView(view) {
+let registeredPages = [], detailDeclarations = {}, customCleanup, customPageVersion = 0;
+function showView(requested) {
+  customCleanup?.(); customCleanup = undefined;
+  const version = ++customPageVersion;
+  const page = registeredPages.find(page => page.id === requested || page.view === requested);
+  const view = page?.view ?? (page?.entry ? `registered-${page.id}` : requested);
+  if (page?.entry && !$(view)) { const section = element('section', 'view'); section.id = view; $('notice').parentNode.insertBefore(section, document.querySelector('footer')); }
+  if (!$(view)?.classList.contains('view')) return;
   for (const section of document.querySelectorAll('.view')) section.hidden = section.id !== view;
-  for (const button of document.querySelectorAll('.nav')) { button.classList.toggle('active', button.dataset.view === view); if (button.dataset.view === view) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current'); }
-  [$('page-title').textContent, $('page-description').textContent] = descriptions[view];
+  for (const button of document.querySelectorAll('.nav')) { button.classList.toggle('active', button.dataset.view === (page?.id ?? view)); if (button.dataset.view === (page?.id ?? view)) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current'); }
+  $('page-title').textContent = page?.title ?? viewTitles[view] ?? requested;
+  document.title = `小狼 · ${$('page-title').textContent}`;
+  window.scrollTo(0, 0);
+  if (page?.entry) mountPanelContent(page, $(view)).then(cleanup => { if (version === customPageVersion) customCleanup = cleanup; else cleanup?.(); }).catch(() => notice('页面加载失败'));
+  if (view === 'overview') refreshSystem();
   if (view === 'chats') refreshChats();
   if (view === 'memories') refreshMemory();
   if (view === 'persona') refreshPersona();
@@ -58,9 +65,46 @@ function showView(view) {
   if (view === 'usage') refreshUsage();
   if (view.endsWith('-settings') && !settings) loadSettings();
 }
-for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => showView(button.dataset.view));
+async function mountPanelContent(content, root, plugin) {
+  const controller = new AbortController();
+  const target = element('div', 'plugin-content'); root.replaceChildren(target);
+  const module = await import(content.entry);
+  if (typeof module.mount !== 'function') throw new Error('invalid_panel_module');
+  const cleanup = await module.mount({ root: target, plugin: plugin ?? { id: content.plugin }, signal: controller.signal,
+    api: { get, request: async (path, body) => { if (!settings) await loadSettings(); const result = await settingsRequest(path, body); if (result.model && result.qq && result.trigger) fillSettings(result); return result; } },
+    navigate: showView, openPlugin });
+  return () => { controller.abort(); if (typeof cleanup === 'function') cleanup(); target.remove(); };
+}
+async function loadPanel() {
+  try {
+    const registration = await get('/api/panel'); registeredPages = registration.pages; detailDeclarations = registration.details;
+    $('plugin-navigation').replaceChildren(...registeredPages.map(page => {
+      const button = element('button', 'nav'), mark = element('span', 'nav-page-mark'); mark.setAttribute('aria-hidden', 'true');
+      button.type = 'button'; button.dataset.view = page.id; button.append(mark, document.createTextNode(page.title));
+      button.addEventListener('click', () => showView(page.id)); return button;
+    }));
+  } catch { notice('插件页面加载失败'); }
+}
+function bytes(value) { return value >= 1073741824 ? `${(value / 1073741824).toFixed(1)} GB` : `${(value / 1048576).toFixed(1)} MB`; }
+async function refreshSystem() {
+  try {
+    const data = await get('/api/panel/system');
+    $('host-cpu').textContent = data.machine.cpuModel; $('host-cores').textContent = data.machine.logicalCpus;
+    $('host-memory').textContent = bytes(data.machine.memoryTotal); $('host-system').textContent = `${data.machine.platform} / ${data.machine.arch}`;
+    $('process-memory').textContent = `${bytes(data.process.memoryBytes)} / ${bytes(data.machine.memoryTotal)}`;
+    $('process-memory-ratio').textContent = `${data.process.memoryPercent.toFixed(2)}%`;
+    $('process-memory-bar').value = data.process.memoryPercent; $('process-cpu').textContent = `${data.process.cpuPercent.toFixed(2)}%`;
+    $('process-cpu').title = '相对于全部逻辑核心'; $('process-heap').textContent = bytes(data.process.heapBytes); $('process-node').textContent = data.process.nodeVersion;
+    $('container-limit-row').hidden = !data.container.memoryLimit; $('container-limit').textContent = data.container.memoryLimit ? bytes(data.container.memoryLimit) : '—';
+  } catch { $('process-memory').textContent = '暂时无法读取'; }
+}
+for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', event => {
+  if (button.tagName === 'A') { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); }
+  showView(button.dataset.view);
+});
+for (const button of document.querySelectorAll('[data-open-plugin]')) button.addEventListener('click', () => openPlugin(button.dataset.openPlugin));
 function renderStatus(status) {
-  $('hero-state').textContent = status.state === 'ready' && status.connection === 'connected' ? '小狼在线，聊天链路已就绪' : status.state === 'ready' ? '面板已就绪，接入状态请看下方' : '小狼正在启动中';
+  $('hero-state').textContent = status.state === 'ready' && status.connection === 'connected' ? '运行正常' : status.state === 'ready' ? '等待连接' : '启动中';
   $('today-date').textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
   $('qq-state').textContent = words[status.connection] ?? status.connection;
   $('platform').textContent = status.platform?.includes('sandbox') ? 'QQ 官方机器人 · 沙箱环境' : status.platform === 'qq-official' ? 'QQ 官方机器人 · 正式环境' : status.platform ?? '正在启动接入';
@@ -79,16 +123,27 @@ function renderStatus(status) {
   const builtin = status.plugins.filter(plugin => plugin.kind === 'builtin').length;
   $('plugins-summary').textContent = `内置 ${builtin} · 外挂 ${status.plugins.length - builtin} · 已启用 ${active}`;
   $('plugin-empty').hidden = status.plugins.length > 0;
-  $('plugin-rows').replaceChildren(...status.plugins.map(plugin => {
-    const row = element('tr'), name = element('td'), source = element('td');
-    name.append(element('strong', '', plugin.title ?? plugin.id), element('div', 'module', plugin.id));
-    source.append(element('span', 'badge neutral', plugin.kind === 'builtin' ? '内置' : '外挂'), element('div', 'module', plugin.module));
-    row.classList.add('turn-row'); row.tabIndex = 0; row.setAttribute('aria-label', `查看插件：${plugin.title ?? plugin.id}`);
-    row.addEventListener('click', () => openPlugin(plugin.id)); row.addEventListener('keydown', event => { if (event.key === 'Enter') openPlugin(plugin.id); });
-    row.append(name, source, element('td', 'module', plugin.dependencies?.join('、') || '无'));
-    const cell = element('td'); cell.append(badge(plugin.state)); row.append(cell); return row;
+  renderPlugins(status.plugins);
+}
+let pluginCatalog = [];
+function renderPlugins(plugins = pluginCatalog) {
+  pluginCatalog = plugins;
+  const query = $('plugin-search').value.trim().toLowerCase(), source = $('plugin-source').value;
+  const filtered = plugins.filter(plugin => (!source || plugin.kind === source) && `${plugin.title} ${plugin.id}`.toLowerCase().includes(query));
+  $('plugin-empty').hidden = filtered.length > 0;
+  $('plugin-empty').textContent = '暂无匹配插件';
+  $('plugin-rows').replaceChildren(...filtered.map(plugin => {
+    const card = element('button', 'plugin-card'); card.type = 'button'; card.setAttribute('aria-label', `查看插件：${plugin.title ?? plugin.id}`);
+    const head = element('div', 'plugin-card-heading'), mark = element('span', 'plugin-card-mark', plugin.kind === 'builtin' ? '◇' : '◈');
+    head.append(mark, badge(plugin.state));
+    const foot = element('div', 'plugin-card-footer'); foot.append(element('span', '', plugin.kind === 'builtin' ? '内置' : '外挂'), element('span', '', '↗'));
+    card.append(head, element('strong', '', plugin.title ?? plugin.id), element('small', 'module', plugin.id), foot);
+    card.addEventListener('click', () => openPlugin(plugin.id)); return card;
   }));
 }
+$('plugin-search').addEventListener('input', () => renderPlugins());
+$('plugin-source').addEventListener('change', () => renderPlugins());
+
 function logMeta(entry) {
   const values = [];
   if (entry.reason) values.push(reasons[entry.reason] ?? entry.reason);
@@ -126,7 +181,7 @@ function renderLogs() {
   if ($('follow').checked) $('log-list').scrollTop = $('log-list').scrollHeight;
   $('recent-events').replaceChildren(...logs.slice(-6).reverse().map(({ entry }) => {
     const row = element('div', 'activity'), body = element('div');
-    body.append(element('div', '', stages[entry.code] ?? entry.code), element('p', '', entry.preview ?? logMeta(entry) ?? ''));
+    body.append(element('div', '', stages[entry.code] ?? entry.code), element('p', '', entry.preview ?? logMeta({ ...entry, turn: undefined })));
     row.append(element('span', 'dot'), body, element('time', '', time(entry.time))); return row;
   }));
   if (!logs.length) $('recent-events').append(element('p', 'empty', '等待小狼的第一条动态'));
@@ -178,11 +233,12 @@ async function poll() {
     let page = initialPage;
     if (runStarted !== undefined && runStarted !== status.started) { logs = []; page = await get('/api/logs?after=0'); }
     if (runStarted !== undefined && runStarted !== status.started) {
-      settings = undefined; dirtyForms.clear(); await loadSettings();
+      settings = undefined; dirtyForms.clear(); await loadSettings(); await loadPanel();
     }
     if (applying && status.state === 'ready') { await loadSettings(); if (settings && !settings.pendingRestart) { applying = false; fillSettings(settings); } }
     runStarted = status.started;
     renderStatus(status);
+    if (!$('overview').hidden) await refreshSystem();
     if (page.reset) logs = [];
     if (page.items.length || page.reset) { logs = [...logs, ...page.items].slice(-500); renderLogs(); }
     cursor = page.cursor;
@@ -191,7 +247,7 @@ async function poll() {
     if (!$('tooling').hidden) await refreshTools();
     if (!$('reminders').hidden) await refreshReminders();
     if (!$('usage').hidden && Date.now() - usageUpdated > 10000) await refreshUsage(false);
-  } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('无法连接面板，当前保留上次显示的数据。请检查网络和访问地址，连接恢复后会自动更新。'); }
+  } catch { $('connection').textContent = '面板连接中断'; $('connection').className = 'badge bad'; notice('连接中断，显示上次数据。'); }
   finally { busy = false; }
 }
 
@@ -226,11 +282,11 @@ function formValue(form, name, value) { form.elements.namedItem(name).value = va
 function fillSettings(data, sections = ['model', 'qq', 'trigger']) {
   settings = data;
   $('settings-banner').hidden = !data.pendingRestart && !data.lastApplyFailed;
-  $('settings-banner-text').textContent = data.lastApplyFailed ? '上次应用失败，已恢复上一份可用配置。请检查 QQ 凭证或连接设置。' : '配置已保存，尚未生效。应用时会短暂重启，处理中的消息结束后才可操作。';
+  $('settings-banner-text').textContent = data.lastApplyFailed ? '应用失败，已恢复原配置。' : '已保存，待应用。';
   $('apply-settings').disabled = !data.pendingRestart || applying;
   $('apply-settings').textContent = applying ? '正在应用…' : '应用配置并重启';
-  $('model-active').textContent = `运行中：${data.active.model}`;
-  $('qq-active').textContent = data.active.environment === 'production' ? '运行中：正式环境' : '运行中：沙箱环境';
+  $('model-active').textContent = data.active.model;
+  $('qq-active').textContent = data.active.environment === 'production' ? '正式环境' : '沙箱环境';
   for (const section of sections) {
     if (dirtyForms.has(section)) continue;
     const form = $(`${section}-form`), values = data[section];
@@ -238,7 +294,7 @@ function fillSettings(data, sections = ['model', 'qq', 'trigger']) {
       for (const name of ['baseUrl', 'name', 'maxOutputTokens', 'retries', 'temperature', 'topP', 'reasoningEffort']) formValue(form, name, values[name]);
       formValue(form, 'thinking', String(values.thinking)); formValue(form, 'timeoutSeconds', values.timeoutMs / 1000);
       formValue(form, 'stop', (values.stop ?? []).join('\n'));
-      if (data.turnTimeoutMs) $('model-budget-note').textContent = `仍受单轮 ${data.turnTimeoutMs / 1000} 秒总超时约束。`;
+      if (data.turnTimeoutMs) $('model-budget-note').textContent = `单轮上限 ${data.turnTimeoutMs / 1000} 秒`;
     } else if (section === 'qq') {
       for (const name of ['appId', 'environment', 'groupMessages']) formValue(form, name, values[name]);
       formValue(form, 'connectTimeoutSeconds', values.connectTimeoutMs / 1000); formValue(form, 'groupIds', (values.groupIds ?? []).join('\n'));
@@ -252,12 +308,12 @@ function fillSettings(data, sections = ['model', 'qq', 'trigger']) {
       for (const name of ['activeSeconds', 'idleSeconds', 'idleMessages', 'historyMessages', 'maxRepliesPerMinute']) formValue(form, name, values.proactive[name]);
       for (const control of form.elements) control.disabled = values.supported === false;
       $('trigger-provider').textContent = values.supported === false ? '使用外部替换插件' : '内置默认插件';
-      formMessage(section, values.supported === false ? '当前由外部触发插件负责，请使用该插件的配置。' : '保存后应用配置生效。');
+      formMessage(section, values.supported === false ? '使用外部触发配置' : '');
       continue;
     }
     formValue(form, 'secret', '');
-    $(`${section}-secret-state`).textContent = values.secretConfigured ? '已有密钥 · 不回显；留空保留，填写则替换。' : '尚未配置密钥，请填写。';
-    formMessage(section, '填写修改后保存；密钥留空会保留原值。');
+    $(`${section}-secret-state`).textContent = values.secretConfigured ? '已配置 · 留空保留' : '未配置';
+    formMessage(section, '');
   }
   syncThinkingFields();
 }
@@ -299,7 +355,7 @@ for (const section of ['model', 'qq', 'trigger']) {
     try {
       const result = await settingsRequest(`/api/settings/${section}`, { revision: settings.revision, value, ...(section === 'trigger' ? {} : { secret: control('secret') }) });
       dirtyForms.delete(section); fillSettings(result, [section]);
-      formMessage(section, result.pendingRestart ? (section === 'trigger' ? '已保存。关闭插件详情后，点击“应用配置并重启”生效。' : '已保存。点击上方“应用配置并重启”后生效。') : '配置与运行中的设置一致。', 'success');
+      formMessage(section, result.pendingRestart ? '已保存，待应用。' : '没有变更。', 'success');
     } catch (error) { formMessage(section, error.message, 'error'); }
     finally { button.disabled = false; }
   });
@@ -313,19 +369,21 @@ $('apply-settings').addEventListener('click', async () => {
   applying = true; $('apply-settings').disabled = true;
   try {
     await settingsRequest('/api/settings/apply', { revision: settings.revision });
-    $('settings-banner-text').textContent = '正在应用配置并重新连接，页面会自动恢复。'; $('apply-settings').textContent = '正在应用…';
+    $('settings-banner-text').textContent = '正在重启…'; $('apply-settings').textContent = '正在应用…';
   } catch (error) {
     applying = false; $('apply-settings').disabled = false; $('settings-banner-text').textContent = error.message;
   }
 });
 
 
+let detailCleanup, detailMountVersion = 0;
 async function openPlugin(id) {
+  detailCleanup?.(); detailCleanup = undefined; const version = ++detailMountVersion;
   parkTriggerForm();
   pluginDetails = undefined; pluginDirty = false;
   $('plugin-title').textContent = '正在读取…'; $('plugin-detail-body').replaceChildren();
   if (!$('plugin-detail').open) $('plugin-detail').showModal();
-  try { renderPlugin(await settingsRequest(`/api/plugins/${encodeURIComponent(id)}`)); }
+  try { const detail = await settingsRequest(`/api/plugins/${encodeURIComponent(id)}`); if (version === detailMountVersion) renderPlugin(detail); }
   catch (error) { $('plugin-detail-body').append(element('p', 'error-box', error.message)); }
 }
 function renderPlugin(detail) {
@@ -333,31 +391,25 @@ function renderPlugin(detail) {
   pluginDetails = detail; pluginDirty = false;
   $('plugin-title').textContent = detail.title;
   const body = $('plugin-detail-body'), meta = element('div', 'detail-meta');
-  meta.append(badge(detail.state), element('span', '', detail.kind === 'builtin' ? '内置 · 镜像内' : '外挂 · 挂载加载'));
-  body.replaceChildren(meta, element('p', 'mono', `${detail.id} · ${detail.module}`),
-    detailSection('依赖服务', detail.dependencies.join('、') || '无'), detailSection('提供服务', detail.provides.join('、') || '无'));
+  meta.append(badge(detail.state), element('span', '', detail.kind === 'builtin' ? '内置' : '外挂'));
+  const technical = element('details', 'technical-details');
+  technical.append(element('summary', '', '技术信息'), element('p', 'mono', `${detail.id} · ${detail.module}`));
+  body.replaceChildren(meta);
   if (detail.missingDependencies?.length) body.append(detailSection('等待服务', detail.missingDependencies.join('、')));
-  if (detail.impact) body.append(detailSection('停用影响', detail.impact));
-  if (detail.id === 'xiaolang-persona') {
-    const button = element('button', 'secondary detail-log-button', '查看学习记录'); button.type = 'button';
-    button.addEventListener('click', () => { $('plugin-detail').close(); showView('persona'); }); body.append(button);
-  }
-  if (detail.id === 'xiaolang-reminders') {
-    const button = element('button', 'secondary detail-log-button', '查看定时提醒'); button.type = 'button';
-    button.addEventListener('click', () => { $('plugin-detail').close(); showView('reminders'); }); body.append(button);
-  }
-  if (detail.settingsPage && detail.settingsPage !== 'trigger-settings') {
-    const button = element('button', 'secondary detail-log-button', '打开插件配置');
-    button.type = 'button'; button.addEventListener('click', () => { $('plugin-detail').close(); showView(detail.settingsPage); }); body.append(button);
+  const relations = element('div', 'plugin-relations');
+  relations.append(detailSection('依赖服务', detail.dependencies.join('、') || '无'), detailSection('提供服务', detail.provides.join('、') || '无')); body.append(relations);
+  for (const page of registeredPages.filter(page => page.plugin === detail.id)) {
+    const button = element('button', 'secondary detail-log-button', page.title); button.type = 'button';
+    button.addEventListener('click', () => { $('plugin-detail').close(); showView(page.id); }); body.append(button);
   }
   const form = element('form', 'plugin-form'), fields = element('div', 'form-grid');
   if (detail.canToggle) {
     const line = element('label', 'switch-line'), text = element('span');
-    text.append(element('strong', '', '启用插件'), element('small', '', detail.toggleReason || '保存并应用后生效；停用不删除插件文件或数据。'));
+    text.append(element('strong', '', '启用插件'));
     const enabled = element('input'); enabled.type = 'checkbox'; enabled.name = '_enabled'; enabled.checked = detail.enabled; enabled.disabled = !detail.canToggle;
     line.append(text, enabled); form.append(line);
   }
-  for (const [name, definition] of Object.entries(detail.schema?.properties ?? {})) {
+  for (const [name, definition] of Object.entries(detailDeclarations[detail.id] ? {} : detail.schema?.properties ?? {})) {
     const label = element('label', 'field'), required = detail.schema.required?.includes(name);
     label.append(element('span', '', definition.title || name));
     let input;
@@ -378,12 +430,13 @@ function renderPlugin(detail) {
     if (definition.maximum !== undefined) input.max = definition.maximum;
     if (definition.type === 'integer') input.step = '1'; else if (definition.type === 'number') input.step = 'any';
     if (definition.maxLength !== undefined) input.maxLength = definition.maxLength;
-    label.append(input); if (definition.description) label.append(element('small', '', definition.description)); fields.append(label);
+    if (definition.description) input.title = definition.description;
+    label.append(input); fields.append(label);
   }
   if (fields.children.length) form.append(fields);
-  if (!detail.schema && !detail.settingsPage) form.append(element('p', 'muted', '该插件尚未声明可编辑的配置项。'));
+  if (!detail.schema && !detailDeclarations[detail.id]) form.append(element('p', 'muted', '无配置项'));
   if (detail.canToggle || detail.schema) {
-    const footer = element('div', 'form-footer'), message = element('p', 'muted', '保存后应用配置生效。'), save = element('button', 'primary', '保存插件设置');
+    const footer = element('div', 'form-footer'), message = element('p', 'muted', ''), save = element('button', 'primary', '保存');
     save.type = 'submit'; message.setAttribute('role', 'status'); footer.append(message, save); form.append(footer);
     form.addEventListener('input', () => { pluginDirty = true; message.textContent = '有未保存的修改。'; });
     form.addEventListener('change', () => { pluginDirty = true; message.textContent = '有未保存的修改。'; });
@@ -391,7 +444,7 @@ function renderPlugin(detail) {
       event.preventDefault(); save.disabled = true;
       const payload = { revision: detail.revision };
       if (detail.canToggle) payload.enabled = form.elements.namedItem('_enabled').checked;
-      if (detail.schema) {
+      if (detail.schema && !detailDeclarations[detail.id]) {
         payload.config = {};
         for (const [name, definition] of Object.entries(detail.schema.properties)) {
           const input = form.elements.namedItem(name);
@@ -408,11 +461,27 @@ function renderPlugin(detail) {
       } catch (error) { message.textContent = error.message; message.className = 'form-error'; save.disabled = false; }
     });
   }
-  body.append(form);
-  if (detail.settingsPage === 'trigger-settings') { body.append(triggerForm); loadSettings(['trigger']); }
+  body.append(form, technical);
+  mountPluginDetail(detail);
 }
 $('close-plugin').addEventListener('click', () => $('plugin-detail').close());
-$('plugin-detail').addEventListener('close', () => { parkTriggerForm(); pluginDetails = undefined; pluginDirty = false; });
+$('plugin-detail').addEventListener('close', () => { detailCleanup?.(); detailCleanup = undefined; ++detailMountVersion; parkTriggerForm(); pluginDetails = undefined; pluginDirty = false; });
+
+
+function mountPluginDetail(detail) {
+  const content = detailDeclarations[detail.id];
+  if (!content) return;
+  const root = element('div', 'plugin-custom-detail'); $('plugin-detail-body').append(root);
+  if (content.view) {
+    const source = $(content.view); if (!source) return;
+    const children = [...source.childNodes]; root.append(...children);
+    detailCleanup = () => source.append(...children);
+    if (content.view.endsWith('-settings')) loadSettings();
+  } else if (content.entry) {
+    const version = detailMountVersion;
+    mountPanelContent(content, root, detail).then(cleanup => { if (version === detailMountVersion) detailCleanup = cleanup; else cleanup(); }).catch(() => root.append(element('p', 'form-error', '配置加载失败')));
+  }
+}
 
 get('/api/auth/session').then(auth => { $('logout').hidden = !auth.enabled; }).catch(() => {});
 $('logout').addEventListener('click', async () => {
@@ -448,9 +517,10 @@ async function refreshReminders() {
       }
       row.append(content, schedule, state, actions); return row;
     }));
-  } catch { $('reminder-summary').textContent = '暂时无法读取提醒，请稍后刷新。'; }
+  } catch { $('reminder-summary').textContent = '提醒加载失败'; }
 }
 $('refresh-reminders').addEventListener('click', refreshReminders);
+loadPanel();
 poll();
 loadSettings();
 const timer = setInterval(poll, 2000);
@@ -464,13 +534,13 @@ async function refreshMemory() {
     const data = await get(`/api/memory?${params}`), state = data.status;
     memoryNext = data.next; $('memory-older').disabled = !data.next;
     const vector = state.vectorState === 'ready' ? '混合检索可用' : state.vectorState === 'missing_key' ? '未配置百炼密钥 · 当前仅关键词检索' : `向量异常 · 当前使用关键词检索（${state.vectorError}）`;
-    $('memory-status').textContent = `${state.enabled ? '已启用' : '尚未启用'} · ${state.total} 条记忆 · 向量已索引 ${state.indexed} 条 · ${state.summaries} 份摘要 · ${vector}${state.processing ? ' · 正在整理聊天' : ''}${state.extractionError ? ` · 整理异常：${state.extractionError}` : ''}`;
+    $('memory-status').textContent = `${state.enabled ? '已启用' : '已停用'} · ${state.total} 条记忆 · ${state.indexed} 已索引 · ${state.summaries} 份摘要${state.vectorState === 'ready' ? '' : ` · ${vector}`}${state.processing ? ' · 正在整理聊天' : ''}${state.extractionError ? ` · 整理异常：${state.extractionError}` : ''}`;
     $('memory-list').replaceChildren(...data.items.map(item => {
       const card = element('button', 'memory-card'); card.type = 'button';
       card.append(element('span', 'badge neutral', item.kind === 'profile' ? '人物资料' : '经历与计划'), element('p', '', item.content), element('small', 'muted', `${item.pinned ? '已置顶 · ' : ''}重要度 ${item.importance} · ${time(item.updated, true)} · ${item.sources.length} 条来源`));
       card.addEventListener('click', () => openMemory(item.id)); return card;
     }));
-    if (!data.items.length) $('memory-list').append(element('p', 'empty', '还没有符合条件的记忆。聊天会在后台自动整理。'));
+    if (!data.items.length) $('memory-list').append(element('p', 'empty', '暂无匹配记忆'));
   } catch { $('memory-status').textContent = '暂时无法读取记忆，请稍后重试。'; }
 }
 async function openMemory(id) {
@@ -480,7 +550,7 @@ async function openMemory(id) {
   for (const [key, value] of Object.entries({ content: item?.content ?? '', kind: item?.kind ?? 'profile', importance: item?.importance ?? 3, people: item?.people?.join('\n') ?? '', validUntil: item?.validUntil ? new Date(Date.parse(item.validUntil) + 8 * 3600000).toISOString().slice(0, 16) : '' })) form.elements.namedItem(key).value = value;
   form.elements.namedItem('pinned').checked = !!item?.pinned;
   $('memory-forget').hidden = !item;
-  $('memory-form-message').textContent = '保存后立即影响后续召回；原始聊天记录仍可追溯。';
+  $('memory-form-message').textContent = '';
   $('memory-sources').replaceChildren(...(item?.sources ?? []).map(source => detailSection(`原文 ${source.seq} · ${time(source.time, true)} · ${source.name} · ${source.group ? `群 ${source.group}` : '私聊'}`, source.text)));
   renderMemoryHistory(item?.history);
   if (!$('memory-detail').open) $('memory-detail').showModal();
@@ -490,7 +560,7 @@ function renderMemoryHistory(history, append = false) {
   if (!append) {
     box.replaceChildren();
     if (!history) return;
-    box.append(element('h3', '', '变化历史'), element('p', 'muted', '旧版本按需查阅，不会每轮送给模型。这里的时间是记录更新时间，事实发生时间以原文为准。升级前已被覆盖的内容无法还原。'));
+    box.append(element('h3', '', '变化历史'));
   }
   box.querySelector('[data-history-more]')?.remove();
   for (const entry of history.items) {
@@ -545,11 +615,11 @@ async function refreshTools() {
     const data = await get('/api/tools');
     $('tool-rows').replaceChildren(...data.items.map(tool => {
       const row = element('tr'), name = element('td');
-      name.append(element('strong', 'mono', tool.name), element('p', 'muted', tool.description.slice(0, 160)));
+      name.append(element('strong', '', tool.description.slice(0, 80)), element('div', 'module', tool.name)); name.title = tool.description;
       row.append(name, element('td', 'mono', tool.source), element('td', '', tool.access === 'admin' ? '仅管理员' : '所有用户')); return row;
     }));
-    $('tool-connections').textContent = data.mcp.length ? data.mcp.map(server => `MCP ${server.name}：${words[server.state] ?? server.state}，${server.tools} 个工具${server.errorCode ? '（'+server.errorCode+'）' : ''}`).join('；') : '尚未配置 MCP 服务。';
-    $('skill-catalog').textContent = data.skills.length ? '已安装 Skills：'+data.skills.map(skill => skill.name).join('、') : '尚未安装 Skill。放入 Skills 目录后，应用配置或重启发现。';
+    $('tool-connections').textContent = data.mcp.length ? data.mcp.map(server => `MCP ${server.name}：${words[server.state] ?? server.state}，${server.tools} 个工具${server.errorCode ? '（'+server.errorCode+'）' : ''}`).join('；') : 'MCP 未配置';
+    $('skill-catalog').textContent = data.skills.length ? '已安装 Skills：'+data.skills.map(skill => skill.name).join('、') : 'Skills 未配置';
   } catch { $('tool-connections').textContent = '暂时无法读取工具状态。'; }
 }
 for (const button of document.querySelectorAll('[data-tool-config]')) button.addEventListener('click', () => openPlugin(button.dataset.toolConfig));
@@ -558,20 +628,20 @@ let editingStyle;
 async function refreshPersona() {
   try {
     const data = await get('/api/persona'), state = data.status;
-    $('persona-status').textContent = `${state.enabled ? '后台学习已开启' : '后台学习已关闭'} · ${state.active} 条启用 / ${state.total} 条习惯 · 每 ${state.intervalMinutes} 分钟检查 · 今日调用 ${state.dailyCalls}/${state.maxDailyCalls}${state.processing ? ' · 正在学习' : ''}${state.error ? ` · ${settingsErrors[state.error] ?? state.error}` : ''}`;
+    $('persona-status').textContent = `${state.enabled ? '学习已开启' : '学习已关闭'} · ${state.active}/${state.total} 条启用 · 今日 ${state.dailyCalls}/${state.maxDailyCalls} 次${state.processing ? ' · 正在学习' : ''}${state.error ? ` · ${settingsErrors[state.error] ?? state.error}` : ''}`;
     $('persona-list').replaceChildren(...data.items.map(item => {
       const card = element('button', 'memory-card'); card.type = 'button';
       card.append(element('strong', '', item.scene), element('p', '', item.rule), element('small', 'muted', `${item.enabled ? '启用' : '停用'} · 版本 ${item.version} · ${item.examples.length} 组真人示例`));
       card.addEventListener('click', () => openStyle(item.id).catch(() => notice('无法读取学习详情，请刷新后重试。'))); return card;
     }));
-    if (!data.items.length) $('persona-list').append(element('p', 'empty', '暂未学到表达习惯。至少积累 20 条用户消息后，后台才会调用模型；没有合适规律时不会强行学习。'));
+    if (!data.items.length) $('persona-list').append(element('p', 'empty', '暂无表达习惯'));
   } catch { $('persona-status').textContent = '暂时无法读取学习记录。'; }
 }
 async function openStyle(id) {
   editingStyle = await get(`/api/persona/${encodeURIComponent(id)}`);
   const form = $('persona-form'), item = editingStyle;
   form.elements.scene.value = item.scene; form.elements.rule.value = item.rule; form.elements.keywords.value = item.keywords.join('\n'); form.elements.enabled.checked = item.enabled;
-  $('persona-message').textContent = '保存后下一轮回复即可参考。固定人设在插件配置里修改。';
+  $('persona-message').textContent = '';
   $('persona-sources').replaceChildren(...item.sources.map(source => detailSection(`原文 ${source.seq} · ${source.name} · ${source.group ? `群 ${source.group}` : '私聊'}`, source.text)));
   $('persona-versions').replaceChildren(element('h3', '', '最近版本'));
   for (const version of item.versions) {
@@ -590,7 +660,7 @@ $('persona-config').addEventListener('click', () => openPlugin('xiaolang-persona
 $('persona-refresh').addEventListener('click', refreshPersona);
 $('close-persona').addEventListener('click', () => $('persona-detail').close());
 $('persona-learn').addEventListener('click', async () => {
-  try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/learn', {}); $('persona-status').textContent = '已提交后台学习。至少需两条用户消息，受五分钟冷却与每日上限限制；稍后刷新查看结果。'; }
+  try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/learn', {}); $('persona-status').textContent = '已提交学习'; }
   catch (error) { $('persona-status').textContent = error.message; }
 });
 $('persona-form').addEventListener('submit', async event => {
@@ -608,7 +678,7 @@ let chatLoading = false, conversationFilterVersion = 0, timelineVersion = 0, nam
 function conversationLabel(item) { return item.alias || (item.scope === 'group' && item.name === `群聊 ${item.recipient}` ? `群聊 · ${item.recipient.slice(0, 12)}` : item.name); }
 function setConversationHeading(item) {
   $('conversation-title').textContent = conversationLabel(item);
-  $('conversation-subtitle').textContent = `${item.scope === 'group' ? '群' : '用户'} ID：${item.recipient} · ${item.messages} 条记录`;
+  $('conversation-subtitle').textContent = `${item.scope === 'group' ? '群聊' : '私聊'} · ${item.messages} 条消息`; $('conversation-title').title = item.recipient;
   $('conversation-delete').disabled = false; $('conversation-name').disabled = false; $('message-latest').disabled = false;
 }
 function renderConversations() {
@@ -618,7 +688,7 @@ function renderConversations() {
     button.append(element('small', 'muted', item.scope === 'group' ? '群聊' : '私聊'), element('strong', '', conversationLabel(item)), element('span', 'conversation-preview', item.preview || '（非文字消息）'));
     button.addEventListener('click', () => { selectConversation(item).catch(() => { $('conversation-message').textContent = '读取会话失败，请重试。'; }); }); return button;
   }));
-  if (!conversationItems.length) $('conversation-list').append(element('p', 'empty', '暂无符合条件的会话。收到消息后会自动出现。'));
+  if (!conversationItems.length) $('conversation-list').append(element('p', 'empty', '暂无匹配会话'));
   $('conversation-more').hidden = !conversationNext;
 }
 async function refreshChats(more = false) {
@@ -650,7 +720,7 @@ function renderTimeline() {
   const nodes = conversationRows.map(item => {
     const article = element('article', `timeline-item ${item.direction === 'out' ? 'outgoing' : 'incoming'}`), meta = element('div', 'timeline-meta');
     meta.append(element('strong', '', item.name), element('span', '', time(item.time, true)));
-    if (item.direction === 'in' && item.name !== item.sender) meta.append(element('span', 'message-sender-id', `ID：${item.sender}`));
+    meta.title = `ID：${item.sender}`;
     if (item.kind === 'reminder') meta.append(element('span', '', '定时提醒'));
     const bubble = element('div', 'message-bubble');
     if (item.direction === 'out') bubble.textContent = item.parts?.[0] ?? item.text;
@@ -662,7 +732,7 @@ function renderTimeline() {
         bubble.append(link);
       } else bubble.append(document.createTextNode(segment.type === 'mention' ? `[@ ${segment.userId}]` : segment.type === 'reply' ? `[引用消息 ${segment.messageId}]` : `[暂不支持：${segment.kind}]`));
     }
-    const remove = element('button', 'link', '删除'); remove.type = 'button';
+    const remove = element('button', 'link message-remove', '删除'); remove.type = 'button';
     remove.addEventListener('click', async () => {
       if (!confirm(item.direction === 'in' ? '彻底删除这条消息及对应回复？关联的记忆、摘要和表达学习也会清理，无法恢复。' : '彻底删除这条回复及关联记录？无法恢复。')) return;
       remove.disabled = true;
@@ -672,7 +742,7 @@ function renderTimeline() {
     article.append(meta, bubble);
     if (item.direction === 'out' && item.parts?.length > 1) for (const part of item.parts.slice(1)) article.append(element('div', 'message-bubble', part));
     if (item.turn) {
-      const button = element('button', 'link timeline-detail', `处理详情 · ${words[item.turn.state] ?? item.turn.state}`); button.type = 'button';
+      const button = element('button', 'link timeline-detail', `详情 · ${words[item.turn.state] ?? item.turn.state}`); button.type = 'button';
       button.addEventListener('click', () => openDetail(item.turn.id)); article.append(button);
     } else if (item.direction === 'in') article.append(element('small', 'muted', '未触发回复'));
     if (item.feedback) article.append(detailSection(`故障反馈 · ${words[item.feedback.state] ?? item.feedback.state}`, item.feedback.text));
@@ -706,7 +776,7 @@ async function loadTimeline(older = false, initial = false) {
 }
 function filterConversations() {
   conversationFilterVersion++; timelineVersion++; conversationItems = []; currentConversation = undefined; conversationNext = undefined; conversationRows = []; messageNext = undefined;
-  $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = '包含未触发小狼回复的消息。'; $('conversation-delete').disabled = true; $('conversation-name').disabled = true; $('message-latest').disabled = true;
+  $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = ''; $('conversation-delete').disabled = true; $('conversation-name').disabled = true; $('message-latest').disabled = true;
   $('message-older').disabled = true; $('message-timeline').replaceChildren(element('p', 'empty', '选择群聊或私聊，查看完整聊天记录。'));
   renderConversations(); refreshChats();
 }
@@ -719,7 +789,7 @@ $('message-older').addEventListener('click', () => { if (messageNext) loadTimeli
 $('message-latest').addEventListener('click', () => { if (currentConversation) selectConversation(currentConversation).catch(() => { $('conversation-message').textContent = '读取会话失败，请重试。'; }); });
 $('conversation-name').addEventListener('click', () => {
   namingConversation = structuredClone(currentConversation); $('conversation-name-form').elements.alias.value = namingConversation.alias;
-  $('conversation-name-message').textContent = '备注保存在后台，保存后立即显示。'; $('conversation-name-dialog').showModal();
+  $('conversation-name-message').textContent = ''; $('conversation-name-dialog').showModal();
 });
 $('close-conversation-name').addEventListener('click', () => $('conversation-name-dialog').close());
 $('conversation-name-form').addEventListener('submit', async event => {
@@ -808,7 +878,8 @@ async function refreshUsage(reset = true, more = false) {
     $('usage-detail-tokens').textContent = `缓存命中 ${numberText(summary.cached)} · 思考 ${numberText(summary.reasoning)}`;
     $('usage-calls').textContent = `${numberText(summary.calls)} / ${numberText(summary.failures)}`;
     $('usage-unknown').textContent = numberText(summary.unknown);
-    $('usage-note').textContent = `${page.firstRecorded ? `开始统计于 ${time(page.firstRecorded, true)}。` : '从本次版本开始统计，之前的消耗无法补算。'}缓存命中属于输入，思考属于输出，不重复相加。账户余额、赠送额度请查看平台账单。`;
+    $('usage-note').textContent = '';
+    $('usage-total').title = page.firstRecorded ? `开始统计：${time(page.firstRecorded, true)}` : '仅统计已返回的用量';
     $('usage-functions').replaceChildren(usageTable(['功能', '请求数', '失败', '输入 Token', '输出 Token', '总 Token', '缓存命中', '思考 Token', '用量未知', '平均耗时'],
       page.byPurpose.map(row => [usageNames[row.purpose] ?? row.purpose, numberText(row.calls), numberText(row.failures), numberText(row.input), numberText(row.output), numberText(row.total), numberText(row.cached), numberText(row.reasoning), numberText(row.unknown), `${numberText(Math.round(row.averageMs))} ms`])));
     $('usage-models').replaceChildren(usageTable(['模型', '请求数', '总 Token', '用量未知'], page.byModel.map(row => [`${row.provider} / ${row.model}`, numberText(row.calls), numberText(row.total), numberText(row.unknown)])));

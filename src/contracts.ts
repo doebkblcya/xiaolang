@@ -199,7 +199,7 @@ export interface HistoryReader {
   detail(id: string): TurnDetail | undefined;
 }
 export interface LogItem { seq: number; entry: Log }
-export interface PluginInfo { id: string; title: string; module: string; kind: 'builtin' | 'external'; state: string; dependencies: string[]; provides: string[]; missingDependencies?: string[]; impact?: string }
+export interface PluginInfo { id: string; title: string; module: string; kind: 'builtin' | 'external'; state: string; dependencies: string[]; provides: string[]; missingDependencies?: string[]; impact?: string; panel?: import('./panel.js').PluginPanel }
 export interface Inspection {
   usage?(query: UsageQuery): ReturnType<UsageMeter['view']>;
   deleteData(input: unknown): Promise<unknown>;
@@ -226,7 +226,7 @@ export interface Configuration {
 
 declare module 'cordis' {
   interface Context {
-    xiaolangHost: { config: import('./config.js').Config; options: import('./app.js').AppOptions; cleanups: Map<string, import('./data-cleanup.js').DataCleanup> };
+    xiaolangHost: { config: import('./config.js').Config; options: import('./app.js').AppOptions; cleanups: Map<string, import('./data-cleanup.js').DataCleanup>; panels: Map<string, import('./panel.js').PanelRegistration>; pluginDependencies: Map<string, string[]> };
     store: Store;
     scheduler: Scheduler;
     trigger: Trigger;

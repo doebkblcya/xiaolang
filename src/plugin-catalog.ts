@@ -27,12 +27,3 @@ export function pluginEntries(config: Config): PluginEntry[] {
 export function builtinEnabled(config: Config, id: string): boolean {
   return config.plugins?.entries.find(entry => entry.id === id)?.enabled !== false;
 }
-export function toggleImpact(id: string): string {
-  if (id === 'panel') return '停用后网页入口会关闭，需在配置文件中重新启用。';
-  if (id === 'xiaolang-configuration') return '停用后无法在面板修改配置，需编辑配置文件恢复。';
-  if (id === 'loader') return '停用后所有外挂都不会加载，需编辑配置文件恢复。';
-  if (id === 'xiaolang-adapter') return '停用后不再收发 QQ 消息；发送、聊天、提醒等待接入服务。';
-  if (id === 'xiaolang-deepseek') return '停用后聊天、触发判断、记忆和学习等待模型服务。';
-  if (id === 'xiaolang-trigger') return '停用后默认聊天等待触发服务，不再自动回复。';
-  return '停用后停止该能力；依赖它的插件等待服务。配置与数据保留。';
-}

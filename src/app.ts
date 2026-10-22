@@ -1,3 +1,4 @@
+import { registerPanel } from './panel.js';
 import { usagePlugin } from './usage.js';
 import { Context, FiberState } from 'cordis';
 import type { Fiber, Plugin } from 'cordis';
@@ -20,11 +21,12 @@ import { Sender, outputSchema } from './output.js';
 import type { Embeddings } from './embedding.js';
 import { abortable, check, code, Failure } from './errors.js';
 import { checkPlugins, configurePlugins } from './plugins.js';
-import { builtinTitles, externalTitles, pluginEntries, builtinEnabled, toggleImpact } from './plugin-catalog.js';
+import { builtinTitles, externalTitles, pluginEntries, builtinEnabled } from './plugin-catalog.js';
 import { triggerSettings } from './trigger-config.js';
 import type { PluginStatus } from './plugins.js';
 
-export const storePlugin: Plugin.Object<Config> = {
+export const storePlugin: Plugin.Object<Config> & { panel: import('./panel.js').PluginPanel } = {
+  panel: { pages: [{ id: 'chats', title: '聊天记录', view: 'chats' }] },
   name: 'xiaolang-store', apply(ctx, config) {
     const store = new SqliteStore(config.database, ctx.xiaolangHost.cleanups);
     ctx.effect(() => () => store.close());
@@ -56,7 +58,8 @@ export const intakePlugin: Plugin.Object<Config> = {
     } });
   },
 };
-export const toolsPlugin: Plugin.Object<Config> = {
+export const toolsPlugin: Plugin.Object<Config> & { panel: import('./panel.js').PluginPanel } = {
+  panel: { pages: [{ id: 'tooling', title: '工具与行动', view: 'tooling' }] },
   name: 'xiaolang-tools', apply(ctx, config) {
     ctx.get('configuration')?.registerPlugin('xiaolang-tools', toolingSchemas.access);
     ctx.provide('tools', new ToolRegistry((config.tooling ?? toolingDefaults).access.adminIds));
@@ -97,22 +100,24 @@ export async function createApp(config: Config, options: AppOptions) {
       const fiber = fibers.find(item => (item.name === 'loader' || item === loader ? 'loader' : item.name) === id);
       return { id, title, module: id === 'loader' ? '@cordisjs/plugin-loader' : 'host', kind: 'builtin',
         state: !builtinEnabled(config, id) || (id === 'xiaolang-chat' && (!config.chatEnabled || !!config.plugins?.chat)) || (id === 'xiaolang-fault-feedback' && config.failureFeedback?.enabled === false) ? 'disabled' : stateName(fiber),
-        dependencies: fiber ? Object.keys(fiber.inject) : [], provides: provided(fiber),
-        missingDependencies: fiber ? Object.keys(fiber.inject).filter(name => fiber.parent.get(name) === undefined) : [], impact: toggleImpact(id) };
+        dependencies: fiber ? Object.keys(fiber.inject) : ctx.xiaolangHost.pluginDependencies.get(id) ?? [], provides: provided(fiber),
+        missingDependencies: fiber ? Object.keys(fiber.inject).filter(name => fiber.parent.get(name) === undefined) : [], panel: ctx.xiaolangHost.panels.get(id)?.definition };
     });
     return [...core, ...entries.map(entry => {
       const fiber = ctx.get('loader')?.store[entry.id]?.fiber;
       return { id: entry.id, title: externalTitles[entry.id] ?? entry.id, module: entry.module, kind: 'external' as const,
         state: entry.enabled === false || (entry.id === config.plugins?.chat && !config.chatEnabled) || !builtinEnabled(config, 'loader') ? 'disabled' : stateName(fiber),
-        dependencies: fiber ? Object.keys(fiber.inject) : [], provides: provided(fiber),
-        missingDependencies: fiber ? Object.keys(fiber.inject).filter(name => fiber.parent.get(name) === undefined) : [], impact: toggleImpact(entry.id) };
+        dependencies: fiber ? Object.keys(fiber.inject) : ctx.xiaolangHost.pluginDependencies.get(entry.id) ?? [], provides: provided(fiber),
+        missingDependencies: fiber ? Object.keys(fiber.inject).filter(name => fiber.parent.get(name) === undefined) : [], panel: ctx.xiaolangHost.panels.get(entry.id)?.definition };
     })];
   }
   const entries = pluginEntries(config).filter(entry => !options.adapter || entry.id !== 'xiaolang-adapter');
-  ctx.provide('xiaolangHost', { config, options, cleanups: new Map() });
+  ctx.provide('xiaolangHost', { config, options, cleanups: new Map(), panels: new Map(), pluginDependencies: new Map() });
   const beforeReady: IncomingMessage[] = [];
   async function mount<T>(plugin: Plugin<T>, config: T): Promise<Fiber | undefined> {
     const id = typeof plugin === 'object' && plugin.name;
+    if (id && typeof plugin === 'object') ctx.xiaolangHost.pluginDependencies.set(id, Array.isArray(plugin.inject) ? [...plugin.inject] : Object.keys(plugin.inject ?? {}));
+    if (id && typeof plugin === 'object' && 'panel' in plugin) registerPanel(ctx.xiaolangHost.panels, id, plugin.panel);
     if (id && !builtinEnabled(ctx.xiaolangHost.config, id)) return undefined;
     const fiber = await ctx.plugin(plugin, config);
     fibers.push(fiber);
