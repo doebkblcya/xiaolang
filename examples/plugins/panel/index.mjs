@@ -8,7 +8,7 @@ import { createAccess, readAuth, readTls, isPrivateAddress } from './security.mj
 
 export const name = 'xiaolang-panel';
 export const xiaolangApiVersion = 1;
-export const inject = ['inspection'];
+export const inject = ['runtime'];
 const assets = { '/assets/xiaolang-halfbody-v1.webp': ['assets/xiaolang-halfbody-v1.webp', 'image/webp'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/login.js': ['login.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
 const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
@@ -30,9 +30,10 @@ async function readJson(request, maximum = 16384) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
   catch { throw new Error('invalid_json'); }
 }
-export function createHandler(inspection, configuration, options = {}) {
+export function createHandler(runtime, configuration, options = {}) {
   const system = options.system ?? createSystemCollector();
-  const registry = createPanelRegistry(inspection, options.panels);
+  const registry = createPanelRegistry(runtime, options.panels);
+  const required = (name, feature) => { const service = options[name]; if (!service) throw new Error(`${feature}_unavailable`); return service; };
   const allowedHosts = options.allowedHosts ?? [];
   if (!Array.isArray(allowedHosts) || allowedHosts.some(host => typeof host !== 'string' || !/^[a-zA-Z0-9.-]+(?::[0-9]{1,5})?$/.test(host))) throw new Error('invalid_panel_config');
   const writeToken = randomBytes(24).toString('hex');
@@ -73,11 +74,11 @@ export function createHandler(inspection, configuration, options = {}) {
         }
         if (request.headers['content-type'] !== 'application/json') { request.resume?.(); return send(415, { error: 'json_required' }); }
         const input = await readJson(request, pluginRoute?.[1] === 'xiaolang-mcp' ? 131072 : pluginRoute?.[1] === 'xiaolang-persona' ? 65536 : 16384);
-        if (deleteData) return send(200, await inspection.deleteData(input));
+        if (deleteData) return send(200, await required('history', 'store').deleteData(input));
         if (conversationRoute) {
           if (!conversationRoute[1] || conversationRoute[2] !== 'name') return send(405, { error: 'method_not_allowed' });
           if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['alias', 'version'].includes(key))) throw new Error('invalid_conversation_request');
-          return send(200, inspection.renameConversation(conversationRoute[1], input.alias, input.version));
+          return send(200, required('history', 'store').renameConversation(conversationRoute[1], input.alias, input.version));
         }
         if (personaRoute) {
           if (!options.persona) return send(503, { error: 'persona_unavailable' });
@@ -106,8 +107,8 @@ export function createHandler(inspection, configuration, options = {}) {
       if (request.method !== 'GET') { request.resume?.(); return send(405, { error: 'method_not_allowed' }); }
       if (conversationRoute) {
         if (conversationRoute[2]) return send(405, { error: 'method_not_allowed' });
-        if (conversationRoute[1]) return send(200, await inspection.timeline(conversationRoute[1], integer(url.searchParams.get('before'), undefined)));
-        return send(200, await inspection.conversations(url.searchParams.get('q') ?? '', url.searchParams.get('scope') ?? '', integer(url.searchParams.get('before'), undefined)));
+        if (conversationRoute[1]) return send(200, await required('history', 'store').timeline(conversationRoute[1], integer(url.searchParams.get('before'), undefined)));
+        return send(200, await required('history', 'store').conversations(url.searchParams.get('q') ?? '', url.searchParams.get('scope') ?? '', integer(url.searchParams.get('before'), undefined)));
       }
       if (personaRoute) {
         if (!options.persona) return send(503, { error: 'persona_unavailable' });
@@ -137,8 +138,14 @@ export function createHandler(inspection, configuration, options = {}) {
       if (url.pathname === '/api/panel/system') return send(200, await system());
       const panelAsset = /^\/api\/panel\/assets\/([a-zA-Z0-9_-]{1,64})\/(.+)$/.exec(url.pathname);
       if (panelAsset) { const asset = await registry.asset(panelAsset[1], panelAsset[2]); return asset ? send(200, asset.body, asset.type) : send(404, { error: 'not_found' }); }
-      if (url.pathname === '/api/status') return send(200, inspection.status());
-      if (url.pathname === '/api/usage') return inspection.usage ? send(200, inspection.usage({ range: url.searchParams.get('range') ?? 'today',
+      if (url.pathname === '/api/status') {
+        let counts = null, lastMessage;
+        try { counts = options.history?.counts() ?? null; } catch { /* isolated feature */ }
+        try { lastMessage = options.intake?.status?.().lastMessage; } catch { /* isolated feature */ }
+        return send(200, { ...runtime.status(), counts, lastMessage,
+          intakeEnabled: !!options.intake, memoryBytes: process.memoryUsage().rss });
+      }
+      if (url.pathname === '/api/usage') return options.usage ? send(200, options.usage.view({ range: url.searchParams.get('range') ?? 'today',
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
         before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
       if (url.pathname === '/api/tools') return send(200, { items: options.tools?.list() ?? [], mcp: options.mcp?.status() ?? [], skills: options.skills?.status() ?? [] });
@@ -153,16 +160,17 @@ export function createHandler(inspection, configuration, options = {}) {
         const before = integer(url.searchParams.get('before'), undefined);
         const failures = url.searchParams.get('failures');
         if (limit < 1 || before === 0 || (failures !== null && !['0', '1'].includes(failures))) throw new Error('invalid_query');
-        return send(200, inspection.recent(limit, before, failures === '1'));
+        return send(200, required('history', 'store').recent(limit, before, failures === '1'));
       }
       const match = /^\/api\/turns\/([a-f0-9-]{36})$/i.exec(url.pathname);
       if (match) {
-        const detail = inspection.detail(match[1]);
+        const detail = required('history', 'store').detail(match[1]);
         return detail ? send(200, detail) : send(404, { error: 'turn_not_found' });
       }
       return send(404, { error: 'not_found' });
     } catch (error) {
       const failure = error.code ?? error.message;
+      if (['store_unavailable', 'usage_unavailable'].includes(failure)) return send(503, { error: failure });
       if (['invalid_persona_request', 'invalid_persona_result'].includes(failure)) return send(400, { error: failure });
       if (failure === 'persona_not_found') return send(404, { error: failure });
       if (['persona_conflict', 'persona_disabled', 'persona_busy', 'persona_rate_limited', 'persona_not_enough_messages', 'persona_catalog_full'].includes(failure)) return send(409, { error: failure });
@@ -199,7 +207,7 @@ export async function apply(ctx, config = {}) {
   if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
-  const handler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'),
+  const handler = createHandler(ctx.runtime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
     persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   const listeners = [{ server, handler, port, host }];
@@ -208,7 +216,7 @@ export async function apply(ctx, config = {}) {
     if (!auth || !tls || !lan || !['127.0.0.1', '0.0.0.0'].includes(lan.host ?? '0.0.0.0')
       || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
       || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
-    const lanHandler = createHandler(ctx.inspection, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'),
+    const lanHandler = createHandler(ctx.runtime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
       persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
     listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
   }

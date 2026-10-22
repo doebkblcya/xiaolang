@@ -178,7 +178,7 @@ export class SqliteStore implements Store {
       FROM latest l JOIN chat_sessions c ON c.session=l.session JOIN messages m ON m.seq=l.seq
       JOIN messages s ON s.seq=CASE WHEN m.direction='in' THEN m.seq ELSE m.source_seq END`;
   }
-  conversations(query = '', scope = '', before?: number): ReturnType<HistoryReader['conversations']> {
+  conversations(query = '', scope = '', before?: number): Awaited<ReturnType<HistoryReader['conversations']>> {
     if (typeof query !== 'string' || query.length > 200 || !['', 'group', 'private'].includes(scope) || (before !== undefined && (!Number.isSafeInteger(before) || before < 1))) throw new Failure('invalid_history_query');
     const rows = this.db.prepare(this.conversationRows() + ` WHERE (? IS NULL OR m.seq<?)
       AND (?='' OR CASE WHEN json_extract(s.payload,'$.group') IS NULL THEN 'private' ELSE 'group' END=?)
@@ -204,7 +204,7 @@ export class SqliteStore implements Store {
     if (!this.db.prepare('UPDATE chat_sessions SET alias=?,version=version+1 WHERE id=? AND version=?').run(alias.trim(), id, version).changes) throw new Failure('conversation_conflict');
     return this.conversation(id).view;
   }
-  timeline(id: string, before?: number): ReturnType<HistoryReader['timeline']> {
+  timeline(id: string, before?: number): Awaited<ReturnType<HistoryReader['timeline']>> {
     if (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) throw new Failure('invalid_history_query');
     const conversation = this.conversation(id);
     const rows = this.db.prepare(`SELECT m.seq,m.key,m.direction,m.payload,s.payload AS source,t.id AS turn_id,t.state,t.reason,t.updated,

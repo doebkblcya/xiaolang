@@ -3,7 +3,7 @@ import type { Config, PluginEntry } from './config.js';
 /** Delivery metadata only. Feature implementations live in the mounted packages. */
 export const builtinTitles: Record<string, string> = {
   'xiaolang-logging': '日志', 'xiaolang-store': '会话存储', 'xiaolang-usage': '模型用量统计',
-  'xiaolang-inspection': '运行观察', 'xiaolang-configuration': '配置管理', 'xiaolang-scheduler': '任务调度',
+  'xiaolang-configuration': '配置管理', 'xiaolang-scheduler': '任务调度',
   'xiaolang-tools': '工具注册与执行', 'xiaolang-intake': '消息接纳', 'xiaolang-output': '统一发送',
   'xiaolang-chat': '默认聊天编排', 'xiaolang-fault-feedback': '故障反馈', loader: 'Cordis 插件加载器',
 };
@@ -22,7 +22,7 @@ export function pluginEntries(config: Config): PluginEntry[] {
     ...(id === 'xiaolang-adapter' ? { config: config.adapter.config } : {}),
   }));
   return [...defaults.map(entry => ({ ...entry, ...configured.find(item => item.id === entry.id) })),
-    ...configured.filter(entry => entry.id !== 'console-logger' && !defaults.some(item => item.id === entry.id) && !builtinTitles[entry.id])];
+    ...configured.filter(entry => !['console-logger', 'xiaolang-inspection'].includes(entry.id) && !defaults.some(item => item.id === entry.id) && !builtinTitles[entry.id])];
 }
 export function builtinEnabled(config: Config, id: string): boolean {
   return config.plugins?.entries.find(entry => entry.id === id)?.enabled !== false;

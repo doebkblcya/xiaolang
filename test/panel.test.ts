@@ -8,11 +8,11 @@ import { createApp } from '../src/app.js';
 import { emitLog } from '../src/contracts.js';
 import { Failure } from '../src/errors.js';
 import { config, event, FakeAdapter, FakeModel } from './fixtures.js';
-import type { Inspection } from '../src/contracts.js';
+import type { Context } from 'cordis';
 
-async function handler(inspection: Inspection, allowedHosts: string[] = []) {
+async function handler(ctx: Context, allowedHosts: string[] = []) {
   const module = await import(pathToFileURL(resolve('examples/plugins/panel/index.mjs')).href);
-  const handle = module.createHandler(inspection, undefined, { allowedHosts });
+  const handle = module.createHandler(ctx.runtime, undefined, { allowedHosts, history: ctx.get('historyReader'), usage: ctx.get('usage'), logs: ctx.get('processLogs'), intake: ctx.get('intake') });
   return async (url: string, method = 'GET', headers: Record<string, string> = {}) => {
     let status = 0, output = '', responseHeaders: Record<string, string> = {};
     // No HTTP listener on Mac: exercise the request handler with in-memory messages.
@@ -56,17 +56,18 @@ test('read-only history projections paginate, filter failures, and expose only c
   assert.equal(reader.detail('missing'), undefined);
 });
 
-test('inspection status and compatibility log queries reflect lifecycle and resist mutation', async t => {
+test('host runtime status and direct log queries reflect lifecycle and resist mutation', async t => {
   let connection = 'connected';
   const adapter = Object.assign(new FakeAdapter(), { connectionStatus: () => connection });
   const app = await createApp(config(), { adapter, model: new FakeModel(), secrets: ['secret-value'] });
   t.after(() => app.stop());
-  const inspection = app.ctx.inspection;
-  assert.equal(inspection.status().state, 'ready');
+  const runtime = app.ctx.runtime;
+  const journal = app.ctx.processLogs;
+  assert.equal(runtime.status().state, 'ready');
   emitLog(app.ctx, { code: 'qq_connected' });
-  assert.equal(inspection.status().connection, 'connected');
+  assert.equal(adapter.connectionStatus(), 'connected');
   connection = 'disconnected';
-  assert.equal(inspection.status().connection, 'disconnected');
+  assert.equal(adapter.connectionStatus(), 'disconnected');
   for (let i = 0; i < 600; i++) emitLog(app.ctx, { code: 'test', preview: 'secret-value', step: i });
   const page = app.ctx.processLogs.query({ after: 1, limit: 500 });
   assert.equal(page.items.length, 500);
@@ -74,19 +75,19 @@ test('inspection status and compatibility log queries reflect lifecycle and resi
   assert.equal(page.hasMore, true);
   assert.ok(!JSON.stringify(page).includes('secret-value'));
   page.items[0]!.entry.preview = 'mutated';
-  assert.ok(!JSON.stringify(inspection.logs()).includes('mutated'));
-  assert.equal(inspection.logs(inspection.logs().cursor).items.length, 0);
-  assert.equal(inspection.logs(inspection.logs().cursor + 1).reset, true);
-  assert.throws(() => inspection.logs(-1));
+  assert.ok(!JSON.stringify(journal.query()).includes('mutated'));
+  assert.equal(journal.query({ after: journal.query().cursor }).items.length, 0);
+  assert.equal(journal.query({ after: journal.query().cursor + 1 }).reset, true);
+  assert.throws(() => journal.query({ after: -1 }));
 });
 
 test('panel handler enforces local Host, same-origin, read-only methods and bounded queries without exposing files', async t => {
   const app = await createApp(config(), { adapter: new FakeAdapter(), model: new FakeModel() });
   t.after(() => app.stop());
-  const request = await handler(app.ctx.inspection);
+  const request = await handler(app.ctx);
   const status = await request('/api/status');
   assert.equal(status.status, 200);
-  assert.equal(status.json().model, 'deepseek-flash');
+  assert.equal(status.json().state, 'ready');
   assert.equal((await request('/api/usage?range=7d&purpose=proactive')).status, 200);
   assert.equal((await request('/api/usage?range=invalid')).status, 400);
   assert.equal((await request('/api/usage?provider=invalid')).status, 400);
@@ -96,7 +97,7 @@ test('panel handler enforces local Host, same-origin, read-only methods and boun
   assert.equal((await request('/api/status', 'GET', { host: 'attacker.example:18080' })).status, 403);
   assert.equal((await request('/api/status', 'GET', { origin: 'https://attacker.example' })).status, 403);
   assert.equal((await request('/api/status', 'GET', { 'sec-fetch-site': 'cross-site' })).status, 403);
-  const lan = await handler(app.ctx.inspection, ['192.168.31.97:18080']);
+  const lan = await handler(app.ctx, ['192.168.31.97:18080']);
   assert.equal((await lan('/api/status', 'GET', { host: '192.168.31.97:18080' })).status, 200);
   assert.equal((await lan('/api/status', 'GET', { host: '192.168.31.98:18080' })).status, 403);
   assert.equal((await lan('/api/status', 'GET', { host: '192.168.31.97:18080', origin: 'https://attacker.example' })).status, 403);

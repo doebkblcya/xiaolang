@@ -65,6 +65,7 @@ export const loggingPlugin: Plugin.Object<LoggingOptions> = {
     const journal = new LogJournal(options.database ?? ':memory:', settings.retentionDays as number | undefined, settings.maxRecords as number | undefined,
       () => options.write?.('日志持久化暂不可用'));
     ctx.provide('processLogs', journal);
+    ctx.on('xiaolang/data-deleted', () => journal.invalidate());
     ctx.provide('logOutput', { write(entry) { options.write?.(settings.format === 'json' ? JSON.stringify(entry) : formatText(entry)); } });
     ctx.effect(() => () => journal.close());
     ctx.on('xiaolang/log', createReporter({ ...options, settings: settings as Config['logging'], report(raw) {

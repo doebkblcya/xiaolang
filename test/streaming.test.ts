@@ -99,7 +99,7 @@ test('streamed tool execution continues to final reply through the ordinary main
   const app = await createApp(settings, { model, adapter }); t.after(() => app.stop());
   adapter.receive!(event('小狼')); await app.ctx.chat.idle();
   assert.deepEqual(adapter.sent.map(item => item.text), ['现在收到。']);
-  assert.equal(app.ctx.inspection.recent(1).items[0]?.state, 'completed');
+  assert.equal(app.ctx.historyReader.recent(1).items[0]?.state, 'completed');
 });
 
 test('builtin output settings survive reload and its disable control is available', async t => {

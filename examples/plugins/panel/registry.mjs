@@ -1,14 +1,14 @@
 import { realpath, readFile } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, extname } from 'node:path';
 
-export function createPanelRegistry(inspection, registrations = new Map()) {
+export function createPanelRegistry(runtime, registrations = new Map()) {
   const content = (plugin, value) => value?.view ? { view: value.view } : value?.entry ? {
     entry: `/api/panel/assets/${encodeURIComponent(plugin.id)}/${value.entry.replace(/^\.\/panel\//, '')}`,
   } : undefined;
   return {
     describe() {
       const pages = [], details = {};
-      for (const plugin of inspection.status().plugins) {
+      for (const plugin of runtime.status().plugins) {
         const declaration = registrations.get(plugin.id)?.definition ?? plugin.panel;
         if (!declaration) continue;
         if (declaration.detail) details[plugin.id] = content(plugin, declaration.detail);
@@ -18,7 +18,7 @@ export function createPanelRegistry(inspection, registrations = new Map()) {
     },
     async home() {
       const modules = [];
-      for (const plugin of inspection.status().plugins) {
+      for (const plugin of runtime.status().plugins) {
         const registration = registrations.get(plugin.id);
         for (const item of (registration?.definition ?? plugin.panel)?.home ?? []) modules.push({ plugin, item, registration });
       }

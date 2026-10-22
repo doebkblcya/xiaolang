@@ -27,8 +27,8 @@ test('disabling any host plugin or default feature leaves the process available;
       if (id === 'xiaolang-deepseek') {
         assert.equal(app.ctx.get('model'), undefined);
         assert.equal(app.ctx.get('chat'), undefined);
-        assert.equal(app.ctx.inspection.status().state, 'ready');
-        assert.ok(app.ctx.inspection.status().plugins.find(item => item.id === 'xiaolang-memory')?.missingDependencies?.includes('model'));
+        assert.equal(app.ctx.runtime.status().state, 'ready');
+        assert.ok(app.ctx.runtime.status().plugins.find(item => item.id === 'xiaolang-memory')?.missingDependencies?.includes('model'));
       }
       if (id === 'xiaolang-trigger') assert.equal(app.ctx.get('chat'), undefined);
     } finally { await app.stop(); }
@@ -43,8 +43,8 @@ test('QQ can be disabled and replaced by another adapter without a host change',
     value.plugins = { directory, entries: [{ id: 'xiaolang-adapter', module: officialModule('xiaolang-adapter'), enabled: false }] };
     let app = await createApp(value, { model: new FakeModel() });
     try {
-      assert.equal(app.ctx.inspection.status().state, 'ready');
-      assert.equal(app.ctx.inspection.status().connection, 'disabled');
+      assert.equal(app.ctx.runtime.status().state, 'ready');
+      assert.equal(app.ctx.get('adapter'), undefined);
       assert.equal(app.ctx.get('chat'), undefined);
     } finally { await app.stop(); }
     value.plugins.entries.push({ id: 'wechat', module: './wechat.mjs' });
@@ -63,14 +63,14 @@ test('disabled plugins still clean their derived data; all listed plugins expose
     const configuration = await ConfigurationStore.load(path, () => {}, () => true, {});
     const app = await createApp(configuration.config, { adapter: new FakeAdapter(), model: new FakeModel(), configuration });
     try {
-      configuration.bindPlugins(() => app.ctx.inspection.status().plugins);
-      for (const plugin of app.ctx.inspection.status().plugins) assert.equal((await configuration.plugin(plugin.id)).canToggle, true, plugin.id);
+      configuration.bindPlugins(() => app.ctx.runtime.status().plugins);
+      for (const plugin of app.ctx.runtime.status().plugins) assert.equal((await configuration.plugin(plugin.id)).canToggle, true, plugin.id);
       app.ctx.intake.receive(event('普通聊天', 7));
       await app.ctx.chat.idle();
-      const conversation = app.ctx.historyReader.conversations().items[0]!;
-      const result = await app.ctx.inspection.deleteData({ kind: 'conversation', id: conversation.id }) as { messages: number };
+      const conversation = (await app.ctx.historyReader.conversations()).items[0]!;
+      const result = await app.ctx.historyReader.deleteData({ kind: 'conversation', id: conversation.id }) as { messages: number };
       assert.ok(result.messages > 0);
-      assert.equal(app.ctx.historyReader.conversations().items.length, 0);
+      assert.equal((await app.ctx.historyReader.conversations()).items.length, 0);
       assert.ok(app.ctx.xiaolangHost.cleanups.has('xiaolang-memory'));
     } finally { await app.stop(); }
   } finally { await rm(directory, { recursive: true, force: true }); }

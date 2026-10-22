@@ -1,5 +1,5 @@
 import type { Context } from 'cordis';
-import type { UsageMeter, UsageQuery } from './usage.js';
+import type { UsageMeter } from './usage.js';
 
 export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
 export type Fields = Record<string, unknown>;
@@ -129,7 +129,7 @@ export interface Trigger {
   idle?(): Promise<void>;
   clear?(): Promise<void>;
 }
-export interface Intake { receive(event: unknown): void }
+export interface Intake { receive(event: unknown): void; status?(): { lastMessage?: string } }
 export interface ToolContext { message: Message; signal: AbortSignal }
 export interface Tool {
   name: string;
@@ -190,10 +190,10 @@ export interface TimelineItem {
   turn?: { id: string; state: string; reason: string }; feedback?: { text: string; state: string };
 }
 export interface HistoryReader {
-  deleteData(input: unknown): unknown;
+  deleteData(input: unknown): Promise<unknown>;
   cacheConversationName(id: string, name: string): void;
-  conversations(query?: string, scope?: string, before?: number): { items: ConversationView[]; next: number | null };
-  timeline(id: string, before?: number): { conversation: ConversationView; items: TimelineItem[]; next: number | null };
+  conversations(query?: string, scope?: string, before?: number): Promise<{ items: ConversationView[]; next: number | null }>;
+  timeline(id: string, before?: number): Promise<{ conversation: ConversationView; items: TimelineItem[]; next: number | null }>;
   renameConversation(id: string, alias: string, version: number): ConversationView;
 
   counts(): Record<string, number>;
@@ -202,19 +202,8 @@ export interface HistoryReader {
 }
 export interface LogItem { seq: number; entry: Log }
 export interface PluginInfo { id: string; title: string; module: string; kind: 'builtin' | 'external'; state: string; dependencies: string[]; provides: string[]; missingDependencies?: string[]; impact?: string; panel?: import('./panel.js').PluginPanel }
-export interface Inspection {
-  usage?(query: UsageQuery): ReturnType<UsageMeter['view']>;
-  deleteData(input: unknown): Promise<unknown>;
-  status(): {
-    started: number; uptimeMs: number; state: string; connection: string; lastMessage?: string;
-    model: string; platform?: string; chatEnabled: boolean; memoryBytes: number;
-    counts: Record<string, number>; plugins: PluginInfo[];
-  };
-  recent: HistoryReader['recent']; detail: HistoryReader['detail'];
-  conversations(query?: string, scope?: string, before?: number): Promise<ReturnType<HistoryReader['conversations']>>;
-  timeline(id: string, before?: number): Promise<ReturnType<HistoryReader['timeline']>>;
-  renameConversation: HistoryReader['renameConversation'];
-  logs(after?: number): { items: LogItem[]; cursor: number; reset: boolean };
+export interface Runtime {
+  status(): { started: number; uptimeMs: number; state: string; plugins: PluginInfo[] };
 }
 
 export interface Configuration {
@@ -241,7 +230,7 @@ declare module 'cordis' {
     processLogs: import('./log-journal.js').LogJournal;
     logOutput: { write(entry: Log): void };
     historyReader: HistoryReader;
-    inspection: Inspection;
+    runtime: Runtime;
     configuration: Configuration;
     faultFeedback: FaultFeedback;
     memory: Memory;
@@ -253,6 +242,8 @@ declare module 'cordis' {
   }
   interface Events {
     'xiaolang/start'(): void | Promise<void>;
+    'xiaolang/before-delete'(input: unknown): void | Promise<void>;
+    'xiaolang/data-deleted'(): void;
     'xiaolang/message'(message: Message): void;
     'xiaolang/observed'(message: Message): void | Promise<void>;
     'xiaolang/log'(entry: Log): void;

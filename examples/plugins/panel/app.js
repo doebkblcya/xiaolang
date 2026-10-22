@@ -120,14 +120,15 @@ for (const button of document.querySelectorAll('[data-open-plugin]')) button.add
 function renderStatus(status) {
   $('hero-state').textContent = ({ ready: '运行正常', starting: '启动中', stopping: '停止中', failed: '启动失败' })[status.state] ?? '暂不可用';
   $('today-date').textContent = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
-  $('pending').textContent = `${(status.counts.running ?? 0) + (status.counts.sending ?? 0)} / ${status.counts.queued ?? 0}`;
-  $('completed').textContent = `已完成 ${status.counts.completed ?? 0} 轮`;
+  const counts = status.counts;
+  $('pending').textContent = counts ? `${(counts.running ?? 0) + (counts.sending ?? 0)} / ${counts.queued ?? 0}` : '—';
+  $('completed').textContent = counts ? `已完成 ${counts.completed ?? 0} 轮` : '会话存储未启用';
   const seconds = Math.floor(status.uptimeMs / 1000), minutes = Math.floor(seconds / 60), hours = Math.floor(minutes / 60);
   $('uptime').textContent = hours ? `${hours} 小时 ${minutes % 60} 分` : minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
   $('memory').textContent = `进程内存 ${(status.memoryBytes / 1048576).toFixed(1)} MB`;
   $('app-state').textContent = words[status.state] ?? status.state;
-  $('failures').textContent = ['failed', 'unknown', 'cancelled', 'expired'].reduce((total, key) => total + (status.counts[key] ?? 0), 0);
-  $('last-message').textContent = status.lastMessage ? time(status.lastMessage, true) : '本次启动尚无消息';
+  $('failures').textContent = counts ? ['failed', 'unknown', 'cancelled', 'expired'].reduce((total, key) => total + (counts[key] ?? 0), 0) : '—';
+  $('last-message').textContent = status.lastMessage ? time(status.lastMessage, true) : status.intakeEnabled ? '本次启动尚无消息' : '消息接收未启用';
   const active = status.plugins.filter(plugin => plugin.state === 'active').length;
   $('plugin-count').textContent = `${active} / ${status.plugins.length}`;
   const builtin = status.plugins.filter(plugin => plugin.kind === 'builtin').length;

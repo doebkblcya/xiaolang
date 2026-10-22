@@ -14,6 +14,7 @@ export const triggerPlugin: Plugin.Object<Config> = {
       history: (message, limit) => ctx.store.records({ session: message.session, limit }),
       imageContext: message => ctx.get('memory')?.imageContext?.(message) ?? '', report: entry => emitLog(ctx, entry) });
     ctx.effect(() => () => proactive.clear());
+    ctx.on('xiaolang/before-delete', () => proactive.clear());
     ctx.provide('trigger', { match(message) {
       if (!message.group) return settings.privateReply ? 'private' : undefined;
       if (settings.groupMention && message.segments.some(part => part.type === 'mention' && part.userId === message.account)) return 'mention';
