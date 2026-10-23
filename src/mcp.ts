@@ -21,6 +21,13 @@ export const mcpPlugin: Plugin.Object<Config> = { name: 'xiaolang-mcp', inject: 
     client: undefined as Client | undefined, removes: [] as (() => void)[], working: false }));
   let stopped = false;
   ctx.provide('mcp', { status: () => rows.map(({ name, connection, state, errorCode, removes }) => ({ name, transport: connection.url ? 'http' : 'stdio', state, errorCode, tools: removes.length })) });
+  ctx.effect(() => ctx.tools.registerSource?.({ id: 'xiaolang-mcp', plugin: 'xiaolang-mcp', title: 'MCP', status: () => {
+    const connected = rows.filter(row => row.state === 'connected').length, failed = rows.some(row => row.state === 'error' || row.errorCode);
+    return { state: !settings.enabled ? 'disabled' : failed ? 'error' : !rows.length ? 'empty' : connected === rows.length ? 'ready' : 'connecting',
+      label: !settings.enabled ? '已关闭' : failed ? '有连接异常' : !rows.length ? '未添加连接' : connected === rows.length ? `${connected} 个连接` : '连接中',
+      items: rows.map(row => ({ name: row.name, state: row.state, errorCode: row.errorCode, detail: `${row.connection.url ? 'HTTP' : 'stdio'} · ${row.removes.length} 个工具` })) };
+  } }) ?? (() => {}));
+  for (const row of rows) ctx.effect(() => ctx.tools.registerSource?.({ id: `mcp:${row.name}`, plugin: 'xiaolang-mcp', title: `MCP · ${row.name}` }) ?? (() => {}));
   async function connect(row: typeof rows[number]) {
     if (stopped || row.working || row.state === 'connected') return;
     row.working = true; row.state = 'connecting';
@@ -40,6 +47,9 @@ export const mcpPlugin: Plugin.Object<Config> = { name: 'xiaolang-mcp', inject: 
       for (const tool of tools) {
         const publicRead = row.connection.publicTools?.includes(tool.name) === true && tool.annotations?.readOnlyHint === true;
         try { row.removes.push(ctx.tools.register({ name: mcpToolName(row.name, tool.name), source: `mcp:${row.name}`,
+          owner: 'xiaolang-mcp', title: String(tool.title ?? tool.annotations?.title ?? tool.name).slice(0, 120),
+          summary: String(tool.description ?? tool.name).split(/[。\n]/)[0]!.slice(0, 160),
+          validation: { mode: 'compatible', maxCatalogTools: 100, maxSchemaChars: 12000 },
           description: String(tool.description ?? tool.name).slice(0, 2000), parameters: tool.inputSchema as Fields,
           access: publicRead ? 'everyone' : 'admin', effect: publicRead ? 'read' : 'write', timeoutMs: 60000,
           execute: async (args, { signal }) => {

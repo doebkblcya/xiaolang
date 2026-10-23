@@ -25,7 +25,7 @@ export function calculate(expression: string): number {
   const result = part(); if (index !== tokens.length) throw new Failure('calculation_invalid'); return result;
 }
 export const basicToolsPlugin: Plugin.Object<void> = { name: 'xiaolang-basic-tools', inject: ['tools'], apply(ctx) {
-  ctx.effect(() => ctx.tools.register({ name: 'calculate', source: 'xiaolang-basic-tools', effect: 'read',
+  ctx.effect(() => ctx.tools.register({ name: 'calculate', title: '计算', summary: '数值表达式计算', source: 'xiaolang-basic-tools', effect: 'read',
     description: '计算数值表达式，支持加减乘除、取余、乘方和括号，不执行程序代码。',
     parameters: { type: 'object', additionalProperties: false, required: ['expression'], properties: { expression: { type: 'string', minLength: 1, maxLength: 1000 } } },
     execute: async args => ({ result: calculate(String(args.expression)) }) }));

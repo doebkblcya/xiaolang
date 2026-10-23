@@ -164,20 +164,36 @@ export interface Trigger {
 }
 export interface Intake { receive(event: unknown): void; status?(): { lastMessage?: string } }
 export interface ToolContext { message: Message; signal: AbortSignal }
+export interface ToolSourceStatus {
+  state: 'ready' | 'disabled' | 'connecting' | 'error' | 'empty';
+  label: string;
+  items?: { name: string; detail?: string; state?: string; errorCode?: string }[];
+}
+export interface ToolSource {
+  id: string; plugin: string; title: string;
+  status?: () => ToolSourceStatus | Promise<ToolSourceStatus>;
+}
+export interface ToolSourceView { id: string; plugin: string; title: string; status?: ToolSourceStatus }
 export interface Tool {
   name: string;
+  title?: string;
+  summary?: string;
+  owner?: string;
   description: string;
   parameters: Fields;
   effect?: 'read' | 'write';
   access?: 'everyone' | 'admin';
   source?: string;
   timeoutMs?: number;
+  validation?: { mode: 'strict' | 'compatible'; maxCatalogTools?: number; maxSchemaChars?: number };
   execute(args: Fields, context: ToolContext): Promise<unknown>;
 }
 export interface Tools {
   register(tool: Tool): () => void;
+  registerSource?(source: ToolSource): () => void;
+  sources?(): Promise<ToolSourceView[]>;
   schemas(message?: Message): ToolSchema[];
-  list(): { name: string; description: string; source: string; access: 'everyone' | 'admin'; effect: 'read' | 'write' }[];
+  list(): { name: string; title?: string; summary?: string; owner?: string; description: string; source: string; access: 'everyone' | 'admin'; effect: 'read' | 'write' }[];
   timeout(name: string): number | undefined;
   execute(call: ToolCall, message: Message, signal: AbortSignal): Promise<unknown>;
 }

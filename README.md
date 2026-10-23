@@ -171,6 +171,10 @@ HTTPS／Key 为面板插件的部署配置，例如当前 NAS：
 
 `src/contracts.ts` 定义能力接口；`src/app.ts` 组合提供者；`src/chat.ts` 负责默认聊天流程；`src/plugins.ts` 对接官方 Loader 并检查启动状态。新增工具通过 `ctx.tools.register()` 注册并把返回的清理函数交给插件生命周期。工具默认按有副作用处理，只读工具需显式声明 `effect: 'read'`。更改小狼本体或系统依赖时仍需要更新镜像。
 
+工具可以同时声明 `title`（显示名称）、`summary`（简短用途）和 `owner`（所属插件，默认使用 `source`）；这些仅用于管理面板，不改发给模型的工具协议。来源分组标题和可选状态通过 `ctx.tools.registerSource({ id, plugin, title, status? })` 注册，返回的清理函数同样交给 `ctx.effect()`。`status()` 返回 `{ state, label, items? }`，其中 `state` 为 `ready/disabled/connecting/error/empty`，每个明细支持 `name/detail/state/errorCode`。状态读取独立执行，1 秒超时或异常只影响该来源，插件停用自动清理注册。面板按公共格式渲染，不识别具体工具名或 MCP／Skills 配置结构；未声明展示信息的工具仍按原标识显示。
+
+工具参数校验默认严格模式；接入其他 JSON Schema 方言的桥接插件可显式声明 `validation: { mode: 'compatible', maxCatalogTools, maxSchemaChars }`。MCP 插件沿用总目录 100 个工具及单个参数 Schema 12000 字符限制，工具注册器不再通过来源前缀选择校验方式。执行权限与只读／副作用声明独立，校验兼容模式不会改变管理员鉴权。
+
 实现参考：[腾讯 QQ 官方 Node.js SDK](https://github.com/tencent-connect/qqbot-nodejs)、[Cordis 官方 Loader](https://github.com/cordiverse/cordis/tree/main/packages/loader)、[Koishi 插件配置](https://koishi.chat/zh-CN/manual/usage/market)。直接依赖上游 Loader，没有复制或另建插件内核。
 
 框架固定为上游 `cordis@4.0.0-rc.10`，不是 Harness 定制版本。Koishi／ChatLuna／Harness 插件不能直接互装；现有项目用于机制参考，没有复制其业务源码。项目自身许可证尚未选择，不以底层库的 MIT 许可证代替项目许可决定。

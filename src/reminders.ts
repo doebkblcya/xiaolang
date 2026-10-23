@@ -226,16 +226,16 @@ export const remindersPlugin: Plugin.Object<Config> = { name: 'xiaolang-reminder
   ctx.provide('reminders', manager);
   ctx.on('xiaolang/start', () => manager.start());
   ctx.effect(() => () => manager.close());
-  ctx.effect(() => ctx.tools.register({ name: 'create_reminder', source: 'xiaolang-reminders', access: 'everyone', effect: 'write',
+  ctx.effect(() => ctx.tools.register({ name: 'create_reminder', title: '创建提醒', summary: '在当前聊天创建提醒', source: 'xiaolang-reminders', access: 'everyone', effect: 'write',
     description: '用户明确要求时创建提醒，只发送到当前群或私聊。默认北京时间，at 必须是含时区的未来日期（如 2026-10-19T08:00:00+08:00）。repeat 为 once/daily/weekly，重复保持首次北京时间。时间不明确先询问；工具返回成功后才能告知已创建。',
     parameters: { type: 'object', additionalProperties: false, required: ['at', 'text'], properties: {
       at: { type: 'string', maxLength: 40 }, text: { type: 'string', minLength: 1, maxLength: 1000 }, repeat: { enum: ['once', 'daily', 'weekly'] },
     } }, execute: async (args, { message }) => manager.create(args, message) }));
-  ctx.effect(() => ctx.tools.register({ name: 'list_reminders', source: 'xiaolang-reminders', access: 'everyone', effect: 'read',
+  ctx.effect(() => ctx.tools.register({ name: 'list_reminders', title: '查看提醒', summary: '查看当前聊天的提醒', source: 'xiaolang-reminders', access: 'everyone', effect: 'read',
     description: '查看当前聊天中自己的提醒；管理员可查看该聊天的全部提醒。默认仅未结束任务，可选择包含执行完毕、取消或失败记录。',
     parameters: { type: 'object', additionalProperties: false, properties: { include_finished: { type: 'boolean' } } },
     execute: async (args, { message }) => manager.list(message, args.include_finished === true) }));
-  ctx.effect(() => ctx.tools.register({ name: 'cancel_reminder', source: 'xiaolang-reminders', access: 'everyone', effect: 'write',
+  ctx.effect(() => ctx.tools.register({ name: 'cancel_reminder', title: '取消提醒', summary: '按任务编号取消提醒', source: 'xiaolang-reminders', access: 'everyone', effect: 'write',
     description: '按任务 ID 取消当前聊天中自己的提醒，管理员也可取消该聊天其他人的提醒。先查看任务以获取 ID；已开始发送的本次消息不能保证撤回。',
     parameters: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string', minLength: 36, maxLength: 36 } } },
     execute: async (args, { message }) => manager.cancel(args.id, message) }));

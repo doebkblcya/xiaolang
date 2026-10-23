@@ -6,6 +6,7 @@ const usageNames = { chat: '聊天回复', proactive: '插话判断', memory_ext
 const words = { connected: '已连接', disconnected: '已断开', starting: '启动中', ready: '已就绪', stopping: '停止中', failed: '失败', error: '连接异常',
   completed: '已完成', queued: '等待处理', running: '处理中', sending: '发送中', unknown: '结果未知', expired: '已过期', cancelled: '已取消',
   no_trigger: '未触发回复', active: '已启用', disabled: '已停用', pending: '等待激活', scheduled: '等待到点', sent: '已确认发送', succeeded: '已成功', private: '私聊', mention: '@机器人', keyword: '触发词' };
+words.connecting = '连接中';
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
 const viewTitles = { overview: '主页', chats: '聊天记录', logs: '过程日志', usage: '模型用量', 'model-settings': '回复模型', 'qq-settings': 'QQ 接入', memories: '聊天与记忆', persona: '人设与学习', tooling: '工具与行动', reminders: '定时提醒', plugins: '插件' };
 Object.assign(reasons, { proactive: '主动插话', no_trigger: '未命中直接触发条件' });
@@ -434,7 +435,7 @@ function renderPlugin(detail) {
   body.replaceChildren(meta);
   if (detail.missingDependencies?.length) body.append(detailSection('等待服务', detail.missingDependencies.join('、')));
   const relations = element('div', 'plugin-relations');
-  relations.append(detailSection('依赖服务', detail.dependencies.join('、') || '无'), detailSection('提供服务', detail.provides.join('、') || '无')); body.append(relations);
+  relations.append(detailSection('依赖服务', detail.dependencies.join('、') || '无'), detailSection('提供服务', detail.provides.join('、') || '无')); technical.append(relations);
   for (const page of registeredPages.filter(page => page.plugin === detail.id)) {
     const button = element('button', 'secondary detail-log-button', page.title); button.type = 'button';
     button.addEventListener('click', () => { $('plugin-detail').close(); showView(page.id); }); body.append(button);
@@ -447,7 +448,8 @@ function renderPlugin(detail) {
     line.append(text, enabled); form.append(line);
   }
   for (const [name, definition] of Object.entries(detailDeclarations[detail.id] ? {} : detail.schema?.properties ?? {})) {
-    const label = element('label', 'field'), required = detail.schema.required?.includes(name);
+    const toggle = definition.type === 'boolean', multiline = definition.type === 'array' || definition.type === 'string' && definition.maxLength > 4096;
+    const label = element('label', toggle ? 'switch-line field-switch full' : `field${multiline || definition.maxLength > 512 ? ' full' : ''}`), required = detail.schema.required?.includes(name);
     label.append(element('span', '', definition.title || name));
     let input;
     if (definition.enum) {
@@ -456,13 +458,13 @@ function renderPlugin(detail) {
       const labels = detail.id === 'xiaolang-output' ? { normal: '普通输出', streaming: '流式输出' }
         : (detail.id === 'xiaolang-memory' && name.endsWith('Thinking')) || (detail.id === 'xiaolang-persona' && name === 'learningThinking') ? { off: '关闭思考', low: '低 · low', high: '高 · high', max: '最高 · max' } : {};
       for (const item of definition.enum) { const option = element('option', '', labels[item] ?? String(item)); option.value = String(item); input.append(option); }
-    } else if (definition.type === 'array' || (definition.type === 'string' && definition.maxLength > 4096)) { input = element('textarea'); input.rows = definition.type === 'array' ? 3 : 8; }
-    else { input = element('input'); input.type = definition.writeOnly ? 'password' : definition.type === 'boolean' ? 'checkbox' : ['number', 'integer'].includes(definition.type) ? 'number' : 'text'; }
+    } else if (multiline) { input = element('textarea'); input.rows = definition.type === 'array' ? 3 : 7; }
+    else { input = element('input'); input.type = toggle ? 'checkbox' : definition.writeOnly ? 'password' : ['number', 'integer'].includes(definition.type) ? 'number' : 'text'; }
     input.name = name;
     if (definition.type === 'boolean') input.checked = detail.config[name] ?? definition.default ?? false;
     else input.value = definition.writeOnly ? '' : definition.type === 'array' ? (detail.config[name] ?? definition.default ?? []).join('\n') : detail.config[name] ?? definition.default ?? '';
     if (definition.writeOnly) { input.autocomplete = 'new-password'; input.placeholder = detail.secretConfigured[name] ? '已有配置，留空保留' : '尚未配置'; }
-    if (required && !definition.writeOnly) input.required = true;
+    if (required && !definition.writeOnly && !toggle) input.required = true;
     if (definition.minimum !== undefined) input.min = definition.minimum;
     if (definition.maximum !== undefined) input.max = definition.maximum;
     if (definition.type === 'integer') input.step = '1'; else if (definition.type === 'number') input.step = 'any';
@@ -650,14 +652,7 @@ $('memory-forget').addEventListener('click', async () => {
 let toolsPage, toolsSnapshot = '', toolsBusy = false, toolTab = 'catalog';
 let toolActivityBusy = false, toolActivityBefore, toolActivityHistory = false, toolActivityVersion = 0, toolActivityGeneration;
 let toolActivityItems = [];
-const toolLabels = {
-  web_search: ['网页搜索', '搜索网页资料'], web_fetch: ['网页阅读', '读取网页正文'], current_time: ['查询时间', 'UTC 与北京时间'], calculate: ['计算', '数值表达式计算'],
-  create_reminder: ['创建提醒', '在当前聊天创建提醒'], list_reminders: ['查看提醒', '查看当前聊天的提醒'], cancel_reminder: ['取消提醒', '按任务编号取消提醒'],
-  search_memory: ['检索记忆', '查找人物、经历与计划'], read_memory_history: ['记忆历史', '查看记忆的历史版本'], read_chat_history: ['聊天原文', '查阅历史消息'],
-  manage_memory: ['管理记忆', '新增、修改或忘记记忆'], inspect_chat_image: ['重看图片', '读取历史消息中的原图'],
-  list_skills: ['技能目录', '列出已安装技能'], read_skill: ['读取技能', '读取技能操作说明'], read_skill_file: ['技能文件', '读取技能内的资料'], run_skill_script: ['运行技能脚本', '执行已安装技能的脚本'],
-};
-function toolName(name) { return toolLabels[name]?.[0] ?? name; }
+function toolName(name) { return toolsPage?.items.find(tool => tool.name === name)?.title ?? name; }
 function toolPlugin(id) { return toolsPage?.plugins.find(plugin => plugin.id === id); }
 function toolConfigButton(plugin, title = '配置') {
   if (!plugin || !toolsPage.configurable) return null;
@@ -665,40 +660,30 @@ function toolConfigButton(plugin, title = '配置') {
   button.addEventListener('click', () => openPlugin(plugin.id)); return button;
 }
 function renderToolIntegrations() {
-  const cards = [];
-  for (const kind of ['mcp', 'skills']) {
-    const meta = toolsPage.integrations[kind]; if (!meta.plugin && !meta.available) continue;
-    const rows = toolsPage[kind], card = element('article', 'panel tool-integration'), head = element('div', 'panel-title');
-    const plugin = toolPlugin(meta.plugin), config = toolConfigButton(plugin);
-    head.append(element('h2', '', kind === 'mcp' ? 'MCP' : 'Skills')); if (config) head.append(config);
-    let label, state = 'neutral';
-    if (meta.state !== 'active') { label = words[meta.state] ?? (meta.state === 'missing' ? '未安装' : meta.state); state = tone(meta.state); }
-    else if (!meta.enabled) label = '已关闭';
-    else if (!meta.available) label = '服务未就绪';
-    else if (kind === 'skills') { label = rows.length ? `${rows.length} 个技能` : '尚未安装技能'; state = rows.length ? 'good' : 'neutral'; }
-    else { const connected = rows.filter(row => row.state === 'connected').length;
-      label = !rows.length ? '未添加连接' : rows.some(row => row.state === 'error' || row.errorCode) ? '有连接异常' : connected === rows.length ? `${connected} 个连接` : '连接中';
-      state = rows.some(row => row.state === 'error' || row.errorCode) ? 'bad' : connected === rows.length && rows.length ? 'good' : rows.length ? 'waiting' : 'neutral'; }
-    card.append(head, element('span', `badge ${state}`, label));
+  const cards = toolsPage.sources.filter(source => source.status).map(source => {
+    const status = source.status, rows = status.items ?? [], card = element('article', 'panel tool-integration'), head = element('div', 'panel-title');
+    const config = toolConfigButton(toolPlugin(source.plugin));
+    head.append(element('h2', '', source.title)); if (config) head.append(config);
+    card.append(head, element('span', `badge ${tone(status.state)}`, status.label));
     if (rows.length) {
-      const details = element('details', 'tool-integration-detail'); details.append(element('summary', '', kind === 'mcp' ? '连接详情' : '技能目录'));
+      const details = element('details', 'tool-integration-detail'); details.append(element('summary', '', '详情'));
       for (const row of rows) {
         const item = element('div', 'tool-connection'); item.append(element('strong', '', row.name));
-        if (kind === 'mcp') { item.append(badge(row.state), element('small', 'muted', `${row.transport === 'stdio' ? 'stdio' : 'HTTP'} · ${row.tools} 个工具`)); if (row.errorCode) item.append(element('code', 'mono', row.errorCode)); }
-        else { item.append(element('p', 'muted', row.description)); if (row.scripts) item.append(element('small', 'muted', '脚本仅管理员可运行')); }
-        details.append(item);
+        if (row.state) item.append(badge(row.state)); if (row.detail) item.append(element('p', 'muted', row.detail));
+        if (row.errorCode) item.append(element('code', 'mono', row.errorCode)); details.append(item);
       }
       card.append(details);
     }
-    cards.push(card);
-  }
+    return card;
+  });
   $('tool-integrations').replaceChildren(...cards); $('tool-integrations').hidden = !cards.length;
 }
+
 function renderToolCatalog() {
   if (!toolsPage) return;
   const query = $('tool-search').value.trim().toLowerCase(), access = $('tool-access-filter').value, groups = new Map();
   for (const tool of toolsPage.items) {
-    const plugin = toolPlugin(tool.source), title = plugin?.title ?? (tool.source.startsWith('mcp:') ? `MCP · ${tool.source.slice(4)}` : tool.source);
+    const source = toolsPage.sources.find(source => source.id === tool.source), plugin = toolPlugin(source?.plugin ?? tool.owner ?? tool.source), title = source?.title ?? plugin?.title ?? tool.source;
     if (access && tool.access !== access || query && !`${toolName(tool.name)} ${tool.name} ${tool.description} ${title} ${tool.source}`.toLowerCase().includes(query)) continue;
     if (!groups.has(tool.source)) groups.set(tool.source, { plugin, title, tools: [] }); groups.get(tool.source).tools.push(tool);
   }
@@ -706,11 +691,11 @@ function renderToolCatalog() {
   $('tool-groups').replaceChildren(...[...groups.entries()].map(([source, group]) => {
     const card = element('article', 'panel tool-group'), head = element('div', 'panel-title'), heading = element('div', 'tool-group-title');
     heading.append(element('h2', '', group.title), element('span', 'count', group.tools.length)); head.append(heading);
-    const plugin = group.plugin ?? (source.startsWith('mcp:') ? toolPlugin(toolsPage.integrations.mcp.plugin) : null), config = toolConfigButton(plugin, '插件 →'); if (config) head.append(config);
+    const config = toolConfigButton(group.plugin, '插件 →'); if (config) head.append(config);
     card.append(head);
     for (const tool of group.tools) {
       const item = element('details', 'tool-item'), summary = element('summary'), text = element('div', 'tool-item-name'); item.dataset.tool = tool.name; item.open = open.has(tool.name);
-      const label = toolLabels[tool.name]; text.append(element('strong', '', toolName(tool.name)), element('small', 'muted', label?.[1] ?? (tool.description.split(/[。\n]/)[0].slice(0, 58) || tool.name)));
+      text.append(element('strong', '', toolName(tool.name)), element('small', 'muted', tool.summary ?? (tool.description.split(/[。\n]/)[0].slice(0, 58) || tool.name)));
       summary.append(text, element('span', `badge ${tool.access === 'admin' ? 'waiting' : 'neutral'}`, tool.access === 'admin' ? '仅管理员' : '所有用户'), element('span', 'tool-chevron', '＋'));
       item.append(summary, element('code', 'mono', tool.name), element('p', 'tool-description', tool.description), element('small', 'muted', `${source} · ${tool.effect === 'read' ? '只读' : '有写入或外部操作'}`)); card.append(item);
     }
@@ -722,7 +707,7 @@ async function refreshTools() {
   if (toolsBusy) return; toolsBusy = true;
   try {
     const data = await get('/api/tools'), snapshot = JSON.stringify(data); toolsPage = data;
-    $('tool-count').textContent = data.items.length; $('tool-note').textContent = '';
+    $('tool-count').textContent = data.items.length; $('tool-note').textContent = data.sourceError ? '来源状态暂不可用' : '';
     const registry = data.plugins.find(plugin => plugin.provides.includes('tools')); $('tool-access').hidden = !data.configurable || !registry; $('tool-access').dataset.plugin = registry?.id ?? '';
     if (snapshot !== toolsSnapshot) { toolsSnapshot = snapshot; renderToolIntegrations(); renderToolCatalog(); }
     if (toolTab === 'activity' && !toolActivityHistory) await refreshToolActivity();

@@ -441,10 +441,10 @@ export class ChatMemory implements Memory {
   }
   registerTools(): (() => void)[] {
     if (!this.settings.enabled) return [];
-    return [this.ctx.tools.register({ source: 'xiaolang-memory', name: 'search_memory', effect: 'read', description: '检索全局共享的人物资料、聊天经历、计划和记忆。按人物ID和来源理解，不限制群/私聊。',
+    return [this.ctx.tools.register({ source: 'xiaolang-memory', name: 'search_memory', title: '检索记忆', summary: '查找人物、经历与计划', effect: 'read', description: '检索全局共享的人物资料、聊天经历、计划和记忆。按人物ID和来源理解，不限制群/私聊。',
       parameters: { type: 'object', required: ['query'], properties: { query: { type: 'string', minLength: 1, maxLength: 1000 } }, additionalProperties: false },
       execute: async (args, context) => (await this.search(String(args.query), [context.message.sender], context.signal)).map(item => ({ ...item, origins: this.sourceLabels(item) })),
-    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'read_memory_history', effect: 'read', description: '用户追问以前的状态、偏好或变化经过时读取历史记忆。提供id查看该记忆版本，beforeVersion可翻更早版本；不知道id可用query关键词查历史。旧版本不代表现状，记录更新时间不等于事实发生时间。纠正作废或删除的版本不返回。',
+    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'read_memory_history', title: '记忆历史', summary: '查看记忆的历史版本', effect: 'read', description: '用户追问以前的状态、偏好或变化经过时读取历史记忆。提供id查看该记忆版本，beforeVersion可翻更早版本；不知道id可用query关键词查历史。旧版本不代表现状，记录更新时间不等于事实发生时间。纠正作废或删除的版本不返回。',
       parameters: { type: 'object', minProperties: 1, properties: {
         id: { type: 'string', pattern: '^[a-f0-9-]{36}$' }, query: { type: 'string', minLength: 1, maxLength: 200 }, beforeVersion: { type: 'integer', minimum: 1 },
       }, additionalProperties: false },
@@ -460,7 +460,7 @@ export class ChatMemory implements Memory {
           return { ...entry.item, change: entry.change, historical: true, origins: this.sourceLabels(entry.item), current: { version: head.version, content: head.content } };
         }), nextBeforeVersion: args.id && versions.length > 5 ? versions[4]!.item.version : null };
       },
-    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'read_chat_history', effect: 'read', description: '查阅聊天原文。提供seq可查看该原文前后；可提供session精确定位某会话；省略则读取当前聊天。返回真实来源、用户和时间。',
+    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'read_chat_history', title: '聊天原文', summary: '查阅历史消息', effect: 'read', description: '查阅聊天原文。提供seq可查看该原文前后；可提供session精确定位某会话；省略则读取当前聊天。返回真实来源、用户和时间。',
       parameters: { type: 'object', properties: { seq: { type: 'integer', minimum: 1 }, session: { type: 'string', maxLength: 2000 } }, additionalProperties: false },
       execute: async (args, context) => {
         const record = args.seq ? this.ctx.store.record(Number(args.seq)) : undefined;
@@ -469,7 +469,7 @@ export class ChatMemory implements Memory {
         const ordered = args.seq ? visible.sort((a, b) => Math.abs(a.seq - Number(args.seq)) - Math.abs(b.seq - Number(args.seq))) : visible.reverse();
         return ordered.slice(0, 5).map(row => ({ ...publicSource(row), text: row.text.slice(0, args.seq && row.seq === Number(args.seq) ? 900 : 200), pictures: row.direction === 'in' ? this.images.references(row.message) : [] }));
       },
-    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'manage_memory', effect: 'write', description: '仅当用户明确要求记住、修改或忘记某事时使用。修改/忘记前先search_memory取得id和version。新增/修改value需要content、kind(profile/event)、people(用户ID数组)、sources(真实原文seq数组)、importance(1到5)，修改还需id/version。',
+    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'manage_memory', title: '管理记忆', summary: '新增、修改或忘记记忆', effect: 'write', description: '仅当用户明确要求记住、修改或忘记某事时使用。修改/忘记前先search_memory取得id和version。新增/修改value需要content、kind(profile/event)、people(用户ID数组)、sources(真实原文seq数组)、importance(1到5)，修改还需id/version。',
       parameters: { type: 'object', required: ['action'], properties: { action: { type: 'string', enum: ['remember', 'update', 'forget'] }, id: { type: 'string' }, version: { type: 'integer' }, value: { type: 'object', additionalProperties: true } }, additionalProperties: false },
       execute: async (args, context) => {
         if (args.action !== 'forget') {
@@ -478,7 +478,7 @@ export class ChatMemory implements Memory {
         }
         return this.mutate(args);
       },
-    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'inspect_chat_image', effect: 'read', timeoutMs: 15000, description: '真正查看指定历史图片：从QQ取回原图并附到本轮用户问题，由当前回复模型直接看图。历史文字描述只是选图索引。用户先发图后说“看看这张图”“你觉得呢”、要求评价、核对细节或指出看错时，只要本轮未附目标原图，就先调用此工具；即使描述已有答案也不能代替查看。按imageId选图并提供当前问题；原图读取失败不得声称看过。只读QQ链接，不保存原图，不单独调用视觉问答。',
+    }), this.ctx.tools.register({ source: 'xiaolang-memory', name: 'inspect_chat_image', title: '重看图片', summary: '读取历史消息中的原图', effect: 'read', timeoutMs: 15000, description: '真正查看指定历史图片：从QQ取回原图并附到本轮用户问题，由当前回复模型直接看图。历史文字描述只是选图索引。用户先发图后说“看看这张图”“你觉得呢”、要求评价、核对细节或指出看错时，只要本轮未附目标原图，就先调用此工具；即使描述已有答案也不能代替查看。按imageId选图并提供当前问题；原图读取失败不得声称看过。只读QQ链接，不保存原图，不单独调用视觉问答。',
       parameters: { type: 'object', required: ['imageId', 'question'], properties: { imageId: { type: 'string', pattern: '^img_[1-9][0-9]*_[1-9][0-9]*$', maxLength: 64 }, question: { type: 'string', minLength: 1, maxLength: 1000 } }, additionalProperties: false },
       execute: async (args, context) => {
         const reference = pictureReference(String(args.imageId));
