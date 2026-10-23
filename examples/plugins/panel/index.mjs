@@ -173,6 +173,7 @@ export function createHandler(runtime, configuration, options = {}) {
       if (url.pathname === '/api/usage/balance') return send(200, await options.model?.balance?.() ?? { state: 'unsupported' });
       if (url.pathname === '/api/usage') return options.usage ? send(200, options.usage.view({ range: url.searchParams.get('range') ?? 'today',
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
+        issue: url.searchParams.get('issue') ?? '',
         before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
       if (url.pathname === '/api/tools') return send(200, { items: options.tools?.list() ?? [], mcp: options.mcp?.status() ?? [], skills: options.skills?.status() ?? [] });
       if (url.pathname === '/api/logs/events') return options.logs ? send(200, options.logs.events()) : send(503, { error: 'logging_unavailable' });

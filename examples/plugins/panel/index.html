@@ -52,12 +52,12 @@
         <article class="usage-metric"><span>Token 用量</span><strong id="usage-total">—</strong><small id="usage-input">输入 —</small><small id="usage-output">输出 —</small></article>
         <article class="usage-metric"><span>缓存命中率</span><strong id="usage-cache-rate">—</strong><small id="usage-cache-tokens">命中 — Token</small><small id="usage-cache-coverage"></small></article>
       </div>
-      <div class="usage-statusline"><span id="usage-calls"></span><span id="usage-failures"></span><span id="usage-unknown"></span></div>
+      <div class="usage-statusline"><button type="button" id="usage-calls" class="usage-issue" data-usage-issue="" aria-pressed="true"></button><button type="button" id="usage-failures" class="usage-issue" data-usage-issue="failed" aria-pressed="false" hidden></button><button type="button" id="usage-unknown" class="usage-issue" data-usage-issue="unknown" aria-pressed="false" hidden></button></div>
       <div class="usage-insights">
         <article class="panel usage-trend"><div class="panel-title"><h2>每日趋势</h2><div class="usage-switch" role="group" aria-label="趋势指标"><button type="button" data-usage-trend="cost" aria-pressed="true">花费</button><button type="button" data-usage-trend="tokens" aria-pressed="false">Token</button></div></div><div id="usage-daily"></div><div id="usage-day-detail" class="muted usage-day-detail" role="status"></div></article>
         <article class="panel usage-distribution"><div class="panel-title"><h2>消耗分布</h2><div class="usage-switch" role="group" aria-label="分布维度"><button type="button" data-usage-distribution="purpose" aria-pressed="true">功能</button><button type="button" data-usage-distribution="model" aria-pressed="false">模型</button></div></div><div id="usage-distribution"></div></article>
       </div>
-      <article class="panel"><div class="panel-title"><h2>调用明细</h2></div>
+      <article id="usage-request-panel" class="panel"><div class="panel-title"><h2>调用明细 <span id="usage-request-count" class="count"></span></h2><div class="form-actions"><span id="usage-request-filter" class="muted" role="status"></span><button id="usage-clear-issue" class="link" type="button" hidden>全部调用</button></div></div>
         <div id="usage-requests" class="usage-table-wrap"></div><button id="usage-more" class="secondary" type="button" hidden>查看更多</button>
       </article>
       <details id="usage-pricing" class="usage-pricing"><summary>计价规则</summary><div id="usage-pricing-body"></div></details>

@@ -1025,6 +1025,8 @@ $('persona-delete').addEventListener('click', async () => {
 
 let usageUpdated = 0, usageNext, usageBusy = false, usageKey = '';
 let usagePage, usageTrend = 'cost', usageDistribution = 'purpose', usageBalanceBusy = false, usageBalanceUpdated = 0;
+let usageIssue = '', usageRevealIssue = false;
+function usageQuery() { return new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value, issue: usageIssue }); }
 const numberText = value => value === null || value === undefined ? '—' : Number(value).toLocaleString('zh-CN');
 function money(value, currency = 'CNY') {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
@@ -1135,12 +1137,12 @@ function renderUsagePricing(info) {
 async function refreshUsage(reset = true, more = false) {
   void refreshUsageBalance();
   if (usageBusy) { if (reset) usageKey = ''; return; }
-  const query = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value });
+  const query = usageQuery();
   const key = query.toString(); if (more && usageNext) query.set('before', usageNext);
   usageBusy = true;
   try {
     const page = await get(`/api/usage?${query}`);
-    const currentKey = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value }).toString();
+    const currentKey = usageQuery().toString();
     if (key !== currentKey) return;
     usageKey = key; usagePage = page;
     const summary = page.summary;
@@ -1153,6 +1155,10 @@ async function refreshUsage(reset = true, more = false) {
     $('usage-calls').textContent = `${numberText(summary.calls)} 次请求`;
     $('usage-failures').textContent = summary.failures ? `${numberText(summary.failures)} 次失败` : '';
     $('usage-unknown').textContent = summary.unknown ? `${numberText(summary.unknown)} 次未返回用量` : '';
+    $('usage-failures').hidden = !summary.failures; $('usage-unknown').hidden = !summary.unknown;
+    for (const button of document.querySelectorAll('[data-usage-issue]')) button.setAttribute('aria-pressed', String(button.dataset.usageIssue === usageIssue));
+    $('usage-request-filter').textContent = ({ failed: '失败调用', unknown: '未返回用量' })[usageIssue] ?? '';
+    $('usage-clear-issue').hidden = !usageIssue; $('usage-request-count').textContent = numberText(page.matched);
     $('usage-note').textContent = '';
     $('usage-total').title = page.firstRecorded ? `开始统计：${time(page.firstRecorded, true)}` : '接口已返回的 Token 用量';
     renderUsageTrend(); renderUsageDistribution(); renderUsagePricing(page.pricing);
@@ -1168,15 +1174,16 @@ async function refreshUsage(reset = true, more = false) {
     } else if (reset || !container.querySelector('tbody') || !container.dataset.expanded) {
       const open = new Set([...container.querySelectorAll('tr[data-usage-id]')].filter(row => row.querySelector('details')?.open).map(row => row.dataset.usageId));
       container.replaceChildren(usageTable(['时间', '功能 / 模型', '状态', '预估花费', 'Token', '耗时'], page.items.map(usageRecord)));
-      [...container.querySelector('tbody').children].forEach((row, index) => { if (page.items[index]) { row.dataset.usageId = page.items[index].id; const detail = row.querySelector('details'); if (detail) detail.open = open.has(row.dataset.usageId); } });
+      [...container.querySelector('tbody').children].forEach((row, index) => { if (page.items[index]) { row.dataset.usageId = page.items[index].id; const detail = row.querySelector('details'); if (detail) detail.open = open.has(row.dataset.usageId) || (usageIssue && usageRevealIssue && index === 0); } });
       container.dataset.expanded = ''; usageNext = page.next;
     }
     if (more) container.dataset.expanded = '1';
+    if (usageRevealIssue) { usageRevealIssue = false; $('usage-request-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     $('usage-more').hidden = !usageNext; usageUpdated = Date.now(); $('usage-updated').textContent = `更新于 ${time(usageUpdated)}`;
   } catch { $('usage-note').textContent = '用量读取失败，请刷新重试'; usageUpdated = Date.now(); }
   finally {
     usageBusy = false;
-    const keyNow = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value }).toString();
+    const keyNow = usageQuery().toString();
     if (keyNow !== key) void refreshUsage();
   }
 }
@@ -1195,3 +1202,10 @@ for (const button of document.querySelectorAll('[data-usage-distribution]')) but
   renderUsageDistribution();
 });
 $('usage-pricing-link').addEventListener('click', event => { event.preventDefault(); $('usage-pricing').open = true; $('usage-pricing').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+
+function selectUsageIssue(issue) {
+  usageIssue = issue; usageRevealIssue = true; usageNext = undefined;
+  refreshUsage();
+}
+for (const button of document.querySelectorAll('[data-usage-issue]')) button.addEventListener('click', () => selectUsageIssue(button.dataset.usageIssue));
+$('usage-clear-issue').addEventListener('click', () => selectUsageIssue(''));
