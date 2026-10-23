@@ -735,10 +735,10 @@ async function openConversationSummary(item) {
     if (status.length) root.append(element('p', 'muted', status.join(' · ')));
     if (!data.summary) { root.append(element('p', 'empty', '尚未生成摘要')); return; }
     const summary = data.summary;
-    root.append(element('p', 'muted', `截至消息 #${summary.through} · 更新于 ${time(summary.updated, true)}`), detailSection('摘要', summary.body));
-    const prompt = element('details', 'message-process-records');
-    prompt.append(element('summary', '', 'Prompt 摘要片段'), element('div', 'bubble', summary.prompt));
-    root.append(prompt);
+    root.append(element('p', 'muted', `截至消息 #${summary.through} · 更新于 ${time(summary.updated, true)}`), detailSection('模型使用的摘要', summary.prompt));
+    const full = element('details', 'message-process-records');
+    full.append(element('summary', '', '完整摘要'), element('div', 'bubble', summary.body));
+    root.append(full);
   } catch { if (version === summaryRequest) root.replaceChildren(element('p', 'muted', '摘要读取失败，请重试')); }
 }
 $('conversation-summary').addEventListener('click', () => { if (currentConversation) openConversationSummary(currentConversation); });
