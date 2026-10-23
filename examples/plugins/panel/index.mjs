@@ -170,6 +170,7 @@ export function createHandler(runtime, configuration, options = {}) {
         return send(200, { ...runtime.status(), counts, lastMessage,
           intakeEnabled: !!options.intake, memoryBytes: process.memoryUsage().rss });
       }
+      if (url.pathname === '/api/usage/balance') return send(200, await options.model?.balance?.() ?? { state: 'unsupported' });
       if (url.pathname === '/api/usage') return options.usage ? send(200, options.usage.view({ range: url.searchParams.get('range') ?? 'today',
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
         before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
@@ -234,7 +235,7 @@ export async function apply(ctx, config = {}) {
   if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
-  const handler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), usage: ctx.get('usage'), intake: ctx.get('intake'),
+  const handler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), model: ctx.get('model'), usage: ctx.get('usage'), intake: ctx.get('intake'),
     persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   const listeners = [{ server, handler, port, host }];
@@ -243,7 +244,7 @@ export async function apply(ctx, config = {}) {
     if (!auth || !tls || !lan || !['127.0.0.1', '0.0.0.0'].includes(lan.host ?? '0.0.0.0')
       || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
       || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
-    const lanHandler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), usage: ctx.get('usage'), intake: ctx.get('intake'),
+    const lanHandler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), model: ctx.get('model'), usage: ctx.get('usage'), intake: ctx.get('intake'),
       persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
     listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
   }

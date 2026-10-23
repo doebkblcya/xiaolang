@@ -1,15 +1,45 @@
 import type { Context } from 'cordis';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Config } from './config.js';
-import type { Model, ModelMessage, ModelOptions, ToolCall, ToolSchema } from './contracts.js';
+import type { Model, ModelBalance, ModelMessage, ModelOptions, ToolCall, ToolSchema } from './contracts.js';
 import { object } from './contracts.js';
 import { check, Failure } from './errors.js';
 import { meterRequest } from './usage.js';
 import type { UsageMeter } from './usage.js';
 
 export class DeepSeekModel implements Model {
+  private balanceCache?: { expires: number; value: ModelBalance };
+  private balancePending?: Promise<ModelBalance>;
   constructor(private config: Config['model'], private apiKey: string, private fetcher: typeof fetch = fetch, private meter?: UsageMeter) {}
   panelHome(ctx: Context) { return { value: this.config.name, detail: ctx.get('chat') ? '聊天链路已启用' : '聊天链路已停用' }; }
+  balance(): Promise<ModelBalance> {
+    let endpoint: URL;
+    try { endpoint = new URL(this.config.baseUrl); } catch { return Promise.resolve({ state: 'unsupported' }); }
+    // Only the official endpoint has this API. Do not send credentials to a new origin or follow redirects.
+    if (endpoint.origin !== 'https://api.deepseek.com' || !['/', '/v1', '/v1/'].includes(endpoint.pathname)
+      || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) return Promise.resolve({ state: 'unsupported' });
+    if (this.balanceCache && this.balanceCache.expires > Date.now()) return Promise.resolve(this.balanceCache.value);
+    if (this.balancePending) return this.balancePending;
+    this.balancePending = (async (): Promise<ModelBalance> => {
+      try {
+        const response = await this.fetcher('https://api.deepseek.com/user/balance', { headers: { Authorization: `Bearer ${this.apiKey}` }, redirect: 'error', signal: AbortSignal.timeout(5000) });
+        if (!response.ok) { await response.body?.cancel(); throw new Error('balance_unavailable'); }
+        const body = object(await response.json());
+        if (typeof body?.is_available !== 'boolean' || !Array.isArray(body.balance_infos) || body.balance_infos.length > 2) throw new Error('balance_invalid');
+        const balances = body.balance_infos.map(raw => {
+          const item = object(raw), valid = (value: unknown): value is string => typeof value === 'string' && /^-?\d{1,12}(?:\.\d{1,12})?$/.test(value);
+          if (!item || !['CNY', 'USD'].includes(String(item.currency)) || !valid(item.total_balance) || !valid(item.granted_balance) || !valid(item.topped_up_balance)) throw new Error('balance_invalid');
+          return { currency: item.currency as 'CNY' | 'USD', total: item.total_balance, granted: item.granted_balance, toppedUp: item.topped_up_balance };
+        });
+        const value: ModelBalance = { state: 'ready', available: body.is_available, updated: Date.now(), balances };
+        this.balanceCache = { expires: Date.now() + 60000, value }; return value;
+      } catch {
+        const value: ModelBalance = { state: 'unavailable', ...(this.balanceCache?.value.balances ? { balances: this.balanceCache.value.balances, updated: this.balanceCache.value.updated } : {}) };
+        this.balanceCache = { expires: Date.now() + 15000, value }; return value;
+      }
+    })().finally(() => { this.balancePending = undefined; });
+    return this.balancePending;
+  }
   async complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage> {
     const config = { ...this.config, ...options };
     for (let attempt = 0; ; attempt++) {

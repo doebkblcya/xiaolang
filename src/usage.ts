@@ -4,6 +4,7 @@ import type { Plugin } from 'cordis';
 import type { Log } from './contracts.js';
 import { object, emitLog } from './contracts.js';
 import { code, Failure } from './errors.js';
+import { estimateCost, pricing, pricePeriod } from './usage-pricing.js';
 
 export const usagePurposes = ['chat', 'proactive', 'memory_extract', 'memory_summary', 'persona_learn', 'image_description', 'image_inspect',
   'embedding_recall', 'embedding_index', 'embedding_test', 'web_search', 'web_fetch', 'other'] as const;
@@ -60,7 +61,13 @@ const aggregate = `COUNT(*) calls, COALESCE(SUM(CASE WHEN state IN ('failed','in
   COALESCE(SUM(CASE WHEN total_tokens IS NOT NULL THEN 1 ELSE 0 END),0) metered,
   COALESCE(SUM(input_tokens),0) input, COALESCE(SUM(output_tokens),0) output, COALESCE(SUM(total_tokens),0) total,
   COALESCE(SUM(cached_tokens),0) cached, COALESCE(SUM(reasoning_tokens),0) reasoning,
-  COALESCE(AVG(duration_ms),0) averageMs`;
+  COALESCE(AVG(duration_ms),0) averageMs,
+  CASE WHEN COUNT(*)=0 THEN 0 ELSE SUM(estimated_cost) END estimatedCost,
+  COALESCE(SUM(CASE WHEN estimated_cost IS NOT NULL THEN 1 ELSE 0 END),0) priced,
+  COALESCE(SUM(CASE WHEN estimated_cost IS NULL THEN 1 ELSE 0 END),0) unpriced,
+  COALESCE(SUM(CASE WHEN kind='chat' AND input_tokens>0 AND cached_tokens BETWEEN 0 AND input_tokens THEN cached_tokens ELSE 0 END),0) cacheHit,
+  COALESCE(SUM(CASE WHEN kind='chat' AND input_tokens>0 AND cached_tokens BETWEEN 0 AND input_tokens THEN input_tokens ELSE 0 END),0) cacheInput,
+  COALESCE(SUM(CASE WHEN kind='chat' AND input_tokens>0 AND (cached_tokens IS NULL OR cached_tokens<0 OR cached_tokens>input_tokens) THEN 1 ELSE 0 END),0) cacheUnknown`;
 
 export class UsageMeter {
   private db: DatabaseSync;
@@ -77,6 +84,13 @@ export class UsageMeter {
       CREATE INDEX IF NOT EXISTS usage_started ON usage_calls(started);
       CREATE INDEX IF NOT EXISTS usage_turn ON usage_calls(turn_id);
       UPDATE usage_calls SET state='interrupted',error_code='process_interrupted' WHERE state='running';`);
+    const columns = this.db.prepare('PRAGMA table_info(usage_calls)').all();
+    if (!columns.some(column => column.name === 'estimated_cost')) this.db.exec('ALTER TABLE usage_calls ADD COLUMN estimated_cost REAL');
+    if (!columns.some(column => column.name === 'pricing_version')) this.db.exec('ALTER TABLE usage_calls ADD COLUMN pricing_version TEXT');
+    this.db.function('usage_estimate', { deterministic: true }, estimateCost);
+    // Existing requests use this public rate snapshot as an approximation; actual token fields remain untouched.
+    this.db.prepare(`UPDATE usage_calls SET estimated_cost=usage_estimate(provider,model,kind,input_tokens,output_tokens,cached_tokens,started),pricing_version=?
+      WHERE pricing_version IS NULL AND state!='running'`).run(pricing.version);
   }
   close(): void { this.db.close(); }
   begin(meta: RequestMeta, scope: Partial<Scope>, started: number): number | undefined {
@@ -91,8 +105,9 @@ export class UsageMeter {
     const u = tokens(raw, meta.kind), now = Date.now(), durationMs = Math.max(0, now - started);
     try {
       if (id !== undefined) this.db.prepare(`UPDATE usage_calls SET finished=?,duration_ms=?,state=?,error_code=?,request_id=?,
-        input_tokens=?,output_tokens=?,total_tokens=?,cached_tokens=?,reasoning_tokens=? WHERE id=?`)
-        .run(now, durationMs, error ? 'failed' : 'success', error ?? null, requestId ?? null, u.input, u.output, u.total, u.cached, u.reasoning, id);
+        input_tokens=?,output_tokens=?,total_tokens=?,cached_tokens=?,reasoning_tokens=?,estimated_cost=?,pricing_version=? WHERE id=?`)
+        .run(now, durationMs, error ? 'failed' : 'success', error ?? null, requestId ?? null, u.input, u.output, u.total, u.cached, u.reasoning,
+          estimateCost(meta.provider, meta.model, meta.kind, u.input, u.output, u.cached, started), pricing.version, id);
     } catch { this.failed(); }
     try {
       this.report({ code: 'api_usage', stage: 'usage', usageId: id, purpose: scope?.purpose ?? 'other', provider: meta.provider, model: meta.model,
@@ -117,10 +132,12 @@ export class UsageMeter {
     const daily = this.db.prepare(`SELECT date(started/1000,'unixepoch','+8 hours') day,${aggregate} FROM usage_calls WHERE ${where} GROUP BY day ORDER BY day DESC LIMIT 31`).all(...args);
     const items = this.db.prepare(`SELECT id,started,finished,duration_ms durationMs,purpose,provider,model,kind,streaming,thinking,attempt,
       turn_id turn,step,scope,state,error_code errorCode,request_id requestId,input_tokens input,output_tokens output,total_tokens total,
-      cached_tokens cached,reasoning_tokens reasoning FROM usage_calls WHERE ${where} AND id<? ORDER BY id DESC LIMIT 51`).all(...args, query.before ?? Number.MAX_SAFE_INTEGER);
+      cached_tokens cached,reasoning_tokens reasoning,estimated_cost estimatedCost,pricing_version pricingVersion FROM usage_calls WHERE ${where} AND id<? ORDER BY id DESC LIMIT 51`).all(...args, query.before ?? Number.MAX_SAFE_INTEGER);
     const next = items.length > 50 ? Number(items[49]!.id) : null;
     return { range, from, to: now, timezone: 'Asia/Shanghai', firstRecorded: this.db.prepare('SELECT MIN(started) time FROM usage_calls').get()!.time ?? null,
-      summary, byPurpose, byModel, daily, items: items.slice(0, 50), next };
+      pricing, summary, byPurpose, byModel, daily, items: items.slice(0, 50).map(row => {
+        row.pricePeriod = row.estimatedCost !== null ? pricePeriod(Number(row.started)) : null; return row;
+      }), next };
   }
 }
 

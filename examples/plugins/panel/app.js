@@ -1024,7 +1024,15 @@ $('persona-delete').addEventListener('click', async () => {
 });
 
 let usageUpdated = 0, usageNext, usageBusy = false, usageKey = '';
+let usagePage, usageTrend = 'cost', usageDistribution = 'purpose', usageBalanceBusy = false, usageBalanceUpdated = 0;
 const numberText = value => value === null || value === undefined ? '—' : Number(value).toLocaleString('zh-CN');
+function money(value, currency = 'CNY') {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  const amount = Number(value), symbol = currency === 'USD' ? '$' : '¥';
+  if (amount > 0 && amount < 0.0001) return `< ${symbol}0.0001`;
+  return symbol + amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(amount) < 1 ? 4 : 2 });
+}
+function cacheRate(row) { return row.cacheInput > 0 ? `${(row.cacheHit / row.cacheInput * 100).toFixed(1)}%` : '—'; }
 function usageTable(headings, rows) {
   const table = element('table', 'usage-table'), head = element('thead'), tr = element('tr'), body = element('tbody');
   for (const heading of headings) tr.append(element('th', '', heading));
@@ -1034,65 +1042,138 @@ function usageTable(headings, rows) {
     for (const value of values) { const cell = element('td'); cell.append(value instanceof Node ? value : document.createTextNode(String(value))); row.append(cell); }
     body.append(row);
   }
-  if (!rows.length) { const row = element('tr'), cell = element('td', 'empty', '这段时间还没有调用记录'); cell.colSpan = headings.length; row.append(cell); body.append(row); }
+  if (!rows.length) { const row = element('tr'), cell = element('td', 'empty', '暂无调用记录'); cell.colSpan = headings.length; row.append(cell); body.append(row); }
   return table;
 }
+async function refreshUsageBalance() {
+  if (usageBalanceBusy || Date.now() - usageBalanceUpdated < 60000) return;
+  usageBalanceBusy = true;
+  try {
+    const data = await get('/api/usage/balance');
+    const balance = data.balances?.find(item => item.currency === 'CNY') ?? data.balances?.[0];
+    $('usage-balance').textContent = balance ? money(balance.total, balance.currency) : '—';
+    $('usage-balance-parts').textContent = balance ? `充值 ${money(balance.toppedUp, balance.currency)} · 赠金 ${money(balance.granted, balance.currency)}` : '';
+    $('usage-balance-state').textContent = data.state === 'ready' ? `${data.available ? '' : '余额不足 · '}更新于 ${time(data.updated)}` : data.state === 'unsupported' ? '余额查询不可用' : balance ? '查询失败 · 显示上次余额' : '余额查询失败';
+    $('usage-balance').title = data.updated ? `账户余额 · ${time(data.updated, true)}` : '';
+    usageBalanceUpdated = Date.now();
+  } catch { $('usage-balance-state').textContent = '余额查询失败'; usageBalanceUpdated = Date.now() - 45000; }
+  finally { usageBalanceBusy = false; }
+}
 function usageRecord(row) {
-  const meta = element('details', 'usage-request'), label = element('summary', '', usageNames[row.purpose] ?? row.purpose);
-  meta.append(label, element('p', 'mono', `${row.provider} · ${row.model}`), element('p', 'muted', `请求 #${row.id} · 第 ${row.attempt} 次尝试${row.step ? ` · 模型步骤 ${row.step}` : ''}`),
+  const meta = element('details', 'usage-request'), label = element('summary');
+  label.append(element('strong', '', usageNames[row.purpose] ?? row.purpose), element('small', 'muted', row.model));
+  meta.append(label, element('p', 'mono', `${row.provider} · 请求 #${row.id} · 第 ${row.attempt} 次尝试${row.step ? ` · 步骤 ${row.step}` : ''}`),
     element('p', 'muted', `${row.streaming ? '流式' : '普通'} · 思考 ${row.thinking === 'off' ? '关闭' : row.thinking}${row.scope ? ` · ${row.scope === 'group' ? '群聊' : '私聊'}` : ''}`),
-    element('p', 'muted', `缓存命中 ${numberText(row.cached)} · 思考 Token ${numberText(row.reasoning)}`));
+    element('p', 'muted', `缓存命中 ${numberText(row.cached)} Token · 思考 ${numberText(row.reasoning)} Token`));
+  if (row.estimatedCost === null) meta.append(element('p', 'muted', row.kind === 'web' ? '按次接口未纳入估算' : row.provider !== 'deepseek' ? '此服务暂未配置价格' : '缺少用量或适用价格，未估算费用'));
+  else meta.append(element('p', 'muted', `人民币预估 · ${row.pricePeriod === 'peak' ? '高峰时段' : '空闲时段'} · ${row.pricingVersion}`));
   if (row.requestId) meta.append(element('p', 'mono', `平台请求 ID：${row.requestId}`));
   if (row.errorCode) meta.append(element('p', 'error-box', row.errorCode));
-  if (row.total === null) meta.append(element('p', 'muted', row.kind === 'web' ? '按次接口，未返回 Token 用量。' : '接口没有返回完整用量。此请求可能已产生消耗，无法据此计算。'));
+  if (row.total === null && row.kind !== 'web') meta.append(element('p', 'muted', '未返回完整 Token 用量'));
   if (row.turn) {
-    const reply = element('button', 'link', '查看对应消息与回复'); reply.type = 'button';
+    const reply = element('button', 'link', '对应消息与回复'); reply.type = 'button';
     reply.addEventListener('click', () => openDetail(row.turn)); meta.append(reply);
   }
   const status = ({ success: '成功', failed: '失败', running: '进行中', interrupted: '重启中断' })[row.state] ?? row.state;
   const state = element('span', `badge ${row.state === 'success' ? 'good' : row.state === 'running' ? 'waiting' : 'bad'}`, status);
-  return [time(row.started, true), meta, state, numberText(row.input), numberText(row.output), numberText(row.total), row.durationMs === null ? '—' : `${numberText(row.durationMs)} ms`];
+  const tokens = element('div', 'usage-cell-number'); tokens.append(element('strong', '', numberText(row.total)), element('small', 'muted', `输入 ${numberText(row.input)} · 输出 ${numberText(row.output)}`));
+  const cost = element('div', 'usage-cell-number'); cost.append(element('strong', '', money(row.estimatedCost)), element('small', 'muted', row.estimatedCost === null ? '未估价' : row.pricePeriod === 'peak' ? '高峰' : '空闲'));
+  return [time(row.started, true), meta, state, cost, tokens, row.durationMs === null ? '—' : `${(row.durationMs / 1000).toLocaleString('zh-CN', { maximumFractionDigits: 2 })} s`];
+}
+function renderUsageTrend() {
+  if (!usagePage) return;
+  const source = new Map(usagePage.daily.map(row => [row.day, row])), days = [];
+  const end = Math.floor((usagePage.to + 8 * 3600000) / 86400000) * 86400000;
+  const start = Math.max(Math.floor((usagePage.from + 8 * 3600000) / 86400000) * 86400000, end - 30 * 86400000);
+  for (let date = start; date <= end; date += 86400000) {
+    const day = new Date(date).toISOString().slice(0, 10); days.push(source.get(day) ?? { day, total: 0, calls: 0, estimatedCost: 0, unpriced: 0 });
+  }
+  const key = usageTrend === 'cost' ? 'estimatedCost' : 'total', maximum = Math.max(0.000001, ...days.map(row => Number(row[key]) || 0));
+  const chart = element('div', 'usage-chart'); chart.style.setProperty('--usage-days', days.length);
+  function selectDay(row) {
+    $('usage-day-detail').textContent = `${row.day} · ${money(row.estimatedCost)} · ${numberText(row.total)} Token · ${row.calls} 次${row.unpriced ? ` · ${row.unpriced} 次未估价` : ''}`;
+    for (const node of chart.children) node.classList.toggle('selected', node.dataset.day === row.day);
+  }
+  for (const [index, row] of days.entries()) {
+    const button = element('button', `usage-chart-day${row[key] === null ? ' unpriced' : ''}`); button.type = 'button'; button.dataset.day = row.day;
+    const label = `${row.day}：预估 ${money(row.estimatedCost)}，${numberText(row.total)} Token，${row.calls} 次${row.unpriced ? `，${row.unpriced} 次未估价` : ''}`;
+    button.setAttribute('aria-label', label); button.title = label;
+    const track = element('span', 'usage-chart-track'), bar = element('span', 'usage-chart-bar');
+    bar.style.height = `${row[key] === null ? 3 : Math.max(row[key] > 0 ? 3 : 0, Number(row[key]) / maximum * 100)}%`; track.append(bar);
+    button.append(track, element('small', '', days.length <= 8 || index === 0 || index === days.length - 1 || index % Math.ceil(days.length / 6) === 0 ? row.day.slice(5).replace('-', '/') : ''));
+    for (const event of ['mouseenter', 'focus', 'click']) button.addEventListener(event, () => selectDay(row));
+    chart.append(button);
+  }
+  $('usage-daily').replaceChildren(chart);
+  selectDay(days.at(-1));
+}
+function renderUsageDistribution() {
+  if (!usagePage) return;
+  const byPurpose = usageDistribution === 'purpose', rows = [...(byPurpose ? usagePage.byPurpose : usagePage.byModel)];
+  rows.sort((a, b) => Number(b.estimatedCost ?? 0) - Number(a.estimatedCost ?? 0) || b.total - a.total);
+  const totalCost = rows.reduce((sum, row) => sum + Number(row.estimatedCost ?? 0), 0), totalTokens = rows.reduce((sum, row) => sum + row.total, 0);
+  $('usage-distribution').replaceChildren(...rows.map(row => {
+    const item = element(byPurpose ? 'button' : 'div', 'usage-share');
+    if (byPurpose) { item.type = 'button'; item.title = '筛选此功能'; item.addEventListener('click', () => { $('usage-purpose').value = row.purpose; refreshUsage(); }); }
+    const heading = element('div', 'usage-share-heading'), amount = element('div', 'usage-share-amount');
+    const share = totalCost > 0 && row.estimatedCost !== null ? row.estimatedCost / totalCost : totalCost === 0 && totalTokens > 0 ? row.total / totalTokens : 0;
+    heading.append(element('strong', '', byPurpose ? usageNames[row.purpose] ?? row.purpose : row.model), element('span', '', share > 0 ? `${(share * 100).toFixed(1)}%` : ''));
+    amount.append(element('strong', '', money(row.estimatedCost)), element('small', 'muted', `${numberText(row.total)} Token · ${row.calls} 次${row.unpriced ? ` · ${row.unpriced} 次未估价` : ''}`));
+    const track = element('div', 'usage-share-track'), bar = element('span'); bar.style.width = `${Math.min(100, share * 100)}%`; track.append(bar);
+    item.append(heading, amount, track); return item;
+  }));
+  if (!rows.length) $('usage-distribution').append(element('p', 'empty', '暂无调用记录'));
+}
+function renderUsagePricing(info) {
+  const root = $('usage-pricing-body'); root.replaceChildren(); if (!info) return;
+  root.append(element('p', 'muted', `人民币 / 百万 Token · 价格核对于 ${info.checked}`));
+  root.append(usageTable(['模型', '缓存命中输入', '未命中输入', '输出'], info.models.map(row => [row.model, `${row.hit} / ${row.hit / 2}`, `${row.miss} / ${row.miss / 2}`, `${row.output} / ${row.output / 2}`])));
+  root.append(element('p', 'muted', '单价依次为高峰 / 空闲。北京时间周一至周五 9–12、14–18 时为高峰；周末与节假日为空闲，已包含 2026 年节假日。'),
+    element('p', 'muted', '历史记录按此价目补算，不还原过去的价格变动。缺少缓存用量、未知模型、百炼及按次接口暂不计价。思考 Token 已包含在输出中。'));
+  root.append(externalLink('官方价格 ↗', info.source));
 }
 async function refreshUsage(reset = true, more = false) {
+  void refreshUsageBalance();
   if (usageBusy) { if (reset) usageKey = ''; return; }
   const query = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value });
-  const key = query.toString();
-  if (more && usageNext) query.set('before', usageNext);
+  const key = query.toString(); if (more && usageNext) query.set('before', usageNext);
   usageBusy = true;
   try {
     const page = await get(`/api/usage?${query}`);
     const currentKey = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value }).toString();
     if (key !== currentKey) return;
-    usageKey = key;
+    usageKey = key; usagePage = page;
     const summary = page.summary;
-    $('usage-total').textContent = numberText(summary.total);
-    $('usage-io').textContent = `${numberText(summary.input)} / ${numberText(summary.output)}`;
-    $('usage-detail-tokens').textContent = `缓存命中 ${numberText(summary.cached)} · 思考 ${numberText(summary.reasoning)}`;
-    $('usage-calls').textContent = `${numberText(summary.calls)} / ${numberText(summary.failures)}`;
-    $('usage-unknown').textContent = numberText(summary.unknown);
+    $('usage-period').textContent = ({ today: '今日', '7d': '近 7 天', '30d': '近 30 天', all: '累计' })[page.range];
+    $('usage-cost').textContent = money(summary.estimatedCost);
+    $('usage-cost-coverage').textContent = summary.unpriced ? `${numberText(summary.priced)} 次已估价 · ${numberText(summary.unpriced)} 次未估价` : `${numberText(summary.calls)} 次请求`;
+    $('usage-total').textContent = numberText(summary.total); $('usage-input').textContent = `输入 ${numberText(summary.input)}`; $('usage-output').textContent = `输出 ${numberText(summary.output)}`;
+    $('usage-cache-rate').textContent = cacheRate(summary); $('usage-cache-tokens').textContent = summary.cacheInput > 0 ? `命中 ${numberText(summary.cacheHit)} Token` : '未取得缓存用量';
+    $('usage-cache-coverage').textContent = summary.cacheUnknown ? `${numberText(summary.cacheUnknown)} 次未返回缓存信息` : summary.cacheInput > 0 ? `已知输入 ${numberText(summary.cacheInput)} Token` : '暂无缓存数据';
+    $('usage-calls').textContent = `${numberText(summary.calls)} 次请求`;
+    $('usage-failures').textContent = summary.failures ? `${numberText(summary.failures)} 次失败` : '';
+    $('usage-unknown').textContent = summary.unknown ? `${numberText(summary.unknown)} 次未返回用量` : '';
     $('usage-note').textContent = '';
-    $('usage-total').title = page.firstRecorded ? `开始统计：${time(page.firstRecorded, true)}` : '仅统计已返回的用量';
-    $('usage-functions').replaceChildren(usageTable(['功能', '请求数', '失败', '输入 Token', '输出 Token', '总 Token', '缓存命中', '思考 Token', '用量未知', '平均耗时'],
-      page.byPurpose.map(row => [usageNames[row.purpose] ?? row.purpose, numberText(row.calls), numberText(row.failures), numberText(row.input), numberText(row.output), numberText(row.total), numberText(row.cached), numberText(row.reasoning), numberText(row.unknown), `${numberText(Math.round(row.averageMs))} ms`])));
-    $('usage-models').replaceChildren(usageTable(['模型', '请求数', '总 Token', '用量未知'], page.byModel.map(row => [`${row.provider} / ${row.model}`, numberText(row.calls), numberText(row.total), numberText(row.unknown)])));
-    const maximum = Math.max(1, ...page.daily.map(row => Number(row.total)));
-    $('usage-daily').replaceChildren(...(page.daily.length ? page.daily.map(row => {
-      const line = element('div', 'usage-day'), bar = element('progress'); bar.max = maximum; bar.value = Number(row.total); bar.setAttribute('aria-label', `${row.day} 用量`);
-      line.append(element('span', '', row.day), bar, element('strong', '', numberText(row.total)), element('small', 'muted', `${row.calls} 次${row.unknown ? ` · ${row.unknown} 次未知` : ''}`)); return line;
-    }) : [element('p', 'empty', '还没有用量记录')]));
-    // Auto-refresh keeps older pages in place; manual refresh starts from the latest page.
+    $('usage-total').title = page.firstRecorded ? `开始统计：${time(page.firstRecorded, true)}` : '接口已返回的 Token 用量';
+    renderUsageTrend(); renderUsageDistribution(); renderUsagePricing(page.pricing);
+    const container = $('usage-requests');
     if (more) {
-      const body = $('usage-requests').querySelector('tbody');
-      const extra = usageTable([], page.items.map(usageRecord));
-      body.append(...extra.querySelector('tbody').children);
+      const body = container.querySelector('tbody'), existing = new Set([...body.children].map(row => row.dataset.usageId));
+      const added = page.items.filter(row => !existing.has(String(row.id)));
+      if (added.length) {
+        const extra = usageTable([], added.map(usageRecord));
+        [...extra.querySelector('tbody').children].forEach((row, index) => { row.dataset.usageId = added[index].id; body.append(row); });
+      }
       usageNext = page.next;
-    } else if (reset || !$('usage-requests').querySelector('tbody') || !$('usage-requests').dataset.expanded) {
-      $('usage-requests').replaceChildren(usageTable(['时间', '调用详情', '状态', '输入', '输出', '合计 Token', '耗时'], page.items.map(usageRecord)));
-      $('usage-requests').dataset.expanded = ''; usageNext = page.next;
+    } else if (reset || !container.querySelector('tbody') || !container.dataset.expanded) {
+      const open = new Set([...container.querySelectorAll('tr[data-usage-id]')].filter(row => row.querySelector('details')?.open).map(row => row.dataset.usageId));
+      container.replaceChildren(usageTable(['时间', '功能 / 模型', '状态', '预估花费', 'Token', '耗时'], page.items.map(usageRecord)));
+      [...container.querySelector('tbody').children].forEach((row, index) => { if (page.items[index]) { row.dataset.usageId = page.items[index].id; const detail = row.querySelector('details'); if (detail) detail.open = open.has(row.dataset.usageId); } });
+      container.dataset.expanded = ''; usageNext = page.next;
     }
-    if (more) $('usage-requests').dataset.expanded = '1';
+    if (more) container.dataset.expanded = '1';
     $('usage-more').hidden = !usageNext; usageUpdated = Date.now(); $('usage-updated').textContent = `更新于 ${time(usageUpdated)}`;
-  } catch { $('usage-note').textContent = '暂时无法读取用量记录，请稍后刷新。'; }
+  } catch { $('usage-note').textContent = '用量读取失败，请刷新重试'; usageUpdated = Date.now(); }
   finally {
     usageBusy = false;
     const keyNow = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value }).toString();
@@ -1101,5 +1182,16 @@ async function refreshUsage(reset = true, more = false) {
 }
 for (const [value, title] of Object.entries(usageNames)) { const option = element('option', '', title); option.value = value; $('usage-purpose').append(option); }
 for (const id of ['usage-range', 'usage-purpose', 'usage-provider']) $(id).addEventListener('change', () => refreshUsage());
-$('refresh-usage').addEventListener('click', () => refreshUsage());
+$('refresh-usage').addEventListener('click', () => { usageBalanceUpdated = 0; refreshUsage(); });
 $('usage-more').addEventListener('click', () => { if (usageKey) refreshUsage(false, true); });
+for (const button of document.querySelectorAll('[data-usage-trend]')) button.addEventListener('click', () => {
+  usageTrend = button.dataset.usageTrend;
+  for (const other of document.querySelectorAll('[data-usage-trend]')) other.setAttribute('aria-pressed', String(other === button));
+  renderUsageTrend();
+});
+for (const button of document.querySelectorAll('[data-usage-distribution]')) button.addEventListener('click', () => {
+  usageDistribution = button.dataset.usageDistribution;
+  for (const other of document.querySelectorAll('[data-usage-distribution]')) other.setAttribute('aria-pressed', String(other === button));
+  renderUsageDistribution();
+});
+$('usage-pricing-link').addEventListener('click', event => { event.preventDefault(); $('usage-pricing').open = true; $('usage-pricing').scrollIntoView({ behavior: 'smooth', block: 'start' }); });

@@ -56,8 +56,13 @@ export class VisualToolResult {
   toJSON(): Fields { return this.result; }
 }
 export interface Model {
+  balance?(): Promise<ModelBalance>;
   stream?(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>): Promise<ModelMessage>;
   complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage>;
+}
+export interface ModelBalance {
+  state: 'ready' | 'unsupported' | 'unavailable'; updated?: number; available?: boolean;
+  balances?: { currency: 'CNY' | 'USD'; total: string; granted: string; toppedUp: string }[];
 }
 export interface ModelOptions { thinking?: boolean; reasoningEffort?: 'low' | 'high' | 'max'; maxOutputTokens?: number; timeoutMs?: number; retries?: number; temperature?: number; stop?: string[] }
 export interface Adapter {

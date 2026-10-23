@@ -37,29 +37,30 @@
       </div>
     </section>
     <section id="usage" class="view" hidden>
-      <article class="panel">
+      <article class="panel usage-controls">
         <div class="toolbar usage-filters">
           <label>时间范围<select id="usage-range"><option value="today">今天</option><option value="7d">最近 7 天</option><option value="30d">最近 30 天</option><option value="all">全部记录</option></select></label>
           <label>功能<select id="usage-purpose"><option value="">全部功能</option></select></label>
           <label>服务<select id="usage-provider"><option value="">全部服务</option><option value="deepseek">DeepSeek</option><option value="bailian">百炼向量</option></select></label>
           <button id="refresh-usage" class="secondary" type="button">刷新</button><span id="usage-updated" class="muted"></span>
         </div>
-        <p id="usage-note" class="muted">正在读取用量…</p>
+        <p id="usage-note" class="muted" role="status">正在读取用量…</p>
       </article>
-      <div class="cards usage-cards">
-        <article class="card" title="仅统计接口已返回的用量"><span>总 Token</span><strong id="usage-total">—</strong></article>
-        <article class="card"><span>输入 / 输出 Token</span><strong id="usage-io">—</strong><small id="usage-detail-tokens">缓存命中 — · 思考 —</small></article>
-        <article class="card" title="包含重试，按 API 请求统计"><span>请求 / 失败</span><strong id="usage-calls">—</strong></article>
-        <article class="card" title="请求已发出但未返回用量，不能按零消耗计算"><span>未返回用量</span><strong id="usage-unknown">—</strong></article>
+      <div class="usage-overview">
+        <article class="usage-metric usage-balance"><span>DeepSeek 余额</span><strong id="usage-balance">—</strong><small id="usage-balance-parts"></small><small id="usage-balance-state" role="status">正在查询…</small></article>
+        <article class="usage-metric usage-spend"><span><span id="usage-period">今日</span>预估花费</span><strong id="usage-cost">—</strong><small id="usage-cost-coverage"></small><a class="link" href="#usage-pricing" id="usage-pricing-link">计价规则</a></article>
+        <article class="usage-metric"><span>Token 用量</span><strong id="usage-total">—</strong><small id="usage-input">输入 —</small><small id="usage-output">输出 —</small></article>
+        <article class="usage-metric"><span>缓存命中率</span><strong id="usage-cache-rate">—</strong><small id="usage-cache-tokens">命中 — Token</small><small id="usage-cache-coverage"></small></article>
       </div>
-      <article class="panel"><h2>按功能统计</h2><div id="usage-functions" class="usage-table-wrap"></div></article>
-      <div class="overview-grid">
-        <article class="panel"><h2>每日用量</h2><div id="usage-daily"></div></article>
-        <article class="panel"><h2>按模型统计</h2><div id="usage-models" class="usage-table-wrap"></div></article>
+      <div class="usage-statusline"><span id="usage-calls"></span><span id="usage-failures"></span><span id="usage-unknown"></span></div>
+      <div class="usage-insights">
+        <article class="panel usage-trend"><div class="panel-title"><h2>每日趋势</h2><div class="usage-switch" role="group" aria-label="趋势指标"><button type="button" data-usage-trend="cost" aria-pressed="true">花费</button><button type="button" data-usage-trend="tokens" aria-pressed="false">Token</button></div></div><div id="usage-daily"></div><div id="usage-day-detail" class="muted usage-day-detail" role="status"></div></article>
+        <article class="panel usage-distribution"><div class="panel-title"><h2>消耗分布</h2><div class="usage-switch" role="group" aria-label="分布维度"><button type="button" data-usage-distribution="purpose" aria-pressed="true">功能</button><button type="button" data-usage-distribution="model" aria-pressed="false">模型</button></div></div><div id="usage-distribution"></div></article>
       </div>
       <article class="panel"><div class="panel-title"><h2>调用明细</h2></div>
         <div id="usage-requests" class="usage-table-wrap"></div><button id="usage-more" class="secondary" type="button" hidden>查看更多</button>
       </article>
+      <details id="usage-pricing" class="usage-pricing"><summary>计价规则</summary><div id="usage-pricing-body"></div></details>
     </section>
     <section id="reminders" class="view" hidden>
       <article class="panel"><div class="panel-title"><div><h2>定时提醒</h2></div><button id="refresh-reminders" class="secondary" type="button">刷新</button></div>
