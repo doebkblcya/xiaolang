@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
 import * as vec from 'sqlite-vec';
 import type { MemoryConfig } from './memory-config.js';
+import type { CompactionRecord } from './contracts.js';
 import { Failure } from './errors.js';
 
 export interface MemoryItem {
@@ -46,12 +47,15 @@ export class MemoryRepository {
       CREATE TABLE IF NOT EXISTS memory_forgotten(content TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS memory_summaries(session TEXT PRIMARY KEY,through INTEGER NOT NULL,body TEXT NOT NULL,updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_summary_retries(session TEXT PRIMARY KEY,stamp TEXT NOT NULL,attempts INTEGER NOT NULL,retry_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS memory_compactions(id TEXT PRIMARY KEY,session TEXT NOT NULL,turn TEXT NOT NULL,state TEXT NOT NULL,created INTEGER NOT NULL,updated INTEGER NOT NULL,payload TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS memory_compactions_session ON memory_compactions(session,created);
       CREATE TABLE IF NOT EXISTS memory_recalls(turn TEXT PRIMARY KEY,payload TEXT NOT NULL,created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_images(hash TEXT PRIMARY KEY,caption TEXT NOT NULL,updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS memory_image_failures(url_hash TEXT PRIMARY KEY,image_hash TEXT NOT NULL,attempts INTEGER NOT NULL,error TEXT NOT NULL,retry_at INTEGER);
       CREATE TABLE IF NOT EXISTS memory_versions(memory_id TEXT NOT NULL,version INTEGER NOT NULL,payload TEXT NOT NULL,change TEXT NOT NULL,usable INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(memory_id,version));
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_version_fts USING fts5(id UNINDEXED,version UNINDEXED,body);
     `);
+    this.db.prepare("UPDATE memory_compactions SET state='interrupted',updated=? WHERE state='running'").run(Date.now());
     if (this.meta('image_cache_version') !== '2') this.transaction(() => {
       // Legacy keys discarded the fileid query parameter, so even apparently valid captions cannot be reused.
       this.db.exec('DELETE FROM memory_images; DELETE FROM memory_summaries; DELETE FROM memory_recalls;');
@@ -205,6 +209,22 @@ export class MemoryRepository {
   setSummary(session: string, through: number, body: string): void {
     this.db.prepare('INSERT INTO memory_summaries VALUES (?,?,?,?) ON CONFLICT(session) DO UPDATE SET through=excluded.through,body=excluded.body,updated=excluded.updated').run(session, through, body, Date.now());
     this.db.prepare('DELETE FROM memory_summary_retries WHERE session=?').run(session);
+  }
+  startCompaction(session: string, record: CompactionRecord): void {
+    this.db.prepare('INSERT INTO memory_compactions VALUES (?,?,?,?,?,?,?)').run(record.id, session, record.turn, record.state, record.created, record.updated, JSON.stringify(record));
+    this.db.exec('DELETE FROM memory_compactions WHERE id IN (SELECT id FROM memory_compactions ORDER BY created DESC LIMIT -1 OFFSET 1000)');
+  }
+  finishCompaction(id: string, update: Partial<CompactionRecord>): void {
+    const old = this.compaction(id); if (!old) return;
+    const record = { ...old, ...update, updated: Date.now() };
+    this.db.prepare('UPDATE memory_compactions SET state=?,updated=?,payload=? WHERE id=?').run(record.state, record.updated, JSON.stringify(record), id);
+  }
+  compaction(id: string): CompactionRecord | undefined {
+    const row = this.db.prepare('SELECT payload,state,updated FROM memory_compactions WHERE id=?').get(id);
+    return row ? { ...JSON.parse(String(row.payload)), state: String(row.state), updated: Number(row.updated) } : undefined;
+  }
+  compactions(session: string): CompactionRecord[] {
+    return this.db.prepare('SELECT id FROM memory_compactions WHERE session=? ORDER BY created DESC,id DESC LIMIT 10').all(session).map(row => this.compaction(String(row.id))!);
   }
   summaryRetry(session: string, stamp: string): { attempts: number; retryAt: number } | undefined {
     const row = this.db.prepare('SELECT attempts,retry_at FROM memory_summary_retries WHERE session=? AND stamp=?').get(session, stamp);

@@ -36,6 +36,7 @@ export const cleanup: DataCleanup = {
         db.prepare('DELETE FROM memory_items WHERE id=?').run(id);
       }
       db.exec('DELETE FROM memory_summaries; DELETE FROM memory_recalls');
+      if (exists('memory_compactions')) db.exec('DELETE FROM memory_compactions');
       if (exists('memory_summary_retries')) db.exec('DELETE FROM memory_summary_retries');
       db.prepare("INSERT INTO memory_meta VALUES ('revision','1') ON CONFLICT(key) DO UPDATE SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)").run();
     }

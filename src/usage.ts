@@ -9,7 +9,7 @@ import { estimateCost, pricing, pricePeriod } from './usage-pricing.js';
 export const usagePurposes = ['chat', 'proactive', 'memory_extract', 'memory_summary', 'persona_learn', 'image_description', 'image_inspect',
   'embedding_recall', 'embedding_index', 'embedding_test', 'web_search', 'web_fetch', 'other'] as const;
 export type UsagePurpose = typeof usagePurposes[number];
-export interface UsageContext { turn?: string; step?: number; scope?: 'private' | 'group' }
+export interface UsageContext { turn?: string; step?: number; scope?: 'private' | 'group'; compaction?: string }
 interface Scope extends UsageContext { purpose: UsagePurpose; meter: UsageMeter }
 const scopes = new AsyncLocalStorage<Scope>();
 export interface RequestMeta { provider: 'deepseek' | 'bailian'; model: string; kind: 'chat' | 'embedding' | 'web'; streaming?: boolean; thinking?: string; attempt?: number }
@@ -55,7 +55,7 @@ export async function meterRequest<T>(meta: RequestMeta, work: (capture: (body: 
   }
 }
 
-export interface UsageQuery { range?: string; purpose?: string; provider?: string; turn?: string; issue?: string; before?: number }
+export interface UsageQuery { range?: string; purpose?: string; provider?: string; turn?: string; compaction?: string; issue?: string; before?: number }
 const aggregate = `COUNT(*) calls, COALESCE(SUM(CASE WHEN state IN ('failed','interrupted') THEN 1 ELSE 0 END),0) failures,
   COALESCE(SUM(CASE WHEN kind!='web' AND total_tokens IS NULL THEN 1 ELSE 0 END),0) unknown,
   COALESCE(SUM(CASE WHEN total_tokens IS NOT NULL THEN 1 ELSE 0 END),0) metered,
@@ -87,6 +87,8 @@ export class UsageMeter {
     const columns = this.db.prepare('PRAGMA table_info(usage_calls)').all();
     if (!columns.some(column => column.name === 'estimated_cost')) this.db.exec('ALTER TABLE usage_calls ADD COLUMN estimated_cost REAL');
     if (!columns.some(column => column.name === 'pricing_version')) this.db.exec('ALTER TABLE usage_calls ADD COLUMN pricing_version TEXT');
+    if (!columns.some(column => column.name === 'compaction_id')) this.db.exec('ALTER TABLE usage_calls ADD COLUMN compaction_id TEXT');
+    this.db.exec('CREATE INDEX IF NOT EXISTS usage_compaction ON usage_calls(compaction_id)');
     this.db.function('usage_estimate', { deterministic: true }, estimateCost);
     // Existing requests use this public rate snapshot as an approximation; actual token fields remain untouched.
     this.db.prepare(`UPDATE usage_calls SET estimated_cost=usage_estimate(provider,model,kind,input_tokens,output_tokens,cached_tokens,started),pricing_version=?
@@ -95,9 +97,9 @@ export class UsageMeter {
   close(): void { this.db.close(); }
   begin(meta: RequestMeta, scope: Partial<Scope>, started: number): number | undefined {
     try {
-      return Number(this.db.prepare(`INSERT INTO usage_calls(started,purpose,provider,model,kind,streaming,thinking,attempt,turn_id,step,scope,state)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,'running')`).run(started, scope.purpose ?? 'other', meta.provider, meta.model.slice(0, 120), meta.kind,
-        meta.streaming ? 1 : 0, meta.thinking ?? 'off', meta.attempt ?? 1, scope.turn ?? null, scope.step ?? null, scope.scope ?? null).lastInsertRowid);
+      return Number(this.db.prepare(`INSERT INTO usage_calls(started,purpose,provider,model,kind,streaming,thinking,attempt,turn_id,step,scope,compaction_id,state)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'running')`).run(started, scope.purpose ?? 'other', meta.provider, meta.model.slice(0, 120), meta.kind,
+        meta.streaming ? 1 : 0, meta.thinking ?? 'off', meta.attempt ?? 1, scope.turn ?? null, scope.step ?? null, scope.scope ?? null, scope.compaction ?? null).lastInsertRowid);
     } catch { this.failed(); return undefined; }
   }
   private failed(): void { try { this.report({ code: 'usage_record_failed', stage: 'usage', level: 'error', errorCode: 'usage_storage_failed' }); } catch { /* isolated observer */ } }
@@ -118,15 +120,16 @@ export class UsageMeter {
     } catch { /* isolated observer */ }
   }
   view(query: UsageQuery = {}) {
-    const range = query.range ?? 'today', purpose = query.purpose ?? '', provider = query.provider ?? '', turn = query.turn ?? '', issue = query.issue ?? '';
+    const range = query.range ?? 'today', purpose = query.purpose ?? '', provider = query.provider ?? '', turn = query.turn ?? '', issue = query.issue ?? '', compaction = query.compaction ?? '';
     if (!['today', '7d', '30d', 'all'].includes(range) || (purpose && !usagePurposes.includes(purpose as UsagePurpose))
       || (provider && !['deepseek', 'bailian'].includes(provider)) || (turn && !/^[a-f0-9-]{36}$/.test(turn))
       || !['', 'failed', 'unknown'].includes(issue)
+      || (compaction && !/^[a-f0-9-]{36}$/.test(compaction))
       || (query.before !== undefined && (!Number.isSafeInteger(query.before) || query.before < 1))) throw new Failure('invalid_usage_query');
     const now = Date.now(), midnight = Math.floor((now + 8 * 3600000) / 86400000) * 86400000 - 8 * 3600000;
     const from = range === 'all' ? 0 : midnight - (range === '7d' ? 6 : range === '30d' ? 29 : 0) * 86400000;
-    const where = 'started>=? AND started<=? AND (?=\'\' OR purpose=?) AND (?=\'\' OR provider=?) AND (?=\'\' OR turn_id=?)';
-    const args = [from, now, purpose, purpose, provider, provider, turn, turn];
+    const where = 'started>=? AND started<=? AND (?=\'\' OR purpose=?) AND (?=\'\' OR provider=?) AND (?=\'\' OR turn_id=?) AND (?=\'\' OR compaction_id=?)';
+    const args = [from, now, purpose, purpose, provider, provider, turn, turn, compaction, compaction];
     const summary = this.db.prepare(`SELECT ${aggregate} FROM usage_calls WHERE ${where}`).get(...args)!;
     const byPurpose = this.db.prepare(`SELECT purpose,${aggregate} FROM usage_calls WHERE ${where} GROUP BY purpose ORDER BY total DESC,calls DESC`).all(...args);
     const byModel = this.db.prepare(`SELECT provider,model,${aggregate} FROM usage_calls WHERE ${where} GROUP BY provider,model ORDER BY total DESC`).all(...args);
@@ -136,7 +139,7 @@ export class UsageMeter {
     const matched = Number(this.db.prepare(`SELECT COUNT(*) count FROM usage_calls WHERE ${itemWhere}`).get(...args)!.count);
     const items = this.db.prepare(`SELECT id,started,finished,duration_ms durationMs,purpose,provider,model,kind,streaming,thinking,attempt,
       turn_id turn,step,scope,state,error_code errorCode,request_id requestId,input_tokens input,output_tokens output,total_tokens total,
-      cached_tokens cached,reasoning_tokens reasoning,estimated_cost estimatedCost,pricing_version pricingVersion FROM usage_calls WHERE ${itemWhere} AND id<? ORDER BY id DESC LIMIT 51`).all(...args, query.before ?? Number.MAX_SAFE_INTEGER);
+      cached_tokens cached,reasoning_tokens reasoning,estimated_cost estimatedCost,pricing_version pricingVersion,compaction_id compaction FROM usage_calls WHERE ${itemWhere} AND id<? ORDER BY id DESC LIMIT 51`).all(...args, query.before ?? Number.MAX_SAFE_INTEGER);
     const next = items.length > 50 ? Number(items[49]!.id) : null;
     return { range, from, to: now, timezone: 'Asia/Shanghai', firstRecorded: this.db.prepare('SELECT MIN(started) time FROM usage_calls').get()!.time ?? null,
       pricing, summary, byPurpose, byModel, daily, issue, matched, items: items.slice(0, 50).map(row => {

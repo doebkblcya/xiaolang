@@ -122,14 +122,27 @@ export interface Persona {
   learn(): Promise<unknown>;
   stop(): Promise<void>;
 }
+export interface PreparedMemory {
+  history: ModelMessage[]; historySeqs?: number[]; summaryThrough?: number; revision?: string;
+  context: string; images: { url: string }[];
+  parts?: { instructions: string; summary: string; recall: string; current: string };
+}
+export interface CompactionRecord {
+  id: string; turn: string; state: string; created: number; updated: number;
+  reason: 'tokens' | 'messages' | 'both'; from: number; through: number; count: number;
+  beforeCount: number; afterCount: number; contextBefore: number; contextAfter?: number;
+  budget: number; unit: 'tokens' | 'chars'; errorCode?: string;
+  triggerMessages: number; triggerFraction: number; targetFraction: number; keep: number;
+}
 export interface Memory {
   summary?(session: string): { enabled: boolean; recentMessages: number; updating: boolean;
-    summary: { through: number; body: string; updated: number; prompt: string } | null };
+    summary: { through: number; body: string; updated: number; prompt: string } | null; compactions?: CompactionRecord[] };
+  compaction?(id: string): CompactionRecord | undefined;
+  compact?(turn: Turn, prepared: PreparedMemory, context: { used: number; budget: number; overhead: number }, signal: AbortSignal): Promise<PreparedMemory>;
   imageDetails?(message: Pick<Message, 'seq' | 'segments'>): ImageDescription[];
   sourceAllowed?(seq: number): boolean;
   imageContext?(message: Message): string;
-  prepare(turn: Turn, signal: AbortSignal): Promise<{ history: ModelMessage[]; context: string; images: { url: string }[];
-    parts?: { instructions: string; summary: string; recall: string; current: string } } | undefined>;
+  prepare(turn: Turn, signal: AbortSignal): Promise<PreparedMemory | undefined>;
   status(): Record<string, unknown>;
   list(query: string, kind?: string, before?: number): Record<string, unknown>;
   detail(id: string, beforeVersion?: number): unknown;

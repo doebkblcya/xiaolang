@@ -1,6 +1,7 @@
 import type { Fields, ThinkingLevel } from './contracts.js';
 
 export const summaryLimits = { maxOutputTokens: 32768, timeoutMs: 180000 } as const;
+export const compactionPolicy = { messages: 200, trigger: 0.75, target: 0.4 } as const;
 
 export interface MemoryConfig {
   enabled: boolean;
@@ -28,7 +29,7 @@ export const memoryProperties = {
   embeddingBaseUrl: { type: 'string', title: '百炼 API 地址', minLength: 1, maxLength: 1000, description: '填写所在地域或业务空间的 OpenAI 兼容地址，自动追加 /embeddings。' },
   embeddingModel: { type: 'string', title: '向量模型', minLength: 1, maxLength: 100 },
   embeddingDimensions: { type: 'integer', title: '向量维度', enum: [64, 128, 256, 512, 768, 1024, 1536, 2048] },
-  recentMessages: { type: 'integer', title: '保留最近原文条数', minimum: 5, maximum: 100 },
+  recentMessages: { type: 'integer', title: '压缩后最多保留原文条数', minimum: 5, maximum: 100 },
   recallLimit: { type: 'integer', title: '每轮最多召回记忆数', minimum: 1, maximum: 20 },
   contextChars: { type: 'integer', title: '记忆与摘要字数预算', minimum: 500, maximum: 12000 },
   batchSize: { type: 'integer', title: '每批整理聊天条数', minimum: 1, maximum: 50 },

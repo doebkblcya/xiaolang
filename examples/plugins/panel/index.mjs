@@ -60,6 +60,7 @@ export function createHandler(runtime, configuration, options = {}) {
       const writeRoute = /^\/api\/settings\/(model|qq|trigger|apply)$/.exec(url.pathname);
       const memoryRoute = /^\/api\/memory(?:\/(status|action|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const recallRoute = /^\/api\/memory-recalls\/([a-f0-9-]{36})$/.exec(url.pathname);
+      const compactionRoute = /^\/api\/memory-compactions\/([a-f0-9-]{36})$/.exec(url.pathname);
       const pluginRoute = /^\/api\/plugins\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname);
       const personaRoute = /^\/api\/persona(?:\/(learn|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const conversationRoute = /^\/api\/conversations(?:\/([a-f0-9]{64})(?:\/(name))?)?$/.exec(url.pathname);
@@ -142,6 +143,14 @@ export function createHandler(runtime, configuration, options = {}) {
       }
       if (url.pathname === '/api/reminders') return options.reminders ? send(200, options.reminders.list()) : send(503, { error: 'reminders_unavailable' });
       if (recallRoute) return options.memory ? send(200, options.memory.recalled(recallRoute[1])) : send(503, { error: 'memory_unavailable' });
+      if (compactionRoute) {
+        if (!options.memory?.compaction) return send(503, { error: 'memory_unavailable' });
+        const record = options.memory.compaction(compactionRoute[1]);
+        if (!record) return send(404, { error: 'compaction_not_found' });
+        let usage = null;
+        try { usage = options.usage?.view({ range: 'all', compaction: record.id }).summary ?? null; } catch { /* Optional usage service. */ }
+        return send(200, { record, usage });
+      }
       if (memoryRoute) {
         if (!options.memory) return send(503, { error: 'memory_unavailable' });
         const id = memoryRoute[1];
@@ -174,6 +183,7 @@ export function createHandler(runtime, configuration, options = {}) {
       if (url.pathname === '/api/usage') return options.usage ? send(200, options.usage.view({ range: url.searchParams.get('range') ?? 'today',
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
         issue: url.searchParams.get('issue') ?? '',
+        compaction: url.searchParams.get('compaction') ?? '',
         before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
       if (url.pathname === '/api/tools') return send(200, { items: options.tools?.list() ?? [], mcp: options.mcp?.status() ?? [], skills: options.skills?.status() ?? [] });
       if (url.pathname === '/api/logs/events') return options.logs ? send(200, options.logs.events()) : send(503, { error: 'logging_unavailable' });

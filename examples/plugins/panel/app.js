@@ -733,12 +733,22 @@ async function openConversationSummary(item) {
     if (!data.available) { root.append(element('p', 'muted', '聊天与记忆插件未提供摘要')); return; }
     const status = [!data.enabled ? '当前未启用' : '', data.updating ? '正在更新' : ''].filter(Boolean);
     if (status.length) root.append(element('p', 'muted', status.join(' · ')));
-    if (!data.summary) { root.append(element('p', 'empty', '尚未生成摘要')); return; }
-    const summary = data.summary;
-    root.append(element('p', 'muted', `截至消息 #${summary.through} · 更新于 ${time(summary.updated, true)}`), detailSection('模型使用的摘要', summary.prompt));
-    const full = element('details', 'message-process-records');
-    full.append(element('summary', '', '完整摘要'), element('div', 'bubble', summary.body));
-    root.append(full);
+    if (!data.summary) root.append(element('p', 'empty', '尚未生成摘要'));
+    else {
+      const summary = data.summary;
+      root.append(element('p', 'muted', `截至消息 #${summary.through} · 更新于 ${time(summary.updated, true)}`), detailSection('模型使用的摘要', summary.prompt));
+      const full = element('details', 'message-process-records');
+      full.append(element('summary', '', '完整摘要'), element('div', 'bubble', summary.body)); root.append(full);
+    }
+    if (data.compactions?.length) {
+      const history = element('section', 'detail-section'); history.append(element('h3', '', '压缩记录'));
+      for (const record of data.compactions) {
+        const detail = element('details', 'message-process-records'), body = element('div');
+        detail.append(element('summary', '', `${time(record.created, true)} · ${record.count} 条 · ${compactionState(record.state)}`), body);
+        detail.addEventListener('toggle', () => { if (detail.open && !body.childNodes.length) loadCompaction(record.id, body); }); history.append(detail);
+      }
+      root.append(history);
+    }
   } catch { if (version === summaryRequest) root.replaceChildren(element('p', 'muted', '摘要读取失败，请重试')); }
 }
 $('conversation-summary').addEventListener('click', () => { if (currentConversation) openConversationSummary(currentConversation); });
@@ -1061,6 +1071,21 @@ async function refreshUsageBalance() {
   } catch { $('usage-balance-state').textContent = '余额查询失败'; usageBalanceUpdated = Date.now() - 45000; }
   finally { usageBalanceBusy = false; }
 }
+function compactionState(state) { return ({ completed: '已完成', running: '压缩中', failed: '失败', interrupted: '重启中断', discarded: '资料变动，结果未采用' })[state] ?? state; }
+async function loadCompaction(id, target) {
+  target.replaceChildren(element('p', 'muted', '正在读取…'));
+  try {
+    const { record, usage } = await get(`/api/memory-compactions/${id}`);
+    const unit = record.unit === 'tokens' ? 'Token' : '字符', reason = ({ tokens: `Token 达到预算的 ${record.triggerFraction * 100}%`, messages: `原文达到 ${record.triggerMessages} 条`, both: 'Token 与原文条数均达到阈值' })[record.reason] ?? record.reason;
+    const facts = [`状态：${compactionState(record.state)}`, `触发：${reason}`, `本次处理：${record.count} 条 · #${record.from}–#${record.through}`,
+      `未压缩原文：${record.beforeCount} → ${record.afterCount} 条`, `上下文估算：${numberText(record.contextBefore)} → ${numberText(record.contextAfter)} ${unit}`, `可用输入预算：${numberText(record.budget)} ${unit}`, `压缩目标：约 ${numberText(Math.floor(record.budget * record.targetFraction))} ${unit} · 最多保留 ${record.keep} 条原文`];
+    if (usage?.calls) facts.push(`实际用量：输入 ${numberText(usage.input)} · 输出 ${numberText(usage.output)} Token`, `思考：${numberText(usage.reasoning)} Token`, `预估费用：${money(usage.estimatedCost)}${usage.unpriced ? ' · 有未估价请求' : ''}`);
+    if (record.errorCode) facts.push(`错误：${record.errorCode}`);
+    target.replaceChildren(detailSection('压缩详情', facts.join('\n')));
+  } catch {
+    const retry = element('button', 'link', '记录读取失败，重试'); retry.type = 'button'; retry.addEventListener('click', () => loadCompaction(id, target)); target.replaceChildren(retry);
+  }
+}
 function usageRecord(row) {
   const meta = element('details', 'usage-request'), label = element('summary');
   label.append(element('strong', '', usageNames[row.purpose] ?? row.purpose), element('small', 'muted', row.model));
@@ -1069,6 +1094,10 @@ function usageRecord(row) {
     element('p', 'muted', `缓存命中 ${numberText(row.cached)} Token · 思考 ${numberText(row.reasoning)} Token`));
   if (row.estimatedCost === null) meta.append(element('p', 'muted', row.kind === 'web' ? '按次接口未纳入估算' : row.provider !== 'deepseek' ? '此服务暂未配置价格' : '缺少用量或适用价格，未估算费用'));
   else meta.append(element('p', 'muted', `人民币预估 · ${row.pricePeriod === 'peak' ? '高峰时段' : '空闲时段'} · ${row.pricingVersion}`));
+  if (row.compaction) {
+    const button = element('button', 'link', '压缩详情'), detail = element('div'); button.type = 'button';
+    button.addEventListener('click', () => { button.hidden = true; loadCompaction(row.compaction, detail); }); meta.append(button, detail);
+  }
   if (row.requestId) meta.append(element('p', 'mono', `平台请求 ID：${row.requestId}`));
   if (row.errorCode) meta.append(element('p', 'error-box', row.errorCode));
   if (row.total === null && row.kind !== 'web') meta.append(element('p', 'muted', '未返回完整 Token 用量'));

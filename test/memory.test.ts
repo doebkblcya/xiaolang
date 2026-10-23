@@ -1,5 +1,6 @@
 import test from 'node:test';
 import { Failure } from '../src/errors.js';
+import { contextSize } from '../src/context-budget.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -199,20 +200,28 @@ test('optional null fields from the extraction model do not block a valid new me
   } finally { await app.stop(); }
 });
 
-test('older chat is summarized behind the current turn; correcting its source invalidates the summary', async () => {
+test('compaction waits for 200 records, keeps pending text, then preserves the recent tail; correction invalidates it', async () => {
   const options = config(); options.chatEnabled = false; options.memory = { ...memoryDefaults, enabled: true, recentMessages: 5, summaryThinking: 'high' };
-  const background = new FakeModel(async messages => ({ role: 'assistant', content: messages[0]!.content!.startsWith('将旧摘要') ? '用户200之前讨论过骑行计划，尚未确认完成。' : '{"memories":[]}' }));
+  const finishSummary = deferred<{ role: 'assistant'; content: string }>();
+  const background = new FakeModel(async messages => messages[0]!.content!.startsWith('将旧摘要') ? finishSummary.promise : { role: 'assistant', content: '{"memories":[]}' });
   const app = await createApp(options, { adapter: new FakeAdapter(), model: new FakeModel(), memoryModel: background });
   try {
-    for (let i = 1; i <= 6; i++) app.ctx.intake.receive(event('聊天'+i, i, null));
+    for (let i = 1; i <= 200; i++) app.ctx.intake.receive(event('聊天'+i, i, null));
     const boundary = app.ctx.store.records({ limit: 1 })[0]!.message;
-    await app.ctx.memory.prepare({ id: randomUUID(), message: boundary, reason: 'test' }, signal());
+    const firstTurn = { id: randomUUID(), message: boundary, reason: 'test' };
+    const first = (await app.ctx.memory.prepare(firstTurn, signal()))!;
+    await app.ctx.memory.compact!(firstTurn, first, { used: contextSize(first.history, options.limits) + 1000, budget: 80000, overhead: 1000 }, signal());
+    assert.equal(first.history.length, 199);
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(app.ctx.memory.status().summaries, 0);
-    app.ctx.intake.receive(event('聊天7', 7, null));
+    app.ctx.intake.receive(event('聊天201', 201, null));
     const message = app.ctx.store.records({ limit: 1 })[0]!.message;
     const turn = { id: randomUUID(), message, reason: 'test' };
-    await app.ctx.memory.prepare(turn, signal());
+    const prepared = (await app.ctx.memory.prepare(turn, signal()))!;
+    const pending = await app.ctx.memory.compact!(turn, prepared, { used: contextSize(prepared.history, options.limits) + 1000, budget: 80000, overhead: 1000 }, signal());
+    assert.equal(pending.history.length, 200, 'raw history stays available until the summary succeeds');
+    assert.equal(app.ctx.memory.status().summaries, 0);
+    finishSummary.resolve({ role: 'assistant', content: '用户200之前讨论过骑行计划，尚未确认完成。' });
     await new Promise<void>(resolve => setImmediate(resolve));
     const result = await app.ctx.memory.prepare(turn, signal());
     assert.ok(result!.context.includes('骑行计划'));
@@ -221,6 +230,8 @@ test('older chat is summarized behind the current turn; correcting its source in
     assert.equal(background.options[summaryIndex]?.maxOutputTokens, 32768);
     assert.equal(background.options[summaryIndex]?.timeoutMs, 180000); assert.equal(background.options[summaryIndex]?.retries, 0);
     assert.equal(result!.history.length, 5);
+    const record = app.ctx.memory.summary!(message.session).compactions![0]!;
+    assert.equal(record.count, 195); assert.equal(record.afterCount, 5); assert.equal(record.state, 'completed');
     const item = await app.ctx.memory.mutate({ action: 'remember', value: { content: '用户喜欢骑行', kind: 'profile', people: ['200'], sources: [1], importance: 3 } }) as { item: MemoryItem };
     await app.ctx.memory.mutate({ action: 'forget', id: item.item.id, version: item.item.version });
     assert.equal(app.ctx.memory.status().summaries, 0);
@@ -246,13 +257,15 @@ test('summary failures preserve progress and persistent backoff despite new mess
   let app = await open();
   const prepare = async () => {
     const message = app.ctx.store.records({ limit: 1 })[0]!.message;
-    await app.ctx.memory.prepare({ id: randomUUID(), message, reason: 'test' }, signal());
+    const turn = { id: randomUUID(), message, reason: 'test' };
+    const prepared = (await app.ctx.memory.prepare(turn, signal()))!;
+    await app.ctx.memory.compact!(turn, prepared, { used: contextSize(prepared.history, options.limits) + 1000, budget: 80000, overhead: 1000 }, signal());
     await new Promise<void>(resolve => setImmediate(resolve));
   };
   try {
-    for (let i = 1; i <= 7; i++) app.ctx.intake.receive(event('聊天'+i, i, null));
+    for (let i = 1; i <= 201; i++) app.ctx.intake.receive(event('聊天'+i, i, null));
     await prepare(); assert.equal(count(), 1); assert.equal(app.ctx.memory.status().summaries, 0);
-    app.ctx.intake.receive(event('新的消息不会取消冷却', 8, null));
+    app.ctx.intake.receive(event('新的消息不会取消冷却', 202, null));
     await prepare(); assert.equal(count(), 1);
     now += 5 * 60000; await prepare(); assert.equal(count(), 2);
     now += 15 * 60000; await prepare(); assert.equal(count(), 3);
@@ -262,4 +275,30 @@ test('summary failures preserve progress and persistent backoff despite new mess
     assert.equal(app.ctx.memory.status().summaries, 1); assert.equal(app.ctx.memory.status().summaryError, null);
     await prepare(); assert.equal(count(), 4);
   } finally { await app.stop(); }
+});
+
+test('token pressure compacts fewer than 200 records and a full context waits for a committed summary', async () => {
+  const options = config(); options.chatEnabled = false; options.memory = { ...memoryDefaults, enabled: true };
+  const finish = deferred<{ role: 'assistant'; content: string }>();
+  const background = new FakeModel(async messages => messages[0]!.content!.startsWith('将旧摘要') ? finish.promise : { role: 'assistant', content: '{"memories":[]}' });
+  const app = await createApp(options, { adapter: new FakeAdapter(), model: new FakeModel(), memoryModel: background });
+  try {
+    for (let i = 1; i <= 21; i++) app.ctx.intake.receive(event('长消息。'.repeat(200), i, null));
+    const message = app.ctx.store.records({ limit: 1 })[0]!.message, turn = { id: randomUUID(), message, reason: 'test' };
+    const prepared = (await app.ctx.memory.prepare(turn, signal()))!;
+    const used = contextSize(prepared.history, options.limits) + 1000, budget = used - 100;
+    let settled = false;
+    const compacted = app.ctx.memory.compact!(turn, prepared, { used, budget, overhead: 1000 }, signal()).then(value => { settled = true; return value; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(settled, false); assert.equal(prepared.history.length, 20); assert.equal(app.ctx.memory.status().summaries, 0);
+    const running = app.ctx.memory.summary!(message.session).compactions![0]!;
+    assert.equal(running.reason, 'tokens'); assert.equal(running.afterCount, 20);
+    finish.resolve({ role: 'assistant', content: '之前有一段重复的长消息。' });
+    const result = await compacted;
+    assert.ok(result.history.length < 20); assert.ok(result.parts!.summary.includes('重复的长消息'));
+    const completed = app.ctx.memory.summary!(message.session).compactions![0]!;
+    assert.equal(completed.count + result.history.length, 20); assert.equal(completed.afterCount, result.history.length);
+    assert.ok(completed.contextAfter! < completed.contextBefore);
+    assert.equal(app.ctx.store.records({ limit: 500 }).length, 21, 'compaction never deletes original messages');
+  } finally { finish.resolve({ role: 'assistant', content: '结束。' }); await app.stop(); }
 });
