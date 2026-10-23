@@ -143,6 +143,8 @@ export function createHandler(runtime, configuration, options = {}) {
         return send(200, personaRoute[1] ? options.persona.detail(personaRoute[1]) : options.persona.list());
       }
       if (url.pathname === '/api/reminders') return options.reminders ? send(200, options.reminders.list()) : send(503, { error: 'reminders_unavailable' });
+      const reminderDetail = /^\/api\/reminders\/([a-f0-9-]{36})$/i.exec(url.pathname);
+      if (reminderDetail) return options.reminders?.detail ? send(200, options.reminders.detail(reminderDetail[1])) : send(503, { error: 'reminders_unavailable' });
       if (recallRoute) return options.memory ? send(200, options.memory.recalled(recallRoute[1])) : send(503, { error: 'memory_unavailable' });
       if (compactionRoute) {
         if (!options.memory?.compaction) return send(503, { error: 'memory_unavailable' });
@@ -215,6 +217,7 @@ export function createHandler(runtime, configuration, options = {}) {
       if (['store_unavailable', 'usage_unavailable'].includes(failure)) return send(503, { error: failure });
       if (['invalid_persona_request', 'invalid_persona_result'].includes(failure)) return send(400, { error: failure });
       if (failure === 'persona_not_found') return send(404, { error: failure });
+      if (failure === 'reminder_not_found') return send(404, { error: failure });
       if (['persona_conflict', 'persona_disabled', 'persona_busy', 'persona_rate_limited', 'persona_not_enough_messages', 'persona_catalog_full'].includes(failure)) return send(409, { error: failure });
       if (failure === 'invalid_delete_request') return send(400, { error: failure });
       if (failure === 'data_busy') return send(409, { error: failure });

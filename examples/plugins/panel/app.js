@@ -529,36 +529,103 @@ $('logout').addEventListener('click', async () => {
     if (response.ok) location.reload(); else notice('退出未完成，请重试。');
   } catch { notice('退出未完成，请检查连接后重试。'); }
 });
-async function refreshReminders() {
+let reminderPage, reminderFilter = '', reminderBusy = false, reminderSnapshot = '', reminderNamesAt = 0;
+const reminderNames = new Map(), reminderDetails = new Map(), cancellingReminders = new Set();
+const reminderRepeat = { once: '一次性', daily: '每天', weekly: '每周' };
+const reminderErrors = { qq_push_permission_denied: '没有主动发送权限', qq_push_rate_limited: 'QQ 主动发送额度或频率限制', qq_push_refused: '对方不允许主动消息', qq_not_ready: 'QQ 连接未就绪，稍后重试', process_interrupted: '发送时服务重启，请核对是否已收到', qq_send_unknown: '发送结果不明，请核对是否已收到' };
+const reminderDate = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' });
+const reminderClock = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false });
+function reminderDestination(task) { return reminderNames.get(task.conversationId) || `${task.scope === 'group' ? '群聊' : '私聊'} · ${task.recipient.slice(0, 8)}`; }
+function reminderActive(task) { return ['scheduled', 'queued', 'sending'].includes(task.state); }
+async function loadReminderDetails(task, target) {
+  target.replaceChildren(element('p', 'muted', '正在读取…'));
   try {
-    const data = await get('/api/reminders');
-    $('reminder-summary').textContent = `待执行 ${data.active} 个 · 共 ${data.total} 个${data.total > 100 ? '，显示前 100 个' : ''}`;
-    $('reminder-empty').hidden = data.items.length > 0;
-    $('reminder-rows').replaceChildren(...data.items.map(task => {
-      const row = element('tr'), content = element('td'), schedule = element('td'), state = element('td'), actions = element('td');
-      content.append(element('div', 'snippet', task.text), element('div', 'module', `${task.scope === 'group' ? '群聊' : '私聊'} ${task.recipient} · ${task.ownerName}`), element('div', 'module', task.id));
-      schedule.append(element('div', '', task.nextAtBeijing), element('div', 'muted', ({ once: '一次性', daily: '每天', weekly: '每周' })[task.repeat]));
-      state.append(badge(task.state));
-      if (task.lastRun) state.append(element('div', 'module', `最近执行 ${time(task.lastRun.time, true)} · ${words[task.lastRun.state] ?? task.lastRun.state}`));
-      if (task.lastRun?.receipt) state.append(element('div', 'module', `回执 ${task.lastRun.receipt}`));
-      if (task.errorCode) state.append(element('div', 'form-error', ({ qq_push_permission_denied: '没有主动发送权限', qq_push_rate_limited: 'QQ 主动发送额度或频率限制', qq_push_refused: '对方不允许主动消息', qq_not_ready: 'QQ 连接未就绪，稍后重试', process_interrupted: '发送时服务重启，请核对是否已收到', qq_send_unknown: '发送结果不明，请核对是否已收到' })[task.errorCode] ?? task.errorCode));
-      if (['scheduled', 'queued', 'sending', 'failed', 'unknown'].includes(task.state)) {
-        const cancel = element('button', 'secondary', '取消'); cancel.type = 'button';
-        cancel.addEventListener('click', async () => {
-          cancel.disabled = true;
-          try {
-            if (!settings) await loadSettings();
-            const result = await settingsRequest('/api/reminders/cancel', { id: task.id });
-            if (result.inFlight) alert(result.note);
-            await refreshReminders();
-          } catch (error) { alert(error.message); cancel.disabled = false; }
-        }); actions.append(cancel);
+    const key = JSON.stringify(task); let cached = reminderDetails.get(task.id);
+    if (!cached || cached.key !== key) { cached = { key, data: await get(`/api/reminders/${encodeURIComponent(task.id)}`) }; reminderDetails.set(task.id, cached); }
+    if (!target.isConnected) return;
+    const data = cached.data; target.replaceChildren();
+    const request = element('div', 'reminder-request'); request.append(element('h3', '', '创建原文'));
+    if (data.source) {
+      request.append(element('small', 'muted', `${data.source.name} · ${time(data.source.time, true)}`), element('p', '', data.source.text));
+      if (task.conversationId) { const chat = element('button', 'link', '对应聊天 →'); chat.type = 'button'; chat.addEventListener('click', () => openMessageProcessing(task.conversationId, data.source.seq)); request.append(chat); }
+    } else request.append(element('p', 'muted', '原始消息已不可用'));
+    target.append(request);
+    if (data.runs.length) {
+      const history = element('div', 'reminder-executions'); history.append(element('h3', '', '最近执行'));
+      for (const run of data.runs) {
+        const row = element('div', 'reminder-execution'); row.append(element('time', '', time(run.time, true)), badge(run.state));
+        if (run.errorCode) row.append(element('small', 'form-error', reminderErrors[run.errorCode] ?? run.errorCode)); history.append(row);
       }
-      row.append(content, schedule, state, actions); return row;
-    }));
-  } catch { $('reminder-summary').textContent = '提醒加载失败'; }
+      target.append(history);
+    }
+    const technical = element('details', 'technical-details'); technical.append(element('summary', '', '技术信息'));
+    const facts = [['任务编号', task.id], ['创建时间', time(task.created, true)], ['接收位置', `${task.scope === 'group' ? '群聊' : '私聊'} ${task.recipient}`], ['创建者 ID', task.owner]];
+    if (data.source) facts.push(['来源消息', `#${data.source.seq}`]);
+    for (const [label, value] of facts) technical.append(element('p', 'mono', `${label}：${value}`));
+    for (const run of data.runs) if (run.receipt) technical.append(element('p', 'mono', `${time(run.time, true)} 回执：${run.receipt}`));
+    target.append(technical);
+  } catch {
+    if (!target.isConnected) return;
+    const retry = element('button', 'link', '详情读取失败，重试'); retry.type = 'button'; retry.addEventListener('click', () => loadReminderDetails(task, target)); target.replaceChildren(retry);
+  }
 }
-$('refresh-reminders').addEventListener('click', refreshReminders);
+function renderReminders() {
+  if (!reminderPage) return;
+  const query = $('reminder-search').value.trim().toLowerCase();
+  const items = reminderPage.items.filter(task => (!reminderFilter || (reminderFilter === 'active' ? reminderActive(task) : reminderFilter === 'error' ? ['failed', 'unknown'].includes(task.state) || reminderActive(task) && task.errorCode : task.state === reminderFilter))
+    && (!query || `${task.text} ${task.ownerName} ${reminderDestination(task)} ${task.recipient}`.toLowerCase().includes(query)));
+  items.sort((a, b) => Number(reminderActive(b)) - Number(reminderActive(a)) || (reminderActive(a) ? Date.parse(a.nextAt) - Date.parse(b.nextAt) : (b.lastRun?.time ?? b.created) - (a.lastRun?.time ?? a.created)));
+  const open = new Set([...$('reminder-rows').querySelectorAll('details.reminder-detail[open]')].map(node => node.dataset.reminder));
+  $('reminder-rows').replaceChildren(...items.map(task => {
+    const card = element('article', `panel reminder-card${reminderActive(task) ? ' reminder-upcoming' : ''}`), stamp = element('div', 'reminder-stamp'), body = element('div', 'reminder-body'), heading = element('div', 'reminder-heading');
+    const date = new Date(task.nextAt); stamp.append(element('small', '', reminderActive(task) ? '下次执行' : '计划时间'), element('strong', '', reminderClock.format(date)), element('time', '', reminderDate.format(date)), element('span', '', reminderRepeat[task.repeat] ?? task.repeat));
+    heading.append(element('h2', '', task.text), badge(task.state));
+    const origin = element('div', 'reminder-origin'); origin.append(element('span', '', `创建者 · ${task.ownerName}`), element('span', '', reminderDestination(task))); origin.title = task.recipient;
+    body.append(heading, origin);
+    if (task.lastRun) body.append(element('p', 'reminder-last-run', `最近执行 ${time(task.lastRun.time, true)} · ${words[task.lastRun.state] ?? task.lastRun.state}`));
+    if (task.errorCode) body.append(element('p', 'reminder-error', reminderErrors[task.errorCode] ?? task.errorCode));
+    const actions = element('div', 'reminder-actions');
+    if (['scheduled', 'queued', 'sending', 'failed', 'unknown'].includes(task.state)) {
+      const cancel = element('button', 'link', '取消提醒'); cancel.type = 'button'; cancel.disabled = cancellingReminders.has(task.id);
+      cancel.addEventListener('click', async () => {
+        cancellingReminders.add(task.id); cancel.disabled = true;
+        try {
+          if (!settings) fillSettings(await settingsRequest('/api/settings'));
+          const result = await settingsRequest('/api/reminders/cancel', { id: task.id });
+          if (result.inFlight) alert(result.note); await refreshReminders();
+        } catch (error) { $('reminder-summary').textContent = error.message; }
+        finally { cancellingReminders.delete(task.id); if (cancel.isConnected) cancel.disabled = false; }
+      }); actions.append(cancel);
+    }
+    const details = element('details', 'reminder-detail'), detailBody = element('div', 'reminder-detail-body'); details.dataset.reminder = task.id;
+    details.append(element('summary', '', '详情'), detailBody);
+    let loaded = false;
+    details.addEventListener('toggle', () => { if (details.open && !loaded) { loaded = true; loadReminderDetails(task, detailBody); } });
+    if (open.has(task.id)) details.open = true;
+    body.append(actions, details); card.append(stamp, body); return card;
+  }));
+  $('reminder-empty').hidden = items.length > 0; $('reminder-empty').textContent = reminderPage.items.length ? '暂无匹配提醒' : '暂无提醒';
+  $('reminder-summary').textContent = reminderPage.total > reminderPage.items.length ? `显示 ${reminderPage.items.length} / ${reminderPage.total} 条` : '';
+}
+async function refreshReminders() {
+  if (reminderBusy) return; reminderBusy = true;
+  try {
+    const tasks = get('/api/reminders');
+    const names = Date.now() - reminderNamesAt > 60000 ? get('/api/conversations').then(data => { for (const item of data.items) reminderNames.set(item.id, item.alias || item.name); }).catch(() => {}).finally(() => { reminderNamesAt = Date.now(); }) : Promise.resolve();
+    const [data] = await Promise.all([tasks, names]); reminderPage = data;
+    $('reminder-active').textContent = data.active; $('reminder-total').textContent = data.total;
+    const snapshot = JSON.stringify([data, [...reminderNames]]);
+    if (snapshot !== reminderSnapshot) { reminderSnapshot = snapshot; renderReminders(); } else if ($('reminder-summary').textContent === '提醒读取失败，显示上次数据') $('reminder-summary').textContent = '';
+  } catch { $('reminder-summary').textContent = '提醒读取失败，显示上次数据'; }
+  finally { reminderBusy = false; }
+}
+for (const button of document.querySelectorAll('[data-reminder-filter]')) button.addEventListener('click', () => {
+  reminderFilter = button.dataset.reminderFilter;
+  for (const other of document.querySelectorAll('[data-reminder-filter]')) other.setAttribute('aria-pressed', String(other === button)); renderReminders();
+});
+$('reminder-search').addEventListener('input', renderReminders);
+$('refresh-reminders').addEventListener('click', () => { reminderNamesAt = 0; refreshReminders(); });
+
 loadPanel();
 poll();
 loadSettings();

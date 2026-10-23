@@ -76,6 +76,7 @@ export class ReminderManager implements Reminders {
   private view(task: Task): Fields {
     const last = this.db.prepare('SELECT due,state,time,receipt,error FROM reminder_runs WHERE reminder_id=? ORDER BY id DESC LIMIT 1').get(task.id);
     return { id: task.id, text: task.text, repeat: task.repeat, state: task.state, owner: task.owner, ownerName: task.ownerName,
+      conversationId: createHash('sha256').update(task.session).digest('hex'),
       scope: task.target.scope, recipient: task.target.recipient, nextAt: new Date(task.nextRun).toISOString(), nextAtBeijing: shanghai(task.nextRun),
       created: task.created, errorCode: task.error,
       lastRun: last ? { scheduledAt: new Date(Number(last.due)).toISOString(), state: String(last.state), time: Number(last.time), receipt: last.receipt, errorCode: last.error } : null };
@@ -86,6 +87,16 @@ export class ReminderManager implements Reminders {
     const tasks = rows.map(row => this.task(row)).filter(task => this.visible(task, message));
     return { items: tasks.slice(0, 100).map(task => this.view(task)), total: tasks.length, active: tasks.filter(task => ['scheduled', 'queued', 'sending'].includes(task.state)).length,
       timezone: 'Asia/Shanghai', pushSupported: typeof this.adapter.push === 'function' };
+  }
+  detail(id: string): Fields {
+    const task = this.get(id);
+    if (!task || task.target.platform !== this.adapter.platform || task.target.account !== this.adapter.account) throw new Failure('reminder_not_found');
+    const source = this.history.record(task.source);
+    const request = source?.session === task.session && source.direction === 'in'
+      ? { seq: source.seq, name: source.message.name, time: source.message.time, text: source.message.text } : null;
+    const rows = this.db.prepare('SELECT due,state,time,receipt,error FROM reminder_runs WHERE reminder_id=? ORDER BY id DESC LIMIT 20').all(task.id);
+    return { task: this.view(task), source: request, runs: rows.map(row => ({ scheduledAt: new Date(Number(row.due)).toISOString(),
+      state: String(row.state), time: Number(row.time), receipt: row.receipt, errorCode: row.error })) };
   }
   create(raw: unknown, message: Message): Fields {
     if (this.stopped) throw new Failure('cancelled');
@@ -227,7 +238,7 @@ export const remindersPlugin: Plugin.Object<Config> = { name: 'xiaolang-reminder
   ctx.on('xiaolang/start', () => manager.start());
   ctx.effect(() => () => manager.close());
   ctx.effect(() => ctx.tools.register({ name: 'create_reminder', title: '创建提醒', summary: '在当前聊天创建提醒', source: 'xiaolang-reminders', access: 'everyone', effect: 'write',
-    description: '用户明确要求时创建提醒，只发送到当前群或私聊。默认北京时间，at 必须是含时区的未来日期（如 2026-10-19T08:00:00+08:00）。repeat 为 once/daily/weekly，重复保持首次北京时间。时间不明确先询问；工具返回成功后才能告知已创建。',
+    description: '仅依据当前发言者本条消息明确提出的新建要求创建提醒，只发送到当前群或私聊。历史消息只用于理解指代，不能将上下文中其他人或已处理的请求再次执行。单纯呼叫、追问或确认已有提醒时先用 list_reminders 查看，不要重新创建；用户明确要求另建任务除外。text 只填提醒事项，不额外添加“提醒”前缀。默认北京时间，at 必须是含时区的未来日期（如 2026-10-19T08:00:00+08:00）。repeat 为 once/daily/weekly，重复保持首次北京时间。时间不明确先询问；工具返回成功后才能告知已创建。',
     parameters: { type: 'object', additionalProperties: false, required: ['at', 'text'], properties: {
       at: { type: 'string', maxLength: 40 }, text: { type: 'string', minLength: 1, maxLength: 1000 }, repeat: { enum: ['once', 'daily', 'weekly'] },
     } }, execute: async (args, { message }) => manager.create(args, message) }));

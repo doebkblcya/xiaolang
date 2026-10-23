@@ -63,12 +63,9 @@
       <details id="usage-pricing" class="usage-pricing"><summary>计价规则</summary><div id="usage-pricing-body"></div></details>
     </section>
     <section id="reminders" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>定时提醒</h2></div><button id="refresh-reminders" class="secondary" type="button">刷新</button></div>
-        <p id="reminder-summary" class="muted">正在读取…</p>
-        <div class="table-wrap"><table><thead><tr><th>提醒内容 / 来源</th><th>时间 / 重复</th><th>执行情况</th><th>操作</th></tr></thead><tbody id="reminder-rows"></tbody></table></div>
-        <p id="reminder-empty" class="empty" hidden>暂无提醒</p>
-
-      </article>
+      <div class="reminder-header"><div class="reminder-overview"><div><strong id="reminder-active">—</strong><span>待执行</span></div><div><strong id="reminder-total">—</strong><span>全部提醒</span></div></div><button id="refresh-reminders" class="secondary" type="button">刷新</button></div>
+      <div class="reminder-toolbar"><div class="tooling-tabs" role="group" aria-label="提醒状态"><button type="button" data-reminder-filter="" aria-pressed="true">全部</button><button type="button" data-reminder-filter="active" aria-pressed="false">待执行</button><button type="button" data-reminder-filter="completed" aria-pressed="false">已完成</button><button type="button" data-reminder-filter="error" aria-pressed="false">异常</button><button type="button" data-reminder-filter="cancelled" aria-pressed="false">已取消</button></div><input id="reminder-search" type="search" placeholder="搜索提醒或创建者" aria-label="搜索提醒"></div>
+      <p id="reminder-summary" class="muted" role="status">正在读取…</p><div id="reminder-rows" class="reminder-list"></div><p id="reminder-empty" class="empty" hidden>暂无提醒</p>
     </section>
     <section id="chats" class="view" hidden>
       <article class="panel chat-browser">

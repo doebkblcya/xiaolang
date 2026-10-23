@@ -105,6 +105,7 @@ export interface Store {
 }
 export interface ChatRecord { seq: number; session: string; direction: 'in' | 'out'; message: Message; text: string }
 export interface Reminders {
+  detail?(id: string): Record<string, unknown>;
   start(): void;
   stop(): Promise<void>;
   idle(): Promise<void>;
