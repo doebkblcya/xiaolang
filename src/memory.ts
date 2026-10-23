@@ -128,6 +128,16 @@ export class ChatMemory implements Memory {
       nextBeforeVersion: versions.length > 10 ? versions[9]!.item.version : null } };
   }
   recalled(turn: string): unknown { return this.repository.recall(turn) ?? { items: [], summary: '', note: '这轮没有可用的记忆召回记录。' }; }
+  private summaryContext(summary: { through: number; body: string }): string {
+    const remaining = this.config.limits.contextTokens !== undefined ? this.settings.contextChars
+      : Math.min(this.settings.contextChars, Math.floor(this.config.limits.contextChars! * 0.35));
+    return `较早聊天摘要（截至原文seq ${summary.through}）：\n${summary.body.slice(0, Math.min(1800, remaining / 2))}`;
+  }
+  summary(session: string): ReturnType<NonNullable<Memory['summary']>> {
+    const saved = this.repository.summary(session);
+    return { enabled: this.settings.enabled, recentMessages: this.settings.recentMessages, updating: this.summaries.has(session),
+      summary: saved ? { ...saved, prompt: this.summaryContext(saved) } : null };
+  }
   async mutate(raw: unknown): Promise<unknown> {
     const input = object(raw);
     if (!input || !['remember', 'update', 'forget'].includes(String(input.action))) throw new Failure('invalid_memory_request');
@@ -206,7 +216,7 @@ export class ChatMemory implements Memory {
     let remaining = this.config.limits.contextTokens !== undefined ? this.settings.contextChars
       : Math.min(this.settings.contextChars, Math.floor(this.config.limits.contextChars! * 0.35));
     const selected: MemoryItem[] = [];
-    if (validSummary) { const text = `较早聊天摘要（截至原文seq ${validSummary.through}）：\n${validSummary.body.slice(0, Math.min(1800, remaining / 2))}`; summaryContext = text; remaining -= text.length; }
+    if (validSummary) { summaryContext = this.summaryContext(validSummary); remaining -= summaryContext.length; }
     for (const item of items) {
       const text = `记忆 ${item.id} v${item.version} [${item.kind}] 人物:${item.people.join(',')} 更新:${new Date(item.updated).toISOString()}\n来源:${this.sourceLabels(item).join('；')}\n${item.content}`;
       if (text.length > remaining) continue;
@@ -231,7 +241,7 @@ export class ChatMemory implements Memory {
       '工具报告无法取得原图时，明确说明本次没能查看并请用户重发；已有描述只能作参考，不拿描述或之前的回答证明自己已经看过。',
     );
     const parts = { instructions: rules.join('\n\n'), summary: summaryContext, recall: recallParts.join('\n\n'), current: currentParts.join('\n\n') };
-    this.repository.recall(turn.id, { items: selected, summary: validSummary?.body ?? '', recentSeqs: recent.map(row => row.seq), time: Date.now() });
+    this.repository.recall(turn.id, { items: selected, summary: summaryContext, recentSeqs: recent.map(row => row.seq), time: Date.now() });
     log(this.ctx, 'memory_recalled', turn.id, 'memory', { preview: `召回 ${selected.length} 条记忆，近期原文 ${recent.length} 条，图片 ${images.length} 张` });
     const oldest = recent[0]?.seq;
     if (oldest && !this.summaries.size) {

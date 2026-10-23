@@ -717,7 +717,34 @@ function setConversationHeading(item) {
   $('conversation-title').textContent = conversationLabel(item);
   $('conversation-subtitle').textContent = `${item.scope === 'group' ? '群聊' : '私聊'} · ${item.messages} 条消息`; $('conversation-title').title = item.recipient;
   $('conversation-delete').disabled = false; $('conversation-name').disabled = false; $('message-latest').disabled = false;
+  $('conversation-summary').disabled = false;
 }
+let summaryRequest = 0, summaryConversation;
+async function openConversationSummary(item) {
+  summaryConversation = item;
+  const version = ++summaryRequest, root = $('conversation-summary-body');
+  $('conversation-summary-title').textContent = `${conversationLabel(item)} · 摘要`;
+  root.replaceChildren(element('p', 'muted', '正在读取…'));
+  if (!$('conversation-summary-dialog').open) $('conversation-summary-dialog').showModal();
+  try {
+    const data = await get(`/api/conversations/${item.id}/summary`);
+    if (version !== summaryRequest) return;
+    root.replaceChildren();
+    if (!data.available) { root.append(element('p', 'muted', '聊天与记忆插件未提供摘要')); return; }
+    const status = [!data.enabled ? '当前未启用' : '', data.updating ? '正在更新' : ''].filter(Boolean);
+    if (status.length) root.append(element('p', 'muted', status.join(' · ')));
+    if (!data.summary) { root.append(element('p', 'empty', '尚未生成摘要')); return; }
+    const summary = data.summary;
+    root.append(element('p', 'muted', `截至消息 #${summary.through} · 更新于 ${time(summary.updated, true)}`), detailSection('摘要', summary.body));
+    const prompt = element('details', 'message-process-records');
+    prompt.append(element('summary', '', 'Prompt 摘要片段'), element('div', 'bubble', summary.prompt));
+    root.append(prompt);
+  } catch { if (version === summaryRequest) root.replaceChildren(element('p', 'muted', '摘要读取失败，请重试')); }
+}
+$('conversation-summary').addEventListener('click', () => { if (currentConversation) openConversationSummary(currentConversation); });
+$('refresh-conversation-summary').addEventListener('click', () => { if (summaryConversation) openConversationSummary(summaryConversation); });
+$('close-conversation-summary').addEventListener('click', () => $('conversation-summary-dialog').close());
+$('conversation-summary-dialog').addEventListener('close', () => { summaryRequest++; summaryConversation = undefined; });
 function renderConversations() {
   $('conversation-list').replaceChildren(...conversationItems.map(item => {
     const button = element('button', `conversation-item${item.id === currentConversation?.id ? ' selected' : ''}`); button.type = 'button';
@@ -749,6 +776,7 @@ async function refreshChats(more = false) {
   finally { chatLoading = false; }
 }
 async function selectConversation(item) {
+  $('conversation-summary-dialog').close();
   chatAnchored = false; timelineSnapshot = undefined; $('message-new').hidden = true;
   currentConversation = item; conversationRows = []; messageNext = undefined; timelineVersion++;
   setConversationHeading(item); renderConversations(); $('message-timeline').replaceChildren(element('p', 'empty', '正在读取…'));
@@ -930,6 +958,7 @@ async function loadTimeline(older = false, initial = false) {
   } finally { if (timelineLoading === pending) { timelineLoading = undefined; $('message-older').disabled = !messageNext; $('message-older').textContent = '查看更早消息'; chatScrollTop = $('message-timeline').scrollTop; } }
 }
 function filterConversations() {
+  $('conversation-summary-dialog').close(); $('conversation-summary').disabled = true;
   timelineSnapshot = undefined; chatAnchored = false; $('message-new').hidden = true;
   conversationFilterVersion++; timelineVersion++; conversationItems = []; currentConversation = undefined; conversationNext = undefined; conversationRows = []; messageNext = undefined;
   $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = ''; $('conversation-delete').disabled = true; $('conversation-name').disabled = true; $('message-latest').disabled = true;
@@ -973,6 +1002,7 @@ async function eraseStoredData(input) {
   return result;
 }
 async function resetChatsAfterDelete() {
+  $('conversation-summary-dialog').close(); $('conversation-summary').disabled = true;
   conversationFilterVersion++; timelineVersion++; conversationItems = []; conversationRows = []; conversationNext = undefined; messageNext = undefined; currentConversation = undefined;
   $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = '';
   $('conversation-name').disabled = true; $('conversation-delete').disabled = true;

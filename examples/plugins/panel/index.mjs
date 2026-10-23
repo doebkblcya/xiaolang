@@ -63,6 +63,7 @@ export function createHandler(runtime, configuration, options = {}) {
       const pluginRoute = /^\/api\/plugins\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname);
       const personaRoute = /^\/api\/persona(?:\/(learn|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const conversationRoute = /^\/api\/conversations(?:\/([a-f0-9]{64})(?:\/(name))?)?$/.exec(url.pathname);
+      const summaryRoute = /^\/api\/conversations\/([a-f0-9]{64})\/summary$/.exec(url.pathname);
       const messageRoute = /^\/api\/conversations\/([a-f0-9]{64})\/messages\/([1-9][0-9]*)$/.exec(url.pathname);
       const deleteData = url.pathname === '/api/data/delete';
       const cancelReminder = url.pathname === '/api/reminders/cancel';
@@ -122,6 +123,12 @@ export function createHandler(runtime, configuration, options = {}) {
         try { platform = await options.adapter?.conversationStatus?.({ platform: detail.message.platform, account: detail.message.account,
           scope: detail.message.group ? 'group' : 'private', recipient: detail.message.group ?? detail.message.sender }) ?? null; } catch { /* Optional platform state. */ }
         return send(200, { ...detail, logs, images, platform });
+      }
+      if (summaryRoute) {
+        const { conversation } = await required('history', 'store').timeline(summaryRoute[1]);
+        if (!options.memory?.summary) return send(200, { available: false });
+        const session = JSON.stringify([conversation.platform, conversation.account, conversation.scope, conversation.recipient]);
+        return send(200, { available: true, ...options.memory.summary(session) });
       }
       if (conversationRoute) {
         if (conversationRoute[2]) return send(405, { error: 'method_not_allowed' });

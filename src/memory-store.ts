@@ -198,9 +198,9 @@ export class MemoryRepository {
     });
   }
   reindex(): void { this.db.exec('UPDATE memory_items SET indexed=0'); }
-  summary(session: string): { through: number; body: string } | undefined {
-    const row = this.db.prepare('SELECT through,body FROM memory_summaries WHERE session=?').get(session);
-    return row ? { through: Number(row.through), body: String(row.body) } : undefined;
+  summary(session: string): { through: number; body: string; updated: number } | undefined {
+    const row = this.db.prepare('SELECT through,body,updated FROM memory_summaries WHERE session=?').get(session);
+    return row ? { through: Number(row.through), body: String(row.body), updated: Number(row.updated) } : undefined;
   }
   setSummary(session: string, through: number, body: string): void {
     this.db.prepare('INSERT INTO memory_summaries VALUES (?,?,?,?) ON CONFLICT(session) DO UPDATE SET through=excluded.through,body=excluded.body,updated=excluded.updated').run(session, through, body, Date.now());

@@ -118,6 +118,8 @@ export interface Persona {
   stop(): Promise<void>;
 }
 export interface Memory {
+  summary?(session: string): { enabled: boolean; recentMessages: number; updating: boolean;
+    summary: { through: number; body: string; updated: number; prompt: string } | null };
   imageDetails?(message: Pick<Message, 'seq' | 'segments'>): ImageDescription[];
   sourceAllowed?(seq: number): boolean;
   imageContext?(message: Message): string;
