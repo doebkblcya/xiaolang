@@ -6,7 +6,7 @@ import type { Log, LogItem } from './contracts.js';
 import { presentLog } from './log-format.js';
 import { Failure } from './errors.js';
 
-export interface LogQuery { after?: number; before?: number; limit?: number; q?: string; event?: string; level?: string }
+export interface LogQuery { after?: number; before?: number; limit?: number; q?: string; event?: string; level?: string; messageId?: string }
 /** Owns the bounded log archive; no application service depends on successful writes. */
 export class LogJournal {
   private db?: DatabaseSync;
@@ -62,14 +62,15 @@ export class LogJournal {
     return { events: [...events.values()].sort((a, b) => a.code.localeCompare(b.code)), total: events.size };
   }
   query(query: LogQuery = {}) {
-    const { after, before } = query, limit = query.limit ?? 200, q = query.q?.trim() ?? '', event = query.event ?? '', level = query.level ?? '';
+    const { after, before } = query, limit = query.limit ?? 200, q = query.q?.trim() ?? '', event = query.event ?? '', level = query.level ?? '', messageId = query.messageId ?? '';
     if ((after !== undefined && (!Number.isSafeInteger(after) || after < 0))
       || (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) || (after !== undefined && before !== undefined)
       || !Number.isSafeInteger(limit) || limit < 1 || limit > 500 || typeof q !== 'string' || q.length > 200 || typeof event !== 'string' || event.length > 100
-      || !['', 'info', 'warn', 'error'].includes(level)) throw new Failure('invalid_log_query');
-    const where = "instr(lower(body),lower(?))>0 AND (?='' OR json_extract(body,'$.code')=?) AND (?='' OR json_extract(body,'$.level')=?)";
-    const args = [q, event, event, level, level];
-    const matches = (item: LogItem) => (!event || item.entry.code === event) && (!level || item.entry.level === level) && JSON.stringify(item.entry).toLowerCase().includes(q.toLowerCase());
+      || !['', 'info', 'warn', 'error'].includes(level) || (messageId !== '' && !/^[a-f0-9]{64}$/.test(messageId))) throw new Failure('invalid_log_query');
+    const where = "instr(lower(body),lower(?))>0 AND (?='' OR json_extract(body,'$.code')=?) AND (?='' OR json_extract(body,'$.level')=?)" + (messageId ? " AND json_extract(body,'$.messageId')=?" : '');
+    const args = [q, event, event, level, level, ...(messageId ? [messageId] : [])];
+    const matches = (item: LogItem) => (!event || item.entry.code === event) && (!level || item.entry.level === level)
+      && (!messageId || item.entry.messageId === messageId) && JSON.stringify(item.entry).toLowerCase().includes(q.toLowerCase());
     const first = this.db ? Number(this.db.prepare('SELECT MIN(id) n FROM process_logs').get()?.n ?? 0) : this.recent[0]?.seq ?? 0;
     const reset = after !== undefined && (after > this.seq || (first > 0 && after > 0 && after < first - 1));
     const incremental = after !== undefined && after > 0 && !reset;

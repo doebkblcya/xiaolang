@@ -63,6 +63,7 @@ export function createHandler(runtime, configuration, options = {}) {
       const pluginRoute = /^\/api\/plugins\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname);
       const personaRoute = /^\/api\/persona(?:\/(learn|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const conversationRoute = /^\/api\/conversations(?:\/([a-f0-9]{64})(?:\/(name))?)?$/.exec(url.pathname);
+      const messageRoute = /^\/api\/conversations\/([a-f0-9]{64})\/messages\/([1-9][0-9]*)$/.exec(url.pathname);
       const deleteData = url.pathname === '/api/data/delete';
       const cancelReminder = url.pathname === '/api/reminders/cancel';
       if (request.method === 'POST' && (writeRoute || pluginRoute || memoryRoute || personaRoute || conversationRoute || cancelReminder || deleteData)) {
@@ -105,6 +106,15 @@ export function createHandler(runtime, configuration, options = {}) {
         return send(200, { ...await configuration.save(writeRoute[1], input), writeToken });
       }
       if (request.method !== 'GET') { request.resume?.(); return send(405, { error: 'method_not_allowed' }); }
+      if (messageRoute) {
+        const detail = required('history', 'store').message(messageRoute[1], integer(messageRoute[2], undefined));
+        let logs = null, images = null, platform = null;
+        try { logs = options.logs?.query({ messageId: detail.message.key, limit: 200 }) ?? null; } catch { /* Optional log service. */ }
+        try { images = options.memory?.imageDetails?.(detail.message) ?? null; } catch { /* Optional memory service. */ }
+        try { platform = await options.adapter?.conversationStatus?.({ platform: detail.message.platform, account: detail.message.account,
+          scope: detail.message.group ? 'group' : 'private', recipient: detail.message.group ?? detail.message.sender }) ?? null; } catch { /* Optional platform state. */ }
+        return send(200, { ...detail, logs, images, platform });
+      }
       if (conversationRoute) {
         if (conversationRoute[2]) return send(405, { error: 'method_not_allowed' });
         if (conversationRoute[1]) return send(200, await required('history', 'store').timeline(conversationRoute[1], integer(url.searchParams.get('before'), undefined)));
@@ -153,9 +163,9 @@ export function createHandler(runtime, configuration, options = {}) {
       if (url.pathname === '/api/logs') {
         const after = integer(url.searchParams.get('after'), undefined), before = integer(url.searchParams.get('before'), undefined);
         const limit = integer(url.searchParams.get('limit'), 200), q = url.searchParams.get('q') ?? '';
-        const event = url.searchParams.get('event') ?? '', level = url.searchParams.get('level') ?? '';
-        if (after !== undefined && after < 0 || before !== undefined && before < 1 || after !== undefined && before !== undefined || limit < 1 || limit > 500 || q.length > 200 || event.length > 100 || !['', 'info', 'warn', 'error'].includes(level)) throw new Error('invalid_log_query');
-        return options.logs ? send(200, options.logs.query({ after, before, limit, q, event, level })) : send(503, { error: 'logging_unavailable' });
+        const event = url.searchParams.get('event') ?? '', level = url.searchParams.get('level') ?? '', messageId = url.searchParams.get('messageId') ?? '';
+        if (after !== undefined && after < 0 || before !== undefined && before < 1 || after !== undefined && before !== undefined || limit < 1 || limit > 500 || q.length > 200 || event.length > 100 || !['', 'info', 'warn', 'error'].includes(level) || messageId && !/^[a-f0-9]{64}$/.test(messageId)) throw new Error('invalid_log_query');
+        return options.logs ? send(200, options.logs.query({ after, before, limit, q, event, level, messageId })) : send(503, { error: 'logging_unavailable' });
       }
       if (url.pathname === '/api/turns') {
         const limit = integer(url.searchParams.get('limit'), 25, 100);
@@ -209,7 +219,7 @@ export async function apply(ctx, config = {}) {
   if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
-  const handler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
+  const handler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), usage: ctx.get('usage'), intake: ctx.get('intake'),
     persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   const listeners = [{ server, handler, port, host }];
@@ -218,7 +228,7 @@ export async function apply(ctx, config = {}) {
     if (!auth || !tls || !lan || !['127.0.0.1', '0.0.0.0'].includes(lan.host ?? '0.0.0.0')
       || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
       || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
-    const lanHandler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), usage: ctx.get('usage'), intake: ctx.get('intake'),
+    const lanHandler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), usage: ctx.get('usage'), intake: ctx.get('intake'),
       persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
     listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
   }

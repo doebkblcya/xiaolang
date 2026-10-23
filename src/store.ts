@@ -2,8 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import type { HistoryReader, ConversationView, TimelineItem, Message, ModelMessage, SendRecord, Store, ToolCall, Turn, TurnDetail, TurnState, TurnView } from './contracts.js';
-import { render } from './messages.js';
+import type { HistoryReader, ConversationView, TimelineItem, Message, ModelMessage, SendRecord, SendReceipt, Segment, Store, ToolCall, Turn, TurnDetail, TurnState, TurnView } from './contracts.js';
+import { render, segmentText, messageKey } from './messages.js';
 import { Failure } from './errors.js';
 import { deleteData } from './data-deletion.js';
 import type { DataCleanup } from './data-cleanup.js';
@@ -49,12 +49,34 @@ export class SqliteStore implements Store {
     if (!this.db.prepare('PRAGMA table_info(chat_sessions)').all().some(column => column.name === 'display_name')) {
       this.db.exec("ALTER TABLE chat_sessions ADD COLUMN display_name TEXT NOT NULL DEFAULT ''");
     }
+    if (!this.db.prepare('PRAGMA table_info(sends)').all().some(column => column.name === 'reference')) this.db.exec('ALTER TABLE sends ADD COLUMN reference TEXT');
+    if (!this.db.prepare('PRAGMA table_info(sends)').all().some(column => column.name === 'receipt_data')) this.db.exec('ALTER TABLE sends ADD COLUMN receipt_data TEXT');
+    this.db.exec("CREATE INDEX IF NOT EXISTS messages_platform_index ON messages(session,json_extract(payload,'$.metadata.index')); CREATE INDEX IF NOT EXISTS sends_reference ON sends(reference);");
     for (const row of this.db.prepare('SELECT DISTINCT session FROM messages').all()) this.ensureConversation(String(row.session));
   }
   private ensureConversation(session: string) {
     this.db.prepare('INSERT OR IGNORE INTO chat_sessions(session,id) VALUES (?,?)').run(session, createHash('sha256').update(session).digest('hex'));
   }
   close(): void { this.db.close(); }
+  private resolveReferences(message: Message): Message {
+    const resolve = (parts: Segment[], depth = 0): Segment[] => parts.map(part => {
+      if (depth > 4) return { type: 'unsupported', kind: '嵌套引用' };
+      if (part.type === 'bundle') return { ...part, items: part.items.map(item => ({ ...item, segments: resolve(item.segments, depth + 1) })) };
+      if (part.type !== 'reply') return part;
+      if (this.db.prepare('SELECT 1 FROM message_tombstones WHERE key=?').get(messageKey(message.session, part.messageId))) return { type: 'reply', messageId: part.messageId, unavailable: true };
+      const row = this.db.prepare(`SELECT seq,payload,direction FROM messages WHERE session=? AND direction='in'
+        AND (json_extract(payload,'$.metadata.index')=? OR json_extract(payload,'$.id')=?) ORDER BY seq DESC LIMIT 1`).get(message.session, part.messageId, part.messageId)
+        ?? this.db.prepare(`SELECT m.seq,m.payload,m.direction,s.text AS quote_text FROM messages m JOIN turns t ON m.key='reply:'||t.id
+          JOIN sends s ON s.turn_id=t.id WHERE m.session=? AND s.state='sent' AND (s.reference=? OR s.platform_id=?) LIMIT 1`).get(message.session, part.messageId, part.messageId)
+        ?? this.db.prepare("SELECT seq,payload,direction FROM messages WHERE session=? AND direction='out' AND json_extract(payload,'$.reference')=? LIMIT 1").get(message.session, part.messageId);
+      const source = row ? JSON.parse(String(row.payload)) : undefined;
+      return { ...part, ...(row ? { seq: Number(row.seq), sender: row.direction === 'in' ? source.sender : message.account,
+        name: row.direction === 'in' ? source.name : '小狼' } : {}),
+        segments: part.segments?.length ? resolve(part.segments, depth + 1) : source ? row!.direction === 'in'
+          ? resolve((source.segments as Segment[]).filter(p => p.type !== 'reply'), depth + 1) : [{ type: 'text', text: String(row?.quote_text ?? source.text ?? '').slice(0, 50000) }] : undefined };
+    });
+    return { ...message, segments: resolve(message.segments) };
+  }
   records(query: { after?: number; before?: number; fence?: number; session?: string; limit: number; incoming?: boolean }) {
     const rows = this.db.prepare(`SELECT seq,direction,session,payload,source_seq FROM messages WHERE seq>? AND seq<?
       AND (? IS NULL OR (direction='in' AND seq<?) OR (direction='out' AND source_seq<?))
@@ -64,7 +86,7 @@ export class SqliteStore implements Store {
     return (query.after !== undefined ? rows : rows.reverse()).flatMap(row => {
       const source = row.direction === 'in' ? row : this.db.prepare('SELECT payload FROM messages WHERE seq=?').get(Number(row.source_seq));
       if (!source) return [];
-      const message = JSON.parse(String(source.payload)) as Message;
+      const message = this.resolveReferences(JSON.parse(String(source.payload)) as Message);
       if (row.direction === 'out') {
         const sentAt = (JSON.parse(String(row.payload)) as { sentAt?: number }).sentAt;
         if (typeof sentAt === 'number') message.time = sentAt;
@@ -78,20 +100,26 @@ export class SqliteStore implements Store {
   deleteData(input: unknown) { return deleteData(this.db, input, this.cleanups.values()); }
   admit(message: Message): Message | undefined {
     if (this.db.prepare('SELECT 1 FROM message_tombstones WHERE key=?').get(message.key)) return;
+    if (message.metadata?.index) {
+      if (this.db.prepare("SELECT 1 FROM messages WHERE session=? AND direction='in' AND json_extract(payload,'$.metadata.index')=?").get(message.session, message.metadata.index)) return;
+      const previous = this.db.prepare("SELECT json_extract(payload,'$.metadata.index') idx FROM messages WHERE key=?").get(message.key);
+      if (previous?.idx && previous.idx !== message.metadata.index) message = { ...message, key: messageKey(message.session, JSON.stringify([message.id, message.metadata.index])) };
+      if (this.db.prepare('SELECT 1 FROM message_tombstones WHERE key=?').get(message.key)) return;
+    }
     this.ensureConversation(message.session);
     const result = this.db.prepare('INSERT OR IGNORE INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,\'in\',0,?)')
       .run(message.key, message.session, JSON.stringify(message));
     if (result.changes && !message.group && message.name.trim() && message.name !== message.sender) {
       this.db.prepare('UPDATE chat_sessions SET display_name=? WHERE session=?').run(message.name, message.session);
     }
-    return Number(result.changes) ? { ...message, seq: Number(result.lastInsertRowid) } : undefined;
+    return Number(result.changes) ? this.resolveReferences({ ...message, seq: Number(result.lastInsertRowid) }) : undefined;
   }
   history(message: Message, limit: number): ModelMessage[] {
     const rows = this.db.prepare(`SELECT direction,payload FROM messages
       WHERE session=? AND key!=? AND ((direction='in' AND seq<?) OR (direction='out' AND source_seq<?))
       ORDER BY seq DESC LIMIT ?`).all(message.session, message.key, message.seq, message.seq, limit);
     return rows.reverse().flatMap(row => {
-      if (row.direction === 'in') return [{ role: 'user' as const, content: render(JSON.parse(String(row.payload)) as Message) }];
+      if (row.direction === 'in') return [{ role: 'user' as const, content: render(this.resolveReferences(JSON.parse(String(row.payload)) as Message)) }];
       const data = JSON.parse(String(row.payload)) as { protocol: ModelMessage[] };
       return data.protocol;
     });
@@ -128,15 +156,18 @@ export class SqliteStore implements Store {
   sendState(id: string, part: number, state: SendRecord['state'], platformId?: string): void {
     this.db.prepare('UPDATE sends SET state=?,platform_id=? WHERE turn_id=? AND part=?').run(state, platformId ?? null, id, part);
   }
+  saveReceipt(turn: string, part: number, receipt: SendReceipt): void {
+    this.db.prepare('UPDATE sends SET reference=COALESCE(?,reference),receipt_data=? WHERE turn_id=? AND part=?').run(receipt.reference ?? null, JSON.stringify(receipt), turn, part);
+  }
   delivered(turn: Turn, text: string, protocol: ModelMessage[], platformIds: string[]): void {
     this.db.prepare('INSERT INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,\'out\',?,?) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload')
       .run(`reply:${turn.id}`, turn.message.session, turn.message.seq, JSON.stringify({ text, protocol, platformIds, sentAt: Date.now() }));
   }
-  pushDelivered(source: number, execution: string, text: string, receipt: string, time: number): void {
+  pushDelivered(source: number, execution: string, text: string, receipt: string, time: number, reference?: string): void {
     const row = this.db.prepare("SELECT session FROM messages WHERE seq=? AND direction='in'").get(source);
     if (!row) throw new Failure('reminder_source_missing');
     this.db.prepare("INSERT OR IGNORE INTO messages(key,session,direction,source_seq,payload) VALUES (?,?,'out',?,?)")
-      .run(`reminder:${execution}`, String(row.session), source, JSON.stringify({ text, protocol: [{ role: 'assistant', content: text }], platformIds: [receipt], sentAt: time }));
+      .run(`reminder:${execution}`, String(row.session), source, JSON.stringify({ text, protocol: [{ role: 'assistant', content: text }], platformIds: [receipt], sentAt: time, reference }));
   }
   confirmSend(turn: Turn, part: number, platformId: string, text: string, protocol: ModelMessage[], platformIds: string[]): void {
     this.db.exec('BEGIN IMMEDIATE');
@@ -167,7 +198,7 @@ export class SqliteStore implements Store {
   private conversationView(row: Record<string, unknown>): ConversationView {
     const message = JSON.parse(String(row.source)) as Message;
     const payload = JSON.parse(String(row.payload));
-    const body = row.direction === 'in' ? message.segments.map(segment => segment.type === 'text' ? segment.text : segment.type === 'image' ? '[图片]' : segment.type === 'mention' ? '[@提及]' : segment.type === 'reply' ? '[引用]' : `[${segment.kind}]`).join('') : String(payload.text ?? '');
+    const body = row.direction === 'in' ? segmentText(message.segments, false) : String(payload.text ?? '');
     return { id: String(row.id), alias: String(row.alias), version: Number(row.version), scope: message.group ? 'group' : 'private',
       recipient: message.group ?? message.sender, name: String(row.display_name || (message.group ? `群聊 ${message.group}` : message.name)),
       platform: message.platform, account: message.account, lastSeq: Number(row.seq), preview: body.slice(0, 120), messages: Number(row.total) };
@@ -204,6 +235,13 @@ export class SqliteStore implements Store {
     if (!this.db.prepare('UPDATE chat_sessions SET alias=?,version=version+1 WHERE id=? AND version=?').run(alias.trim(), id, version).changes) throw new Failure('conversation_conflict');
     return this.conversation(id).view;
   }
+  message(id: string, seq: number): ReturnType<HistoryReader['message']> {
+    if (!Number.isSafeInteger(seq) || seq < 1) throw new Failure('invalid_history_query');
+    const conversation = this.conversation(id), record = this.record(seq);
+    if (!record || record.session !== conversation.session || record.direction !== 'in') throw new Failure('message_not_found');
+    const turn = this.db.prepare('SELECT id,state,reason FROM turns WHERE message_key=?').get(record.message.key);
+    return { message: record.message, ...(turn ? { turn: { id: String(turn.id), state: String(turn.state), reason: String(turn.reason) } } : {}) };
+  }
   timeline(id: string, before?: number): Awaited<ReturnType<HistoryReader['timeline']>> {
     if (before !== undefined && (!Number.isSafeInteger(before) || before < 1)) throw new Failure('invalid_history_query');
     const conversation = this.conversation(id);
@@ -215,7 +253,7 @@ export class SqliteStore implements Store {
       WHERE m.session=? AND m.seq<? ORDER BY m.seq DESC LIMIT 51`).all(conversation.session, before ?? Number.MAX_SAFE_INTEGER);
     const selected = rows.slice(0, 50);
     const items: TimelineItem[] = selected.reverse().map(row => {
-      const message = JSON.parse(String(row.source)) as Message, payload = JSON.parse(String(row.payload));
+      const message = this.resolveReferences(JSON.parse(String(row.source)) as Message), payload = JSON.parse(String(row.payload));
       const incoming = row.direction === 'in';
       const knownName = incoming ? this.db.prepare(`SELECT json_extract(payload,'$.name') AS name FROM messages
         WHERE session=? AND direction='in' AND json_extract(payload,'$.sender')=?

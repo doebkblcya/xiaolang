@@ -79,6 +79,7 @@
         <section class="conversation-main" aria-label="聊天时间线">
           <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted"></p></div><div class="form-actions"><button id="conversation-delete" class="secondary" disabled>删除会话</button><button id="conversation-name" class="secondary" disabled>备注</button><button id="conversation-refresh" class="secondary">刷新</button></div></div>
           <div class="timeline-toolbar"><button id="message-older" class="link" disabled>查看更早消息</button><span id="message-page-note" class="muted"></span><label class="filter"><input id="message-follow" type="checkbox" checked>跟随新消息</label></div>
+          <button id="message-new" class="message-new secondary" hidden>有新消息 ↓</button>
           <div id="message-timeline" class="message-timeline"><p class="empty">选择一个会话</p></div>
           <div class="timeline-footer"><span id="conversation-message" class="muted" role="status"></span><button id="message-latest" class="link" disabled>回到最新</button></div>
         </section>
@@ -181,6 +182,7 @@
     </section>
   </main>
   <dialog id="detail"><div class="dialog-head"><div><h2 id="detail-title">处理记录</h2></div><button id="close-detail" class="secondary" aria-label="关闭详情">关闭</button></div><div id="detail-body"></div></dialog>
+  <dialog id="message-processing"><div class="dialog-head"><h2>消息处理</h2><div class="form-actions"><button id="refresh-message-processing" class="secondary">刷新</button><button id="close-message-processing" class="secondary">关闭</button></div></div><div id="message-processing-body"></div></dialog>
   <dialog id="plugin-detail"><div class="dialog-head"><div><h2 id="plugin-title">插件</h2></div><button id="close-plugin" class="secondary" aria-label="关闭插件详情">关闭</button></div><div id="plugin-detail-body"></div></dialog>
   <dialog id="memory-detail"><div class="dialog-head"><div><h2>小狼记住的事</h2></div><button id="close-memory" class="secondary">关闭</button></div>
     <form id="memory-form"><div class="form-grid">

@@ -5,7 +5,7 @@ const usageNames = { chat: '聊天回复', proactive: '插话判断', memory_ext
   web_search: '网页搜索', web_fetch: '网页阅读', other: '其他调用' };
 const words = { connected: '已连接', disconnected: '已断开', starting: '启动中', ready: '已就绪', stopping: '停止中', failed: '失败', error: '连接异常',
   completed: '已完成', queued: '等待处理', running: '处理中', sending: '发送中', unknown: '结果未知', expired: '已过期', cancelled: '已取消',
-  active: '已启用', disabled: '已停用', pending: '等待激活', scheduled: '等待到点', sent: '已确认发送', succeeded: '已成功', private: '私聊', mention: '@机器人', keyword: '触发词' };
+  no_trigger: '未触发回复', active: '已启用', disabled: '已停用', pending: '等待激活', scheduled: '等待到点', sent: '已确认发送', succeeded: '已成功', private: '私聊', mention: '@机器人', keyword: '触发词' };
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
 const viewTitles = { overview: '主页', chats: '聊天记录', logs: '过程日志', usage: '模型用量', 'model-settings': '回复模型', 'qq-settings': 'QQ 接入', memories: '聊天与记忆', persona: '人设与学习', tooling: '工具与行动', reminders: '定时提醒', plugins: '插件' };
 Object.assign(reasons, { proactive: '主动插话', no_trigger: '未命中直接触发条件' });
@@ -749,26 +749,135 @@ async function refreshChats(more = false) {
   finally { chatLoading = false; }
 }
 async function selectConversation(item) {
+  chatAnchored = false; timelineSnapshot = undefined; $('message-new').hidden = true;
   currentConversation = item; conversationRows = []; messageNext = undefined; timelineVersion++;
   setConversationHeading(item); renderConversations(); $('message-timeline').replaceChildren(element('p', 'empty', '正在读取…'));
   await loadTimeline(false, true);
 }
+let messageSelection, messageRequest = 0, timelineSnapshot, chatAnchored = false, chatScrollTop = 0;
+const imageErrors = { image_url_expired: '原图链接已过期', image_download_timeout: '下载超时', image_download_network: '网络异常', image_download_failed: '原图下载失败', image_host_not_allowed: '图片来源未支持', image_format_unsupported: '图片格式未支持', image_too_large: '图片过大' };
+function imageDescription(image) {
+  if (image?.state === 'ready') return image.description;
+  if (image?.state === 'pending') return '描述生成中';
+  if (image?.state === 'disabled') return '图片理解已关闭';
+  if (image?.state === 'failed') return `${imageErrors[image.errorCode] ?? image.errorCode ?? '生成失败'}${image.retryAt ? ` · 下次重试 ${time(image.retryAt, true)}` : ''}`;
+  return '暂无已保存的图片描述';
+}
+function externalLink(label, url) {
+  const node = element('a', 'message-image-link', label);
+  if (typeof url === 'string' && url.startsWith('https://')) { node.href = url; node.target = '_blank'; node.rel = 'noreferrer noopener'; }
+  return node;
+}
+function renderMessageSegments(segments, root, item, counter = { image: 0 }, depth = 0) {
+  if (depth > 5) return;
+  for (const part of segments ?? []) {
+    if (part.type === 'text') root.append(document.createTextNode(part.text));
+    else if (part.type === 'mention') root.append(element('span', 'message-mention', part.all ? '@全体成员' : `@${part.self ? '小狼' : part.name ?? part.userId}`));
+    else if (part.type === 'image') {
+      counter.image++;
+      const image = item.images?.find(image => image.imageId === `img_${item.seq}_${counter.image}`);
+      const block = element('span', 'message-attachment'); block.append(externalLink(part.filename || '图片 · 原图 ↗', part.url));
+      const caption = element('details', 'image-description'), title = element('summary', '', '图片描述');
+      caption.append(title, element('p', '', imageDescription(image))); block.append(caption); root.append(block);
+    } else if (part.type === 'reply') {
+      const quote = element('div', 'message-quote'), heading = element('div', 'quote-heading');
+      heading.append(element('strong', '', part.name ?? part.sender ?? '引用消息'));
+      if (part.seq) { const jump = element('button', 'link', '定位 ↗'); jump.type = 'button'; jump.addEventListener('click', () => locateMessage(part.seq)); heading.append(jump); }
+      quote.append(heading);
+      if (part.segments?.length) renderMessageSegments(part.segments, quote, item, counter, depth + 1);
+      else quote.append(element('span', 'muted', '引用原文不可用'));
+      root.append(quote);
+    } else if (part.type === 'bundle') {
+      const block = element('details', 'message-bundle'); block.append(element('summary', '', `${part.kind === 'forward' ? '聊天记录' : '组合消息'} · ${part.items.length}`));
+      for (const child of part.items) { const row = element('div', 'bundle-message'); row.append(element('strong', '', child.name ?? child.sender ?? '未知作者')); renderMessageSegments(child.segments, row, item, counter, depth + 1); block.append(row); }
+      root.append(block);
+    } else if (part.type === 'card') {
+      const card = element('div', 'message-card'); card.append(element('small', 'muted', part.source ?? part.kind), element('strong', '', part.title ?? '卡片'));
+      if (part.description) card.append(element('span', '', part.description));
+      if (part.url) card.append(externalLink('打开链接 ↗', part.url)); root.append(card);
+    } else if (part.type === 'attachment') {
+      const block = element('span', 'message-attachment'), type = { voice: '语音', video: '视频', file: '文件' }[part.kind] ?? '附件';
+      block.append(externalLink([type, part.filename, part.size === undefined ? '' : `${Math.ceil(part.size / 1024)} KB`].filter(Boolean).join(' · '), part.url));
+      if (part.kind === 'voice') block.append(element('span', 'voice-transcript', part.transcript ? `转写 · ${part.transcript}` : '暂无语音转写'));
+      root.append(block);
+    } else root.append(element('span', 'muted', `[暂不支持：${part.kind}]`));
+  }
+}
+async function locateMessage(seq) {
+  if (!currentConversation) return;
+  let node = document.querySelector(`#message-timeline [data-seq="${seq}"]`);
+  if (!node) {
+    if (timelineLoading) return;
+    const id = currentConversation.id, version = ++timelineVersion, pending = { id }; timelineLoading = pending;
+    try {
+      const data = await get(`/api/conversations/${id}?before=${seq + 1}`);
+      if (id !== currentConversation?.id || version !== timelineVersion) return;
+      conversationRows = data.items; messageNext = data.next; chatAnchored = true; timelineSnapshot = undefined; renderTimeline();
+      $('message-new').hidden = false; $('message-new').textContent = '回到最新 ↓';
+      node = document.querySelector(`#message-timeline [data-seq="${seq}"]`);
+    } catch { $('conversation-message').textContent = '无法定位原消息'; }
+    finally { if (timelineLoading === pending) timelineLoading = undefined; }
+  }
+  if (node) { node.scrollIntoView({ block: 'center', behavior: 'smooth' }); node.classList.add('message-highlight'); setTimeout(() => node.classList.remove('message-highlight'), 1800); }
+}
+async function openMessageProcessing(conversation, seq) {
+  messageSelection = { conversation, seq };
+  const version = ++messageRequest, root = $('message-processing-body');
+  root.replaceChildren(element('p', 'empty', '正在读取…'));
+  if (!$('message-processing').open) $('message-processing').showModal();
+  try {
+    const detail = await get(`/api/conversations/${conversation}/messages/${seq}`);
+    if (version !== messageRequest) return;
+    const message = detail.message, records = detail.logs?.items ?? [];
+    const meta = element('div', 'detail-meta'); meta.append(element('strong', '', message.name), element('span', '', time(message.time, true)), badge(detail.turn?.state ?? 'no_trigger'));
+    root.replaceChildren(meta);
+    const direct = records.filter(item => item.entry.code === 'trigger_unmatched' || item.entry.code === 'trigger_matched').at(-1)?.entry;
+    const decision = records.filter(item => ['proactive_observing', 'proactive_judge_started', 'proactive_decided', 'proactive_skipped', 'proactive_judge_failed'].includes(item.entry.code)).at(-1)?.entry;
+    const facts = element('div', 'message-facts');
+    const fact = (label, value) => { facts.append(element('span', 'muted', label), element('span', '', value)); };
+    fact('直接触发', detail.turn && detail.turn.reason !== 'proactive' ? reasons[detail.turn.reason] ?? detail.turn.reason : direct?.reason ? reasons[direct.reason] ?? direct.reason : '未保存直接判断记录');
+    if (decision) fact('最近插话判断', [decision.state === 'silent' ? '保持沉默' : decision.state === 'speak' ? '本批决定接话' : decision.label, decision.reason, ...(decision.fields ?? []).map(field => `${field.label}：${field.value}`)].filter(Boolean).join(' · '));
+    else if (!detail.turn) fact('处理原因', records.findLast(item => item.entry.code === 'message_ignored')?.entry.reason === 'chat_disabled' ? '聊天链路已停用' : '未保存插话判断记录');
+    root.append(facts);
+    if (detail.images?.length) for (const image of detail.images) root.append(detailSection(`图片描述 · ${image.imageId}`, imageDescription(image)));
+    const process = element('details', 'message-process-records'); process.append(element('summary', '', `处理记录 · ${records.length}`));
+    if (records.length) {
+      const list = element('ol', 'message-process-list');
+      for (const item of records) { const entry = item.entry, row = element('li'); row.append(element('div', 'timeline-meta', `${time(Date.parse(entry.time), true)} · ${item.display?.title ?? entry.label ?? entry.code}`));
+        const fields = [entry.reason ? reasons[entry.reason] ?? entry.reason : '', entry.errorCode, ...((entry.fields ?? []).map(field => `${field.label}：${field.value}`)), entry.durationMs === undefined ? '' : `${entry.durationMs} ms`].filter(Boolean);
+        if (fields.length) row.append(element('p', '', fields.join(' · '))); list.append(row); }
+      process.append(list);
+    } else process.append(element('p', 'muted', detail.logs ? '未保存相关处理记录，或记录已过保留期。' : '日志服务暂不可用'));
+    if (detail.logs && (!detail.logs.persistent || detail.logs.degraded)) process.append(element('p', 'muted', '当前日志未完整持久化'));
+    root.append(process);
+    const platform = element('details', 'message-process-records'); platform.append(element('summary', '', '消息与平台信息'));
+    platform.append(element('pre', 'message-metadata', JSON.stringify({ seq: message.seq, sender: message.sender, messageId: message.id, ...message.metadata,
+      platform: detail.platform ? { connection: detail.platform.connection, present: detail.platform.present ?? '未知', push: detail.platform.push ?? '未知', receive: detail.platform.receive ?? '未知', role: detail.platform.role ?? '未知' } : '暂不可用' }, null, 2)));
+    root.append(platform);
+    const actions = element('div', 'form-actions message-process-actions');
+    if (detail.turn) { const turn = element('button', 'secondary', '回复详情'); turn.type = 'button'; turn.addEventListener('click', () => { $('message-processing').close(); openDetail(detail.turn.id); }); actions.append(turn); }
+    const logsButton = element('button', 'secondary', '过程日志'); logsButton.type = 'button'; logsButton.addEventListener('click', () => { $('message-processing').close(); $('log-filter').value = message.key; $('log-event').value = ''; $('log-level').value = ''; resetLogs(); showView('logs'); }); actions.append(logsButton);
+    const triggerPage = registeredPages.find(page => page.view === 'trigger-settings');
+    if (triggerPage) { const configure = element('button', 'secondary', '触发规则'); configure.type = 'button'; configure.addEventListener('click', () => { $('message-processing').close(); showView(triggerPage.id); }); actions.append(configure); }
+    root.append(actions);
+  } catch { if (version === messageRequest) root.replaceChildren(element('p', 'error-box', '消息已删除或暂时无法读取。')); }
+}
+$('close-message-processing').addEventListener('click', () => $('message-processing').close());
+$('message-processing').addEventListener('close', () => { messageSelection = undefined; messageRequest++; });
+$('refresh-message-processing').addEventListener('click', () => { if (messageSelection) openMessageProcessing(messageSelection.conversation, messageSelection.seq); });
+
 function renderTimeline() {
+  const snapshot = JSON.stringify(conversationRows);
+  if (timelineSnapshot === snapshot) return;
+  timelineSnapshot = snapshot;
   const nodes = conversationRows.map(item => {
-    const article = element('article', `timeline-item ${item.direction === 'out' ? 'outgoing' : 'incoming'}`), meta = element('div', 'timeline-meta');
+    const article = element('article', `timeline-item ${item.direction === 'out' ? 'outgoing' : 'incoming'}`), meta = element('div', 'timeline-meta'); article.dataset.seq = item.seq;
     meta.append(element('strong', '', item.name), element('span', '', time(item.time, true)));
     meta.title = `ID：${item.sender}`;
     if (item.kind === 'reminder') meta.append(element('span', '', '定时提醒'));
     const bubble = element('div', 'message-bubble');
     if (item.direction === 'out') bubble.textContent = item.parts?.[0] ?? item.text;
-    else for (const segment of item.segments) {
-      if (segment.type === 'text') bubble.append(document.createTextNode(segment.text));
-      else if (segment.type === 'image') {
-        const link = element('a', 'message-image-link', '[图片 · 打开 QQ 原图]');
-        if (segment.url.startsWith('https://')) { link.href = segment.url; link.target = '_blank'; link.rel = 'noreferrer noopener'; }
-        bubble.append(link);
-      } else bubble.append(document.createTextNode(segment.type === 'mention' ? `[@ ${segment.userId}]` : segment.type === 'reply' ? `[引用消息 ${segment.messageId}]` : `[暂不支持：${segment.kind}]`));
-    }
+    else renderMessageSegments(item.segments, bubble, item);
     const remove = element('button', 'link message-remove', '删除'); remove.type = 'button';
     remove.addEventListener('click', async () => {
       if (!confirm(item.direction === 'in' ? '彻底删除这条消息及对应回复？关联的记忆、摘要和表达学习也会清理，无法恢复。' : '彻底删除这条回复及关联记录？无法恢复。')) return;
@@ -778,21 +887,26 @@ function renderTimeline() {
     }); meta.append(remove);
     article.append(meta, bubble);
     if (item.direction === 'out' && item.parts?.length > 1) for (const part of item.parts.slice(1)) article.append(element('div', 'message-bubble', part));
-    if (item.turn) {
-      const button = element('button', 'link timeline-detail', `详情 · ${words[item.turn.state] ?? item.turn.state}`); button.type = 'button';
-      button.addEventListener('click', () => openDetail(item.turn.id)); article.append(button);
-    } else if (item.direction === 'in') article.append(element('small', 'muted', '未触发回复'));
+    if (item.direction === 'in') {
+      const conversation = currentConversation.id, button = element('button', 'link timeline-detail', item.turn ? `详情 · ${words[item.turn.state] ?? item.turn.state}` : '未触发回复');
+      button.type = 'button'; button.title = '查看触发原因与处理记录'; button.addEventListener('click', () => openMessageProcessing(conversation, item.seq)); article.append(button);
+    } else if (item.turn) {
+      const button = element('button', 'link timeline-detail', `详情 · ${words[item.turn.state] ?? item.turn.state}`); button.type = 'button'; button.addEventListener('click', () => openDetail(item.turn.id)); article.append(button);
+    }
     if (item.feedback) article.append(detailSection(`故障反馈 · ${words[item.feedback.state] ?? item.feedback.state}`, item.feedback.text));
     return article;
   });
+  const expanded = new Set([...document.querySelectorAll('#message-timeline [data-seq]')].flatMap(node => [...node.querySelectorAll('details')].flatMap((detail, index) => detail.open ? [`${node.dataset.seq}:${index}`] : [])));
   $('message-timeline').replaceChildren(...nodes);
+  for (const node of nodes) [...node.querySelectorAll('details')].forEach((detail, index) => { detail.open = expanded.has(`${node.dataset.seq}:${index}`); });
   if (!nodes.length) $('message-timeline').append(element('p', 'empty', '这个会话暂无消息。'));
   $('message-older').disabled = !messageNext;
   $('message-page-note').textContent = `已显示 ${conversationRows.length} 条`;
 }
 async function loadTimeline(older = false, initial = false) {
-  if (!currentConversation || (!initial && timelineLoading?.id === currentConversation.id)) return;
+  if (!currentConversation || (!initial && timelineLoading?.id === currentConversation.id) || chatAnchored && !older && !initial) return;
   const pending = { id: currentConversation.id }; timelineLoading = pending;
+  if (older) { $('message-older').disabled = true; $('message-older').textContent = '正在加载…'; }
   try {
   const id = currentConversation.id, version = ++timelineVersion, box = $('message-timeline');
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90, top = box.scrollTop, height = box.scrollHeight;
@@ -802,16 +916,21 @@ async function loadTimeline(older = false, initial = false) {
   const existing = new Map(conversationRows.map(item => [item.seq, item]));
   // A burst larger than a page must not leave a hidden gap between old and new records.
   const disjoint = !older && data.items.length === 50 && conversationRows.length && !data.items.some(item => existing.has(item.seq));
+  if (disjoint && !nearBottom && !initial) { $('message-new').hidden = false; $('message-new').textContent = '有新消息 ↓'; return; }
   if (disjoint) existing.clear();
+  const previousLast = conversationRows.at(-1)?.seq ?? 0;
+  const unseen = data.items.filter(item => item.seq > previousLast).length;
   for (const item of data.items) existing.set(item.seq, item);
   conversationRows = [...existing.values()].sort((a, b) => a.seq - b.seq);
   if (older || initial || disjoint) messageNext = data.next;
   renderTimeline();
+  if (!initial && !older && !nearBottom && unseen) { $('message-new').hidden = false; $('message-new').textContent = '有新消息 ↓'; }
   if (older) box.scrollTop = top + box.scrollHeight - height;
   else box.scrollTop = initial || (nearBottom && $('message-follow').checked) ? box.scrollHeight : top;
-  } finally { if (timelineLoading === pending) timelineLoading = undefined; }
+  } finally { if (timelineLoading === pending) { timelineLoading = undefined; $('message-older').disabled = !messageNext; $('message-older').textContent = '查看更早消息'; chatScrollTop = $('message-timeline').scrollTop; } }
 }
 function filterConversations() {
+  timelineSnapshot = undefined; chatAnchored = false; $('message-new').hidden = true;
   conversationFilterVersion++; timelineVersion++; conversationItems = []; currentConversation = undefined; conversationNext = undefined; conversationRows = []; messageNext = undefined;
   $('conversation-title').textContent = '选择一个会话'; $('conversation-subtitle').textContent = ''; $('conversation-delete').disabled = true; $('conversation-name').disabled = true; $('message-latest').disabled = true;
   $('message-older').disabled = true; $('message-timeline').replaceChildren(element('p', 'empty', '选择群聊或私聊，查看完整聊天记录。'));
@@ -822,6 +941,12 @@ $('conversation-search').addEventListener('input', () => { clearTimeout(conversa
 $('conversation-scope').addEventListener('change', filterConversations);
 $('conversation-more').addEventListener('click', () => refreshChats(true));
 $('conversation-refresh').addEventListener('click', () => refreshChats());
+$('message-timeline').addEventListener('scroll', () => {
+  const box = $('message-timeline'), upward = box.scrollTop < chatScrollTop; chatScrollTop = box.scrollTop;
+  if (box.scrollHeight - box.scrollTop - box.clientHeight < 90 && !chatAnchored) $('message-new').hidden = true;
+  if (upward && box.scrollTop < 100 && messageNext && !timelineLoading) loadTimeline(true).catch(() => { $('conversation-message').textContent = '无法读取更早消息，请重试。'; });
+}, { passive: true });
+$('message-new').addEventListener('click', () => { if (currentConversation) selectConversation(currentConversation).catch(() => { $('conversation-message').textContent = '读取会话失败'; }); });
 $('message-older').addEventListener('click', () => { if (messageNext) loadTimeline(true).catch(() => { $('conversation-message').textContent = '无法读取更早消息，请重试。'; }); });
 $('message-latest').addEventListener('click', () => { if (currentConversation) selectConversation(currentConversation).catch(() => { $('conversation-message').textContent = '读取会话失败，请重试。'; }); });
 $('conversation-name').addEventListener('click', () => {

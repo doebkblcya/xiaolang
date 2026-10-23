@@ -65,6 +65,7 @@ function publicSource(record: ChatRecord) {
     text: record.text.slice(0, 8000), images: record.message.segments.filter(p => p.type === 'image').length };
 }
 export class ChatMemory implements Memory {
+  imageDetails(message: Pick<Message, 'seq' | 'segments'>) { return this.images.details(message); }
   imageContext(message: Message): string { return this.images.text(message); }
   readonly settings;
   readonly repository: MemoryRepository;

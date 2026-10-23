@@ -5,10 +5,17 @@ export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
 export type Fields = Record<string, unknown>;
 export type Segment =
   | { type: 'text'; text: string }
-  | { type: 'mention'; userId: string }
-  | { type: 'reply'; messageId: string }
-  | { type: 'image'; url: string; mime?: string }
+  | { type: 'mention'; userId: string; name?: string; all?: boolean; self?: boolean }
+  | { type: 'reply'; messageId: string; sender?: string; name?: string; segments?: Segment[]; seq?: number; unavailable?: boolean }
+  | { type: 'bundle'; kind: 'forward' | 'parallel'; items: { sender?: string; name?: string; segments: Segment[] }[] }
+  | { type: 'card'; kind: string; title?: string; description?: string; url?: string; source?: string }
+  | { type: 'attachment'; kind: 'voice' | 'video' | 'file'; url?: string; mime?: string; filename?: string; size?: number; transcript?: string }
+  | { type: 'image'; url: string; mime?: string; filename?: string; width?: number; height?: number; size?: number }
   | { type: 'unsupported'; kind: string };
+export interface MessageMetadata {
+  index?: string; sequence?: number; eventType?: string; type?: number; source?: string;
+  author?: { role?: string; unifiedId?: string; bot?: boolean };
+}
 export interface IncomingMessage {
   account: string;
   id: string;
@@ -17,6 +24,7 @@ export interface IncomingMessage {
   group?: string;
   time: number;
   segments: Segment[];
+  metadata?: MessageMetadata;
 }
 export interface Message extends IncomingMessage {
   key: string;
@@ -60,16 +68,20 @@ export interface Adapter {
   stop(): Promise<void> | void;
   connectionStatus?(): string;
   groupName?(group: string): Promise<string | undefined>;
-  streamReply?(message: Message, text: string, index: number, done: boolean, streamId: string | undefined, signal: AbortSignal): Promise<{ id: string }>;
-  reply(message: Message, text: string, part: number, signal: AbortSignal): Promise<{ id: string }>;
-  push?(target: PushTarget, text: string, sequence: number, signal: AbortSignal): Promise<{ id: string }>;
+  conversationStatus?(target: PushTarget): Promise<Record<string, unknown>>;
+  replyLimits?(message: Message): { parts: number; ageMs: number };
+  streamReply?(message: Message, text: string, index: number, done: boolean, streamId: string | undefined, signal: AbortSignal): Promise<SendReceipt>;
+  reply(message: Message, text: string, part: number, signal: AbortSignal): Promise<SendReceipt>;
+  push?(target: PushTarget, text: string, sequence: number, signal: AbortSignal): Promise<SendReceipt>;
 }
+export interface SendReceipt { id: string; reference?: string; timestamp?: string; remaining?: number }
 export interface PushTarget { platform: string; account: string; scope: 'private' | 'group'; recipient: string }
 export type TurnState = 'queued' | 'running' | 'sending' | 'completed' | 'failed' | 'cancelled' | 'unknown' | 'expired';
 export interface Turn { id: string; message: Message; reason: string }
 export interface SendRecord { part: number; text: string; state: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown'; platformId?: string }
 export interface Store {
-  pushDelivered?(source: number, execution: string, text: string, receipt: string, time: number): void;
+  pushDelivered?(source: number, execution: string, text: string, receipt: string, time: number, reference?: string): void;
+  saveReceipt?(turn: string, part: number, receipt: SendReceipt): void;
   records(query: { after?: number; before?: number; fence?: number; session?: string; limit: number; incoming?: boolean }): ChatRecord[];
   record(seq: number): ChatRecord | undefined;
   admit(message: Message): Message | undefined;
@@ -106,6 +118,7 @@ export interface Persona {
   stop(): Promise<void>;
 }
 export interface Memory {
+  imageDetails?(message: Pick<Message, 'seq' | 'segments'>): ImageDescription[];
   sourceAllowed?(seq: number): boolean;
   imageContext?(message: Message): string;
   prepare(turn: Turn, signal: AbortSignal): Promise<{ history: ModelMessage[]; context: string; images: { url: string }[];
@@ -188,8 +201,14 @@ export interface TimelineItem {
   seq: number; direction: 'in' | 'out'; time: number; sender: string; name: string;
   text: string; segments: Segment[]; kind: 'message' | 'reply' | 'reminder'; parts?: string[];
   turn?: { id: string; state: string; reason: string }; feedback?: { text: string; state: string };
+  images?: ImageDescription[];
+}
+export interface ImageDescription {
+  imageId: string; state: 'ready' | 'pending' | 'failed' | 'disabled' | 'unavailable';
+  description?: string; errorCode?: string; retryAt?: number | null;
 }
 export interface HistoryReader {
+  message(id: string, seq: number): { message: Message; turn?: TimelineItem['turn'] };
   deleteData(input: unknown): Promise<unknown>;
   cacheConversationName(id: string, name: string): void;
   conversations(query?: string, scope?: string, before?: number): Promise<{ items: ConversationView[]; next: number | null }>;

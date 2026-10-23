@@ -43,7 +43,7 @@ export class Sender implements Output {
   openStream(turn: Turn, signal: AbortSignal): ReplyStream {
     if (turn.message.platform !== this.adapter.platform || turn.message.account !== this.adapter.account) throw new Failure('adapter_target_mismatch');
     const native = !turn.message.group && this.adapter.capabilities.nativeStreaming && this.adapter.streamReply;
-    const limit = Math.min(this.limit, this.adapter.capabilities.maxTextChars), maxParts = this.adapter.capabilities.maxReplyParts ?? 5;
+    const limit = Math.min(this.limit, this.adapter.capabilities.maxTextChars), maxParts = this.adapter.replyLimits?.(turn.message).parts ?? this.adapter.capabilities.maxReplyParts ?? 5;
     let text = '', pending = '', visible = '', part = 0, index = 0, streamId: string | undefined, lastSent = 0;
     const platformIds: string[] = [];
     const transmit = async (content: string, done = false) => {
@@ -53,13 +53,14 @@ export class Sender implements Output {
       const started = performance.now();
       const details = { ...messageLog(turn.message), turn: turn.id, stage: 'send', part: sendPart + 1 };
       this.emit({ ...details, code: 'send_started', preview: content });
-      let receipt: string;
+      let receipt: string, metadata: Awaited<ReturnType<Adapter['reply']>>;
       try {
         const response = native ? await native.call(this.adapter, turn.message, content, index, done, streamId, signal)
           : await this.adapter.reply(turn.message, content, part, signal);
         const value = id(response.id);
         if (!value) throw new Failure('send_invalid_receipt', true);
         receipt = value;
+        metadata = response;
       } catch (error) {
         const unknown = !(error instanceof Failure) || error.unknownOutcome;
         this.store.sendState(turn.id, sendPart, unknown ? 'unknown' : 'failed');
@@ -68,7 +69,7 @@ export class Sender implements Output {
       }
       if (native) { streamId ??= receipt; platformIds[0] = streamId; visible = content; index++; lastSent = performance.now(); }
       else { platformIds.push(receipt); visible += content; part++; }
-      try { this.store.confirmSend(turn, sendPart, receipt, visible, [{ role: 'assistant', content: visible }], platformIds); }
+      try { this.store.saveReceipt?.(turn.id, sendPart, metadata); this.store.confirmSend(turn, sendPart, receipt, visible, [{ role: 'assistant', content: visible }], platformIds); }
       catch { throw new Failure('send_persistence_failed', true); }
       this.emit({ ...details, code: 'send_confirmed', durationMs: elapsed(started), receipt });
     };
@@ -121,7 +122,7 @@ export class Sender implements Output {
     if (!text.trim()) throw new Failure('empty_reply');
     if (turn.message.platform !== this.adapter.platform || turn.message.account !== this.adapter.account) throw new Failure('adapter_target_mismatch');
     const parts = splitText(text, Math.min(this.limit, this.adapter.capabilities.maxTextChars));
-    if (parts.length > (this.adapter.capabilities.maxReplyParts ?? Infinity)) throw new Failure('qq_reply_part_limit');
+    if (parts.length > (this.adapter.replyLimits?.(turn.message).parts ?? this.adapter.capabilities.maxReplyParts ?? Infinity)) throw new Failure('qq_reply_part_limit');
     this.store.draft(turn.id, text, protocol);
     this.store.prepareSend(turn.id, parts);
     const platformIds: string[] = [];
@@ -131,12 +132,13 @@ export class Sender implements Output {
       const started = performance.now();
       const details = { ...messageLog(turn.message), turn: turn.id, stage: 'send', part: part + 1, parts: parts.length };
       this.emit({ ...details, code: 'send_started', preview: content });
-      let platformId: string;
+      let platformId: string, metadata: Awaited<ReturnType<Adapter['reply']>>;
       try {
         const response = await this.adapter.reply(turn.message, content, part, signal);
         const receivedId = id(response.id);
         if (!receivedId) throw new Failure('send_invalid_receipt', true);
         platformId = receivedId;
+        metadata = response;
       } catch (error) {
         const unknown = !(error instanceof Failure) || error.unknownOutcome;
         this.store.sendState(turn.id, part, unknown ? 'unknown' : 'failed');
@@ -150,6 +152,7 @@ export class Sender implements Output {
       const visibleProtocol = structuredClone(protocol);
       visibleProtocol[visibleProtocol.length - 1] = { ...visibleProtocol[visibleProtocol.length - 1]!, content: visible };
       try {
+        this.store.saveReceipt?.(turn.id, part, metadata);
         this.store.confirmSend(turn, part, platformId, visible, visibleProtocol, platformIds);
       } catch { throw new Failure('send_persistence_failed', true); }
     }

@@ -1,6 +1,7 @@
-import type { Message, Model, Segment } from './contracts.js';
+import type { Message, Model, Segment, ImageDescription } from './contracts.js';
 import { VisualToolResult } from './contracts.js';
 import { imageKey } from './image-identity.js';
+import { imageSegments } from './messages.js';
 import { createHash } from 'node:crypto';
 import type { MemoryConfig } from './memory-config.js';
 import type { MemoryRepository } from './memory-store.js';
@@ -12,8 +13,8 @@ import type { UsageMeter } from './usage.js';
 type Picture = Extract<Segment, { type: 'image' }> & { imageId: string; key: string };
 // Access links can expire independently of the underlying image identity.
 const linkKey = (url: string) => createHash('sha256').update(url).digest('hex');
-export function pictures(message: Message): Picture[] {
-  return message.segments.filter((part): part is Extract<Segment, { type: 'image' }> => part.type === 'image')
+export function pictures(message: Pick<Message, 'seq' | 'segments'>): Picture[] {
+  return imageSegments(message.segments)
     .map((part, index) => ({ ...part, imageId: `img_${message.seq}_${index + 1}`, key: imageKey(part.url) }));
 }
 export function pictureReference(imageId: string): { seq: number; index: number } {
@@ -31,6 +32,16 @@ export class ChatImages {
   constructor(private settings: MemoryConfig, private repository: MemoryRepository, private model: Model,
     private report: (event: 'completed' | 'failed', message: Message, error?: unknown) => void,
     private fetcher: typeof fetch = fetch, private meter?: UsageMeter, private now: () => number = Date.now) {}
+  details(message: Pick<Message, 'seq' | 'segments'>): ImageDescription[] {
+    return pictures(message).map(picture => {
+      const description = this.repository.image(picture.key);
+      if (description) return { imageId: picture.imageId, state: 'ready', description };
+      const failure = this.repository.imageFailure(linkKey(picture.url));
+      if (failure) return { imageId: picture.imageId, state: 'failed', errorCode: failure.error, retryAt: failure.retryAt };
+      return { imageId: picture.imageId, state: !this.settings.enabled || !this.settings.images ? 'disabled'
+        : this.descriptions.has(linkKey(picture.url)) ? 'pending' : 'unavailable' };
+    });
+  }
   references(message: Message) {
     if (!this.settings.images) return [];
     return pictures(message).map(picture => ({ imageId: picture.imageId,

@@ -1,6 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { object } from './contracts.js';
 import { Failure } from './errors.js';
+import { messageKey } from './messages.js';
+import type { Message, Segment } from './contracts.js';
 import type { DataCleanup } from './data-cleanup.js';
 
 /** Delete stored content and its derived records in one transaction; never retain content as a tombstone. */
@@ -31,6 +33,32 @@ export function deleteData(db: DatabaseSync, raw: unknown, cleanups: Iterable<Da
       for (const row of db.prepare('SELECT seq,source_seq FROM messages WHERE session=?').all(String(session.session))) if (seqs.has(Number(row.source_seq))) seqs.add(Number(row.seq));
     }
     for (const hook of hooks) hook.erase(db, { input: input as { kind: string; id: string; version?: number }, seqs, memoryIds, styleIds, exists });
+    // Remove copied quote content too; retain only hashes to prevent a later push restoring it.
+    const refs = new Map<string, Set<string>>();
+    for (const seq of seqs) {
+      const row = db.prepare('SELECT session,direction,payload,key FROM messages WHERE seq=?').get(seq); if (!row) continue;
+      const payload = JSON.parse(String(row.payload)), session = String(row.session), keys = refs.get(session) ?? new Set<string>();
+      if (row.direction === 'in') { if (payload.id) keys.add(payload.id); if (payload.metadata?.index) keys.add(payload.metadata.index); }
+      else {
+        if (payload.reference) keys.add(payload.reference);
+        for (const receipt of payload.platformIds ?? []) keys.add(receipt);
+        if (exists('sends') && db.prepare('PRAGMA table_info(sends)').all().some(column => column.name === 'reference')) {
+          for (const send of db.prepare("SELECT s.reference FROM sends s WHERE 'reply:'||s.turn_id=?").all(String(row.key))) if (send.reference) keys.add(String(send.reference));
+        }
+      }
+      refs.set(session, keys);
+    }
+    for (const [session, keys] of refs) {
+      for (const key of keys) db.prepare('INSERT OR IGNORE INTO message_tombstones VALUES (?)').run(messageKey(session, key));
+      const strip = (parts: Segment[]): Segment[] => parts.map(part => part.type === 'reply'
+        ? keys.has(part.messageId) || part.seq && seqs.has(part.seq) ? { type: 'reply', messageId: part.messageId, unavailable: true }
+          : { ...part, segments: part.segments ? strip(part.segments) : undefined }
+        : part.type === 'bundle' ? { ...part, items: part.items.map(item => ({ ...item, segments: strip(item.segments) })) } : part);
+      for (const row of db.prepare("SELECT seq,payload FROM messages WHERE session=? AND direction='in'").all(session)) if (!seqs.has(Number(row.seq))) {
+        const payload = JSON.parse(String(row.payload)) as Message; payload.segments = strip(payload.segments);
+        db.prepare('UPDATE messages SET payload=? WHERE seq=?').run(JSON.stringify(payload), Number(row.seq));
+      }
+    }
     const turns = new Set<string>();
     for (const seq of seqs) {
       const row = db.prepare('SELECT key,payload,direction FROM messages WHERE seq=?').get(seq);

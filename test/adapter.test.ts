@@ -206,8 +206,8 @@ test('QQ private native stream uses one sequence and reuses the first bubble ID'
   await qq.streamReply(input, 'hello', 0, false, undefined, new AbortController().signal);
   await qq.streamReply(input, 'hello world', 1, true, 'bubble', new AbortController().signal);
   assert.deepEqual(client.sent.map(item => item.body), [
-    { input_mode: 'replace', input_state: 1, content_type: 'markdown', content_raw: 'hello', event_id: input.id, msg_id: input.id, msg_seq: 1, index: 0 },
-    { input_mode: 'replace', input_state: 10, content_type: 'markdown', content_raw: 'hello world', event_id: input.id, msg_id: input.id, msg_seq: 1, index: 1, stream_msg_id: 'bubble' },
+    { input_mode: 'replace', input_state: 1, content_type: 'markdown', content_raw: 'hello', msg_id: input.id, msg_seq: 1, index: 0 },
+    { input_mode: 'replace', input_state: 10, content_type: 'markdown', content_raw: 'hello world', msg_id: input.id, msg_seq: 1, index: 1, stream_msg_id: 'bubble' },
   ]);
   await assert.rejects(qq.streamReply({ ...input, group: 'group' }, 'text', 0, false, undefined, new AbortController().signal), { code: 'qq_stream_private_only' });
 });

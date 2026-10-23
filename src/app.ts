@@ -53,8 +53,13 @@ export const storePlugin: Plugin.Object<Config> & { panel: import('./panel.js').
       },
       timeline: async (id, before) => {
         const page = store.timeline(id, before);
+        const memory = ctx.get('memory');
+        for (const item of page.items) if (item.direction === 'in') {
+          try { item.images = memory?.imageDetails?.(item); } catch { /* Optional image metadata cannot prevent browsing. */ }
+        }
         return { ...page, conversation: await nameConversation(page.conversation) };
       },
+      message: (id, seq) => store.message(id, seq),
       renameConversation: (id, alias, version) => store.renameConversation(id, alias, version),
       counts: () => store.counts(), recent: (limit, before, failures) => store.recent(limit, before, failures), detail: id => store.detail(id),
     });

@@ -2,6 +2,7 @@ import type { DataCleanup } from './data-cleanup.js';
 import { Failure } from './errors.js';
 import * as vec from 'sqlite-vec';
 import { imageKey } from './image-identity.js';
+import { imageSegments } from './messages.js';
 export const cleanup: DataCleanup = {
   kind: 'memory', prepare(db, exists) { if (exists('memory_vec')) vec.load(db); },
   erase(db, context) {
@@ -41,7 +42,7 @@ export const cleanup: DataCleanup = {
     for (const seq of seqs) {
       const row = db.prepare('SELECT payload FROM messages WHERE seq=?').get(seq);
       const payload = row ? JSON.parse(String(row.payload)) : {};
-      if (exists('memory_images')) for (const image of payload.segments ?? []) if (image.type === 'image') {
+      if (exists('memory_images')) for (const image of imageSegments(payload.segments ?? [])) {
         const hash = imageKey(image.url);
         db.prepare('DELETE FROM memory_images WHERE hash=?').run(hash);
         if (exists('memory_image_failures')) db.prepare('DELETE FROM memory_image_failures WHERE image_hash=?').run(hash);

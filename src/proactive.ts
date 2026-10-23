@@ -69,15 +69,19 @@ export class ProactiveTrigger {
   }
   observe(message: Message, dispatch: GroupState['dispatch']): void {
     const state = this.state(message);
-    if (!state) return;
+    if (!state) {
+      if (message.group) this.runtime.report({ ...messageLog(message), code: 'proactive_skipped', stage: 'trigger',
+        reason: !this.settings.enabled ? '主动插话已关闭' : this.settings.excludedGroupIds.includes(message.group) ? '此群已排除主动插话' : '观察缓冲不可用' });
+      return;
+    }
     state.message = message;
     state.dispatch = dispatch;
     if (!state.pending.length) {
       state.firstAt = Date.now();
-      this.report(state, 'proactive_observing', { reason: state.activeUntil > Date.now() ? '活跃期间，尽快判断新消息' : '旁观期间，等待时间或条数满足' });
     }
+    this.report(state, 'proactive_observing', { ...messageLog(message), reason: state.activeUntil > Date.now() ? '活跃期间，等待判断新消息' : '旁观期间，等待时间或条数满足' });
     state.pending.push(message);
-    if (state.pending.length > 50) state.pending.shift();
+    if (state.pending.length > 50) { const dropped = state.pending.shift()!; this.report(state, 'proactive_skipped', { ...messageLog(dropped), reason: '待判断消息超过 50 条，已由较新消息替换' }); }
     this.schedule(state);
   }
   queued(message: Message, reason: string): void {
@@ -96,6 +100,7 @@ export class ProactiveTrigger {
     state.directSeq = Math.max(state.directSeq, message.seq);
     state.activeUntil = Date.now() + this.settings.activeSeconds * 1000;
     state.generation++;
+    for (const pending of state.pending) this.report(state, 'proactive_skipped', { ...messageLog(pending), reason: '后续明确召唤已覆盖本次观察' });
     state.pending = [];
     clearTimeout(state.timer); state.timer = undefined;
     state.judge?.abort();
@@ -161,33 +166,39 @@ export class ProactiveTrigger {
   }
   private async decide(state: GroupState): Promise<void> {
     const batch = state.pending.splice(0), message = batch.at(-1)!;
+    const reportBatch = (event: string, details: Partial<Log>) => {
+      for (const item of batch) this.report(state, event, { ...messageLog(item), ...details,
+        fields: [{ label: '批次消息数', value: batch.length }, { label: '批次末条', value: message.seq },
+          ...(item.seq !== message.seq && details.state === 'speak' ? [{ label: '回复关联', value: '本批最后一条消息' }] : [])] });
+    };
     const generation = state.generation;
     const judgingAt = Date.now();
     const controller = new AbortController(); state.judge = controller;
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]);
     const started = performance.now();
-    this.report(state, 'proactive_judge_started', { reason: `观察 ${batch.length} 条新消息` });
+    reportBatch('proactive_judge_started', { reason: `观察 ${batch.length} 条新消息` });
     try {
-      if (Date.now() - message.time > 180000) { this.report(state, 'proactive_skipped', { reason: '消息已经过时' }); return; }
+      if (Date.now() - message.time > 180000) { reportBatch('proactive_skipped', { reason: '消息已经过时' }); return; }
       const response = await withUsage(this.runtime.usage, 'proactive', { scope: 'group' }, () => abortable(this.runtime.model.complete(this.messages(state, batch), [], signal,
         { thinking: false, maxOutputTokens: 256, temperature: 0, retries: 0, stop: [] }), signal));
       check(signal);
       if (generation !== state.generation || state.busy || this.clearing || Date.now() - judgingAt >= 30000) {
-        this.report(state, 'proactive_skipped', { ...messageLog(message), reason: '明确召唤已覆盖或消息过时，丢弃旧判断' }); return;
+        reportBatch('proactive_skipped', { reason: '明确召唤已覆盖或消息过时，丢弃旧判断' }); return;
       }
       let parsed: unknown;
       try { parsed = JSON.parse((response.content ?? '').replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')); }
       catch { throw new Failure('proactive_invalid_response'); }
       const result = object(parsed);
       if (!result || typeof result.reply !== 'boolean' || typeof result.addressed !== 'boolean' || typeof result.reason !== 'string' || !result.reason.trim() || response.tool_calls?.length) throw new Failure('proactive_invalid_response');
-      this.report(state, 'proactive_decided', { ...messageLog(message), reason: result.reason.slice(0, 240), state: result.reply ? 'speak' : 'silent', durationMs: performance.now() - started });
+      reportBatch('proactive_decided', { reason: result.reason.slice(0, 240), state: result.reply ? 'speak' : 'silent', durationMs: performance.now() - started });
       if (result.reply) {
         state.decision = { seq: message.seq, until: Date.now() + 30000 };
         state.continuation = result.addressed ? message.seq : undefined;
         state.dispatch(message, 'proactive');
       }
     } catch (error) {
-      if (!controller.signal.aborted && !this.clearing) this.report(state, 'proactive_judge_failed', { reason: '本次保持沉默', errorCode: signal.aborted ? 'proactive_judge_timeout' : code(error), durationMs: performance.now() - started });
+      if (controller.signal.aborted || this.clearing) reportBatch('proactive_skipped', { reason: '判断已取消或被后续明确召唤覆盖' });
+      else reportBatch('proactive_judge_failed', { reason: '本次保持沉默', errorCode: signal.aborted ? 'proactive_judge_timeout' : code(error), durationMs: performance.now() - started });
     } finally { if (state.judge === controller) state.judge = undefined; }
   }
   async idle(): Promise<void> {

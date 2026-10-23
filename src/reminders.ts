@@ -200,7 +200,7 @@ export class ReminderManager implements Reminders {
       if (!result?.id) throw new Failure('send_invalid_receipt', true);
       this.finish(task, execution, 'sent', result.id, null);
       finished = true;
-      try { this.history.pushDelivered?.(task.source, String(execution), text, result.id, this.now()); }
+      try { this.history.pushDelivered?.(task.source, String(execution), text, result.id, this.now(), result.reference); }
       catch { this.log('reminder_history_failed', task, { receipt: result.id }); }
       this.log('reminder_sent', task, { receipt: result.id });
     } catch (error) {
