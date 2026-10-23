@@ -109,11 +109,14 @@
       <div id="persona-list" class="memory-list"></div></article>
     </section>
     <section id="tooling" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>可用工具</h2></div><button class="secondary" data-tool-config="xiaolang-tools">管理员设置</button></div>
-        <div class="form-actions"><button class="secondary" data-tool-config="xiaolang-web">搜索与阅读</button><button class="secondary" data-tool-config="xiaolang-mcp">MCP 连接</button><button class="secondary" data-tool-config="xiaolang-skills">Skills</button></div>
-        <p id="tool-connections" class="muted"></p><p id="skill-catalog" class="muted"></p>
-        <div class="table-wrap"><table><thead><tr><th>工具 / 用途</th><th>来源</th><th>执行权限</th></tr></thead><tbody id="tool-rows"></tbody></table></div>
-      </article>
+      <div class="tooling-header"><div class="tooling-tabs" role="group" aria-label="工具视图"><button type="button" data-tool-tab="catalog" aria-pressed="true">工具目录 <span id="tool-count" class="count">—</span></button><button type="button" data-tool-tab="activity" aria-pressed="false">执行记录</button></div><div class="form-actions"><button id="tool-access" class="link" type="button" hidden>管理员设置</button><button id="tool-refresh" class="secondary" type="button">刷新</button></div></div>
+      <p id="tool-note" class="muted" role="status"></p>
+      <div id="tool-catalog-view">
+        <div id="tool-integrations" class="tool-integrations"></div>
+        <div class="log-toolbar tool-filters"><input id="tool-search" type="search" placeholder="搜索工具" aria-label="搜索工具"><select id="tool-access-filter" aria-label="执行权限"><option value="">全部权限</option><option value="everyone">所有用户</option><option value="admin">仅管理员</option></select></div>
+        <div id="tool-groups" class="tool-groups"></div><p id="tool-empty" class="empty" hidden>暂无匹配工具</p>
+      </div>
+      <article id="tool-activity-view" class="panel" hidden><div class="panel-title"><h2>执行记录 <span id="tool-activity-count" class="count"></span></h2><select id="tool-activity-state" aria-label="执行状态"><option value="">全部状态</option><option value="success">成功</option><option value="failed">失败</option><option value="unknown">结果未知</option></select></div><p id="tool-activity-note" class="muted" role="status"></p><div id="tool-activity-list" class="tool-activity-list"></div><div class="pagination"><button id="tool-activity-latest" class="link" type="button" hidden>← 最新记录</button><button id="tool-activity-more" class="secondary" type="button" hidden>更早记录</button></div></article>
     </section>
     <section id="plugins" class="view" hidden>
       <article class="panel"><div class="panel-title"><div><h2>全部插件</h2></div><span id="plugins-summary" class="badge neutral">—</span></div><div class="log-toolbar plugin-filters"><input id="plugin-search" type="search" placeholder="搜索插件" aria-label="搜索插件"><select id="plugin-source" aria-label="插件来源"><option value="">全部来源</option><option value="builtin">内置</option><option value="external">外挂</option></select></div><div id="plugin-rows" class="plugin-grid" aria-label="插件目录"></div><p id="plugin-empty" class="empty" hidden>尚无插件状态</p></article>

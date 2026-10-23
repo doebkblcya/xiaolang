@@ -647,19 +647,130 @@ $('memory-forget').addEventListener('click', async () => {
   catch (error) { $('memory-form-message').textContent = error.message; }
 });
 
-async function refreshTools() {
-  try {
-    const data = await get('/api/tools');
-    $('tool-rows').replaceChildren(...data.items.map(tool => {
-      const row = element('tr'), name = element('td');
-      name.append(element('strong', '', tool.description.slice(0, 80)), element('div', 'module', tool.name)); name.title = tool.description;
-      row.append(name, element('td', 'mono', tool.source), element('td', '', tool.access === 'admin' ? '仅管理员' : '所有用户')); return row;
-    }));
-    $('tool-connections').textContent = data.mcp.length ? data.mcp.map(server => `MCP ${server.name}：${words[server.state] ?? server.state}，${server.tools} 个工具${server.errorCode ? '（'+server.errorCode+'）' : ''}`).join('；') : 'MCP 未配置';
-    $('skill-catalog').textContent = data.skills.length ? '已安装 Skills：'+data.skills.map(skill => skill.name).join('、') : 'Skills 未配置';
-  } catch { $('tool-connections').textContent = '暂时无法读取工具状态。'; }
+let toolsPage, toolsSnapshot = '', toolsBusy = false, toolTab = 'catalog';
+let toolActivityBusy = false, toolActivityBefore, toolActivityHistory = false, toolActivityVersion = 0, toolActivityGeneration;
+let toolActivityItems = [];
+const toolLabels = {
+  web_search: ['网页搜索', '搜索网页资料'], web_fetch: ['网页阅读', '读取网页正文'], current_time: ['查询时间', 'UTC 与北京时间'], calculate: ['计算', '数值表达式计算'],
+  create_reminder: ['创建提醒', '在当前聊天创建提醒'], list_reminders: ['查看提醒', '查看当前聊天的提醒'], cancel_reminder: ['取消提醒', '按任务编号取消提醒'],
+  search_memory: ['检索记忆', '查找人物、经历与计划'], read_memory_history: ['记忆历史', '查看记忆的历史版本'], read_chat_history: ['聊天原文', '查阅历史消息'],
+  manage_memory: ['管理记忆', '新增、修改或忘记记忆'], inspect_chat_image: ['重看图片', '读取历史消息中的原图'],
+  list_skills: ['技能目录', '列出已安装技能'], read_skill: ['读取技能', '读取技能操作说明'], read_skill_file: ['技能文件', '读取技能内的资料'], run_skill_script: ['运行技能脚本', '执行已安装技能的脚本'],
+};
+function toolName(name) { return toolLabels[name]?.[0] ?? name; }
+function toolPlugin(id) { return toolsPage?.plugins.find(plugin => plugin.id === id); }
+function toolConfigButton(plugin, title = '配置') {
+  if (!plugin || !toolsPage.configurable) return null;
+  const button = element('button', 'link', title); button.type = 'button';
+  button.addEventListener('click', () => openPlugin(plugin.id)); return button;
 }
-for (const button of document.querySelectorAll('[data-tool-config]')) button.addEventListener('click', () => openPlugin(button.dataset.toolConfig));
+function renderToolIntegrations() {
+  const cards = [];
+  for (const kind of ['mcp', 'skills']) {
+    const meta = toolsPage.integrations[kind]; if (!meta.plugin && !meta.available) continue;
+    const rows = toolsPage[kind], card = element('article', 'panel tool-integration'), head = element('div', 'panel-title');
+    const plugin = toolPlugin(meta.plugin), config = toolConfigButton(plugin);
+    head.append(element('h2', '', kind === 'mcp' ? 'MCP' : 'Skills')); if (config) head.append(config);
+    let label, state = 'neutral';
+    if (meta.state !== 'active') { label = words[meta.state] ?? (meta.state === 'missing' ? '未安装' : meta.state); state = tone(meta.state); }
+    else if (!meta.enabled) label = '已关闭';
+    else if (!meta.available) label = '服务未就绪';
+    else if (kind === 'skills') { label = rows.length ? `${rows.length} 个技能` : '尚未安装技能'; state = rows.length ? 'good' : 'neutral'; }
+    else { const connected = rows.filter(row => row.state === 'connected').length;
+      label = !rows.length ? '未添加连接' : rows.some(row => row.state === 'error' || row.errorCode) ? '有连接异常' : connected === rows.length ? `${connected} 个连接` : '连接中';
+      state = rows.some(row => row.state === 'error' || row.errorCode) ? 'bad' : connected === rows.length && rows.length ? 'good' : rows.length ? 'waiting' : 'neutral'; }
+    card.append(head, element('span', `badge ${state}`, label));
+    if (rows.length) {
+      const details = element('details', 'tool-integration-detail'); details.append(element('summary', '', kind === 'mcp' ? '连接详情' : '技能目录'));
+      for (const row of rows) {
+        const item = element('div', 'tool-connection'); item.append(element('strong', '', row.name));
+        if (kind === 'mcp') { item.append(badge(row.state), element('small', 'muted', `${row.transport === 'stdio' ? 'stdio' : 'HTTP'} · ${row.tools} 个工具`)); if (row.errorCode) item.append(element('code', 'mono', row.errorCode)); }
+        else { item.append(element('p', 'muted', row.description)); if (row.scripts) item.append(element('small', 'muted', '脚本仅管理员可运行')); }
+        details.append(item);
+      }
+      card.append(details);
+    }
+    cards.push(card);
+  }
+  $('tool-integrations').replaceChildren(...cards); $('tool-integrations').hidden = !cards.length;
+}
+function renderToolCatalog() {
+  if (!toolsPage) return;
+  const query = $('tool-search').value.trim().toLowerCase(), access = $('tool-access-filter').value, groups = new Map();
+  for (const tool of toolsPage.items) {
+    const plugin = toolPlugin(tool.source), title = plugin?.title ?? (tool.source.startsWith('mcp:') ? `MCP · ${tool.source.slice(4)}` : tool.source);
+    if (access && tool.access !== access || query && !`${toolName(tool.name)} ${tool.name} ${tool.description} ${title} ${tool.source}`.toLowerCase().includes(query)) continue;
+    if (!groups.has(tool.source)) groups.set(tool.source, { plugin, title, tools: [] }); groups.get(tool.source).tools.push(tool);
+  }
+  const open = new Set([...$('tool-groups').querySelectorAll('details[open]')].map(node => node.dataset.tool));
+  $('tool-groups').replaceChildren(...[...groups.entries()].map(([source, group]) => {
+    const card = element('article', 'panel tool-group'), head = element('div', 'panel-title'), heading = element('div', 'tool-group-title');
+    heading.append(element('h2', '', group.title), element('span', 'count', group.tools.length)); head.append(heading);
+    const plugin = group.plugin ?? (source.startsWith('mcp:') ? toolPlugin(toolsPage.integrations.mcp.plugin) : null), config = toolConfigButton(plugin, '插件 →'); if (config) head.append(config);
+    card.append(head);
+    for (const tool of group.tools) {
+      const item = element('details', 'tool-item'), summary = element('summary'), text = element('div', 'tool-item-name'); item.dataset.tool = tool.name; item.open = open.has(tool.name);
+      const label = toolLabels[tool.name]; text.append(element('strong', '', toolName(tool.name)), element('small', 'muted', label?.[1] ?? (tool.description.split(/[。\n]/)[0].slice(0, 58) || tool.name)));
+      summary.append(text, element('span', `badge ${tool.access === 'admin' ? 'waiting' : 'neutral'}`, tool.access === 'admin' ? '仅管理员' : '所有用户'), element('span', 'tool-chevron', '＋'));
+      item.append(summary, element('code', 'mono', tool.name), element('p', 'tool-description', tool.description), element('small', 'muted', `${source} · ${tool.effect === 'read' ? '只读' : '有写入或外部操作'}`)); card.append(item);
+    }
+    return card;
+  }));
+  $('tool-empty').hidden = groups.size > 0; $('tool-empty').textContent = !toolsPage.available ? '工具服务未启用' : toolsPage.items.length ? '暂无匹配工具' : '暂无已注册工具';
+}
+async function refreshTools() {
+  if (toolsBusy) return; toolsBusy = true;
+  try {
+    const data = await get('/api/tools'), snapshot = JSON.stringify(data); toolsPage = data;
+    $('tool-count').textContent = data.items.length; $('tool-note').textContent = '';
+    const registry = data.plugins.find(plugin => plugin.provides.includes('tools')); $('tool-access').hidden = !data.configurable || !registry; $('tool-access').dataset.plugin = registry?.id ?? '';
+    if (snapshot !== toolsSnapshot) { toolsSnapshot = snapshot; renderToolIntegrations(); renderToolCatalog(); }
+    if (toolTab === 'activity' && !toolActivityHistory) await refreshToolActivity();
+  } catch { $('tool-note').textContent = '工具状态读取失败，显示上次数据'; }
+  finally { toolsBusy = false; }
+}
+function renderToolActivity() {
+  $('tool-activity-count').textContent = toolActivityItems.length;
+  $('tool-activity-list').replaceChildren(...toolActivityItems.map(({ entry, seq }) => {
+    const item = element('article', 'tool-run'), state = ({ tool_completed: 'succeeded', tool_failed: 'failed', tool_unknown: 'unknown' })[entry.code], head = element('div', 'tool-run-heading');
+    head.append(element('strong', '', toolName(entry.tool ?? '未知工具')), badge(state));
+    const meta = element('div', 'tool-run-meta'); meta.append(element('time', '', time(entry.time, true)), element('code', 'mono', entry.tool ?? ''));
+    if (entry.durationMs !== undefined) meta.append(element('span', '', `${(entry.durationMs / 1000).toLocaleString('zh-CN', { maximumFractionDigits: 2 })} s`));
+    item.append(head, meta); if (entry.errorCode) item.append(element('p', 'tool-run-error', entry.errorCode));
+    if (entry.turn) { const button = element('button', 'link', '对应聊天 →'); button.type = 'button'; button.addEventListener('click', () => openDetail(entry.turn)); item.append(button); }
+    item.dataset.seq = seq; return item;
+  }));
+  if (!toolActivityItems.length) $('tool-activity-list').append(element('p', 'empty', '暂无执行记录'));
+  $('tool-activity-more').hidden = !toolActivityBefore; $('tool-activity-latest').hidden = !toolActivityHistory;
+}
+async function refreshToolActivity(more = false) {
+  if (toolActivityBusy) return;
+  toolActivityBusy = true; const version = toolActivityVersion;
+  try {
+    const query = new URLSearchParams({ state: $('tool-activity-state').value }); if (more && toolActivityBefore) query.set('before', toolActivityBefore);
+    const page = await get(`/api/tools/activity?${query}`); if (version !== toolActivityVersion) return;
+    if (more && toolActivityGeneration && page.generation !== toolActivityGeneration) { resetToolActivity(); return; }
+    toolActivityGeneration = page.generation;
+    const merged = new Map((more ? toolActivityItems : []).map(item => [item.seq, item])); for (const item of page.items) merged.set(item.seq, item);
+    toolActivityItems = [...merged.values()].sort((a, b) => b.seq - a.seq); toolActivityBefore = page.next; if (more) toolActivityHistory = true;
+    $('tool-activity-note').textContent = !page.available ? '日志服务未启用' : page.degraded ? '部分日志未能保存' : !page.persistent ? '临时记录' : '';
+    const snapshot = JSON.stringify([toolActivityItems, toolActivityBefore, toolActivityHistory]);
+    if ($('tool-activity-list').dataset.snapshot !== snapshot) { renderToolActivity(); $('tool-activity-list').dataset.snapshot = snapshot; }
+  } catch { if (version === toolActivityVersion) $('tool-activity-note').textContent = '执行记录读取失败，请刷新重试'; }
+  finally { toolActivityBusy = false; if (version !== toolActivityVersion) void refreshToolActivity(); }
+}
+function resetToolActivity() { toolActivityVersion++; toolActivityBefore = undefined; toolActivityHistory = false; toolActivityItems = []; delete $('tool-activity-list').dataset.snapshot; void refreshToolActivity(); }
+for (const button of document.querySelectorAll('[data-tool-tab]')) button.addEventListener('click', () => {
+  toolTab = button.dataset.toolTab;
+  for (const other of document.querySelectorAll('[data-tool-tab]')) other.setAttribute('aria-pressed', String(other === button));
+  $('tool-catalog-view').hidden = toolTab !== 'catalog'; $('tool-activity-view').hidden = toolTab !== 'activity';
+  if (toolTab === 'activity') resetToolActivity();
+});
+$('tool-search').addEventListener('input', renderToolCatalog); $('tool-access-filter').addEventListener('change', renderToolCatalog);
+$('tool-access').addEventListener('click', () => openPlugin($('tool-access').dataset.plugin));
+$('tool-refresh').addEventListener('click', () => { if (toolTab === 'activity') resetToolActivity(); else refreshTools(); });
+$('tool-activity-state').addEventListener('change', resetToolActivity); $('tool-activity-latest').addEventListener('click', resetToolActivity);
+$('tool-activity-more').addEventListener('click', () => refreshToolActivity(true));
 
 let editingStyle;
 async function refreshPersona() {

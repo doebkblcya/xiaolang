@@ -1,5 +1,6 @@
 import { createSystemCollector } from './system.mjs';
 import { createPanelRegistry } from './registry.mjs';
+import { toolCatalog, toolActivity } from './tools.mjs';
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
 import { readFile } from 'node:fs/promises';
@@ -185,7 +186,9 @@ export function createHandler(runtime, configuration, options = {}) {
         issue: url.searchParams.get('issue') ?? '',
         compaction: url.searchParams.get('compaction') ?? '',
         before: integer(url.searchParams.get('before'), undefined) })) : send(503, { error: 'usage_unavailable' });
-      if (url.pathname === '/api/tools') return send(200, { items: options.tools?.list() ?? [], mcp: options.mcp?.status() ?? [], skills: options.skills?.status() ?? [] });
+      if (url.pathname === '/api/tools') return send(200, toolCatalog(runtime, configuration, options));
+      if (url.pathname === '/api/tools/activity') return send(200, toolActivity(options.logs, {
+        before: integer(url.searchParams.get('before'), undefined), state: url.searchParams.get('state') ?? '', limit: integer(url.searchParams.get('limit'), 30) }));
       if (url.pathname === '/api/logs/events') return options.logs ? send(200, options.logs.events()) : send(503, { error: 'logging_unavailable' });
       if (url.pathname === '/api/logs') {
         const after = integer(url.searchParams.get('after'), undefined), before = integer(url.searchParams.get('before'), undefined);
@@ -246,8 +249,11 @@ export async function apply(ctx, config = {}) {
   if (config.auth && !config.tls) throw new Error('panel_auth_requires_https');
   const auth = await readAuth(config.auth);
   let tls = config.tls ? await readTls(config.tls) : undefined;
+  const integrationEnabled = Object.fromEntries(['mcp', 'skills'].map(name => [name,
+    ctx.xiaolangHost?.config.plugins?.entries?.find(plugin => plugin.id === `xiaolang-${name}`)?.config?.enabled
+    ?? ctx.xiaolangHost?.config.tooling?.[name]?.enabled ?? true]));
   const handler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: config.allowedHosts, auth, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), model: ctx.get('model'), usage: ctx.get('usage'), intake: ctx.get('intake'),
-    persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
+    persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), integrationEnabled, reminders: ctx.get('reminders') });
   const server = tls ? createHttpsServer({ maxHeaderSize: 8192, ...tls.options }, handler) : createServer({ maxHeaderSize: 8192 }, handler);
   const listeners = [{ server, handler, port, host }];
   if (config.lanHttp !== undefined) {
@@ -256,7 +262,7 @@ export async function apply(ctx, config = {}) {
       || !Number.isInteger(lan.port) || lan.port < 1 || lan.port > 65535 || lan.port === port
       || !Array.isArray(lan.allowedHosts) || !lan.allowedHosts.length) throw new Error('invalid_panel_lan_config');
     const lanHandler = createHandler(ctx.xiaolangRuntime, ctx.get('configuration'), { allowedHosts: lan.allowedHosts, auth, privateHttp: true, panels: ctx.xiaolangHost?.panels, logs: ctx.get('processLogs'), history: ctx.get('historyReader'), adapter: ctx.get('adapter'), model: ctx.get('model'), usage: ctx.get('usage'), intake: ctx.get('intake'),
-      persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), reminders: ctx.get('reminders') });
+      persona: ctx.get('persona'), memory: ctx.get('memory'), tools: ctx.get('tools'), mcp: ctx.get('mcp'), skills: ctx.get('skills'), integrationEnabled, reminders: ctx.get('reminders') });
     listeners.push({ server: createServer({ maxHeaderSize: 8192 }, lanHandler), handler: lanHandler, port: lan.port, host: lan.host ?? '0.0.0.0' });
   }
   for (const entry of listeners) {
