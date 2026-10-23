@@ -195,6 +195,7 @@ test('QQ download fileids cannot share captions; renewing an access key preserve
     const message = pictureMessage(); message.segments = [{ type: 'image', url: first }, { type: 'image', url: second }];
     await images.describe(message); assert.equal(model.requests.length, 2);
     assert.ok(model.options.every(option => option?.thinking && option.reasoningEffort === 'high' && option.maxOutputTokens === 8192));
+    assert.ok(model.options.every(option => option?.timeoutMs === 60000 && option.retries === 0 && option.stop?.length === 0));
   } finally { await images.stop(); repository.close(); }
 });
 
