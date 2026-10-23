@@ -103,6 +103,14 @@
       </article>
     </section>
     <section id="persona" class="view" hidden>
+      <form id="persona-prompt-form" class="panel settings-form persona-prompt">
+        <div class="panel-title"><h2>主人格</h2><span class="badge neutral">仅手动修改</span></div>
+        <fieldset id="persona-prompt-fields" disabled>
+          <label class="field">System Prompt<textarea name="anchor" rows="10" required spellcheck="false"></textarea></label>
+          <details class="persona-fixed-style"><summary>固定回复风格</summary><label class="field"><span class="sr-only">固定回复风格</span><textarea name="replyStyle" rows="5" required spellcheck="false"></textarea></label></details>
+        </fieldset>
+        <div class="form-footer"><p id="persona-prompt-message" class="muted" role="status">正在读取…</p><div class="form-actions"><button id="persona-prompt-reset" class="link" type="button" hidden>还原</button><button id="persona-prompt-save" class="primary" type="submit" disabled>保存</button></div></div>
+      </form>
       <article class="panel"><div class="panel-title"><div><h2>表达习惯</h2></div><button id="persona-config" class="secondary">配置</button></div>
       <p id="persona-status" class="muted" role="status">正在读取…</p>
       <div class="form-actions"><button id="persona-refresh" class="secondary">刷新</button><button id="persona-learn" class="secondary">学习一次</button></div>

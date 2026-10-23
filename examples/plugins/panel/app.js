@@ -46,7 +46,7 @@ function showView(requested) {
   if (view === 'overview') { refreshSystem(); refreshHome(); }
   if (view === 'chats') refreshChats();
   if (view === 'memories') refreshMemory();
-  if (view === 'persona') refreshPersona();
+  if (view === 'persona') { loadPersonaPrompt(); refreshPersona(); }
   if (view === 'tooling') refreshTools();
   if (view === 'reminders') refreshReminders();
   if (view === 'logs') { renderLogs(); if (!logHistory) refreshLogs(); }
@@ -403,7 +403,7 @@ for (const button of document.querySelectorAll('[data-reload-settings]')) button
 });
 $('apply-settings').addEventListener('click', async () => {
   if (!settings || applying) return;
-  if (dirtyForms.size || pluginDirty) { $('settings-banner-text').textContent = '还有未保存的修改，请先保存，再应用配置。'; return; }
+  if (dirtyForms.size || pluginDirty || personaPromptDirty) { $('settings-banner-text').textContent = '还有未保存的修改，请先保存，再应用配置。'; return; }
   applying = true; $('apply-settings').disabled = true;
   try {
     await settingsRequest('/api/settings/apply', { revision: settings.revision });
@@ -757,6 +757,55 @@ $('tool-refresh').addEventListener('click', () => { if (toolTab === 'activity') 
 $('tool-activity-state').addEventListener('change', resetToolActivity); $('tool-activity-latest').addEventListener('click', resetToolActivity);
 $('tool-activity-more').addEventListener('click', () => refreshToolActivity(true));
 
+let personaPromptData, personaPromptDirty = false, personaPromptBusy = false;
+const personaPromptForm = $('persona-prompt-form');
+function personaOwner() { return registeredPages.find(page => page.view === 'persona')?.plugin; }
+function syncPersonaPrompt() {
+  personaPromptDirty = !!personaPromptData && ['anchor', 'replyStyle'].some(name => personaPromptForm.elements.namedItem(name).value !== personaPromptData.config[name]);
+  $('persona-prompt-save').disabled = personaPromptBusy || !personaPromptData || !personaPromptDirty;
+  $('persona-prompt-reset').hidden = !personaPromptDirty; $('persona-prompt-reset').disabled = personaPromptBusy;
+}
+function fillPersonaPrompt(detail) {
+  personaPromptData = detail;
+  for (const name of ['anchor', 'replyStyle']) {
+    const input = personaPromptForm.elements.namedItem(name), schema = detail.schema.properties[name];
+    input.value = detail.config[name]; input.minLength = schema.minLength ?? 1; input.maxLength = schema.maxLength ?? 8000;
+  }
+  $('persona-prompt-fields').disabled = false; syncPersonaPrompt();
+}
+async function loadPersonaPrompt() {
+  if (personaPromptDirty || personaPromptBusy) return;
+  personaPromptBusy = true; syncPersonaPrompt();
+  try {
+    const owner = personaOwner(); if (!owner) throw new Error('人设插件未注册');
+    const detail = await settingsRequest(`/api/plugins/${encodeURIComponent(owner)}`);
+    if (personaPromptDirty) return;
+    if (['anchor', 'replyStyle'].some(name => detail.schema?.properties?.[name]?.type !== 'string' || typeof detail.config?.[name] !== 'string')) throw new Error('插件暂未提供主人格配置');
+    fillPersonaPrompt(detail); $('persona-prompt-message').textContent = '';
+  } catch (error) {
+    const retry = element('button', 'link', '重试'); retry.type = 'button'; retry.addEventListener('click', loadPersonaPrompt);
+    $('persona-prompt-message').replaceChildren(document.createTextNode(`${error.message} `), retry);
+  } finally { personaPromptBusy = false; syncPersonaPrompt(); }
+}
+personaPromptForm.addEventListener('input', () => { syncPersonaPrompt(); $('persona-prompt-message').textContent = personaPromptDirty ? '有未保存的修改' : ''; });
+personaPromptForm.addEventListener('invalid', event => { const details = event.target.closest('details'); if (details) details.open = true; }, true);
+$('persona-prompt-reset').addEventListener('click', () => { if (personaPromptData) fillPersonaPrompt(personaPromptData); $('persona-prompt-message').textContent = ''; loadPersonaPrompt(); });
+personaPromptForm.addEventListener('submit', async event => {
+  event.preventDefault(); if (!personaPromptData || personaPromptBusy || !personaPromptDirty) return;
+  personaPromptBusy = true; syncPersonaPrompt(); $('persona-prompt-fields').disabled = true;
+  try {
+    if (!settings) fillSettings(await settingsRequest('/api/settings'));
+    const owner = personaOwner(); if (!owner || owner !== personaPromptData.id) throw new Error('人设插件已变更，请重新打开页面');
+    const current = await settingsRequest(`/api/plugins/${encodeURIComponent(owner)}`);
+    if (['anchor', 'replyStyle'].some(name => current.config[name] !== personaPromptData.config[name])) throw new Error('主人格已被其他页面修改；草稿已保留，请重新读取后再保存');
+    const config = { ...current.config, anchor: personaPromptForm.elements.namedItem('anchor').value, replyStyle: personaPromptForm.elements.namedItem('replyStyle').value };
+    const result = await settingsRequest(`/api/plugins/${encodeURIComponent(owner)}`, { revision: current.revision, config });
+    fillSettings(result); fillPersonaPrompt(result.plugin);
+    $('persona-prompt-message').textContent = result.pendingRestart ? '已保存，待应用' : '没有变更';
+  } catch (error) { $('persona-prompt-message').textContent = error.message; }
+  finally { personaPromptBusy = false; $('persona-prompt-fields').disabled = false; syncPersonaPrompt(); }
+});
+
 let editingStyle;
 async function refreshPersona() {
   try {
@@ -789,8 +838,8 @@ async function openStyle(id) {
   }
   if (!$('persona-detail').open) $('persona-detail').showModal();
 }
-$('persona-config').addEventListener('click', () => openPlugin('xiaolang-persona'));
-$('persona-refresh').addEventListener('click', refreshPersona);
+$('persona-config').addEventListener('click', () => { const owner = personaOwner(); if (owner) openPlugin(owner); });
+$('persona-refresh').addEventListener('click', () => { refreshPersona(); loadPersonaPrompt(); });
 $('close-persona').addEventListener('click', () => $('persona-detail').close());
 $('persona-learn').addEventListener('click', async () => {
   try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/learn', {}); $('persona-status').textContent = '已提交学习'; }
