@@ -1037,6 +1037,10 @@ let usageUpdated = 0, usageNext, usageBusy = false, usageKey = '';
 let usagePage, usageTrend = 'cost', usageDistribution = 'purpose', usageBalanceBusy = false, usageBalanceUpdated = 0;
 let usageIssue = '', usageRevealIssue = false;
 function usageQuery() { return new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value, issue: usageIssue }); }
+function selectUsagePurpose(purpose) {
+  $('usage-purpose').value = purpose; usageNext = undefined;
+  refreshUsage();
+}
 const numberText = value => value === null || value === undefined ? '—' : Number(value).toLocaleString('zh-CN');
 function money(value, currency = 'CNY') {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
@@ -1145,7 +1149,7 @@ function renderUsageDistribution() {
   const totalCost = rows.reduce((sum, row) => sum + Number(row.estimatedCost ?? 0), 0), totalTokens = rows.reduce((sum, row) => sum + row.total, 0);
   $('usage-distribution').replaceChildren(...rows.map(row => {
     const item = element(byPurpose ? 'button' : 'div', 'usage-share');
-    if (byPurpose) { item.type = 'button'; item.title = '筛选此功能'; item.addEventListener('click', () => { $('usage-purpose').value = row.purpose; refreshUsage(); }); }
+    if (byPurpose) { item.type = 'button'; item.title = '筛选此功能'; item.addEventListener('click', () => selectUsagePurpose(row.purpose)); }
     const heading = element('div', 'usage-share-heading'), amount = element('div', 'usage-share-amount');
     const share = totalCost > 0 && row.estimatedCost !== null ? row.estimatedCost / totalCost : totalCost === 0 && totalTokens > 0 ? row.total / totalTokens : 0;
     heading.append(element('strong', '', byPurpose ? usageNames[row.purpose] ?? row.purpose : row.model), element('span', '', share > 0 ? `${(share * 100).toFixed(1)}%` : ''));
@@ -1164,6 +1168,7 @@ function renderUsagePricing(info) {
   root.append(externalLink('官方价格 ↗', info.source));
 }
 async function refreshUsage(reset = true, more = false) {
+  $('usage-clear-purpose').hidden = !$('usage-purpose').value;
   void refreshUsageBalance();
   if (usageBusy) { if (reset) usageKey = ''; return; }
   const query = usageQuery();
@@ -1218,6 +1223,7 @@ async function refreshUsage(reset = true, more = false) {
 }
 for (const [value, title] of Object.entries(usageNames)) { const option = element('option', '', title); option.value = value; $('usage-purpose').append(option); }
 for (const id of ['usage-range', 'usage-purpose', 'usage-provider']) $(id).addEventListener('change', () => refreshUsage());
+$('usage-clear-purpose').addEventListener('click', () => selectUsagePurpose(''));
 $('refresh-usage').addEventListener('click', () => { usageBalanceUpdated = 0; refreshUsage(); });
 $('usage-more').addEventListener('click', () => { if (usageKey) refreshUsage(false, true); });
 for (const button of document.querySelectorAll('[data-usage-trend]')) button.addEventListener('click', () => {
