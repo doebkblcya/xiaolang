@@ -110,6 +110,14 @@ export function createHandler(runtime, configuration, options = {}) {
         const detail = required('history', 'store').message(messageRoute[1], integer(messageRoute[2], undefined));
         let logs = null, images = null, platform = null;
         try { logs = options.logs?.query({ messageId: detail.message.key, limit: 200 }) ?? null; } catch { /* Optional log service. */ }
+        if (detail.turn && logs) {
+          try {
+            const turnLogs = options.logs.query({ q: detail.turn.id, limit: 200 });
+            const entries = new Map([...logs.items, ...turnLogs.items].map(item => [item.seq, item]));
+            logs = { ...logs, items: [...entries.values()].sort((a, b) => a.seq - b.seq).slice(-200),
+              persistent: logs.persistent && turnLogs.persistent, degraded: logs.degraded || turnLogs.degraded };
+          } catch { /* Message-level records remain available independently. */ }
+        }
         try { images = options.memory?.imageDetails?.(detail.message) ?? null; } catch { /* Optional memory service. */ }
         try { platform = await options.adapter?.conversationStatus?.({ platform: detail.message.platform, account: detail.message.account,
           scope: detail.message.group ? 'group' : 'private', recipient: detail.message.group ?? detail.message.sender }) ?? null; } catch { /* Optional platform state. */ }

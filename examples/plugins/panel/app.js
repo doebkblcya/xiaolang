@@ -856,7 +856,7 @@ async function openMessageProcessing(conversation, seq) {
     root.append(platform);
     const actions = element('div', 'form-actions message-process-actions');
     if (detail.turn) { const turn = element('button', 'secondary', '回复详情'); turn.type = 'button'; turn.addEventListener('click', () => { $('message-processing').close(); openDetail(detail.turn.id); }); actions.append(turn); }
-    const logsButton = element('button', 'secondary', '过程日志'); logsButton.type = 'button'; logsButton.addEventListener('click', () => { $('message-processing').close(); $('log-filter').value = message.key; $('log-event').value = ''; $('log-level').value = ''; resetLogs(); showView('logs'); }); actions.append(logsButton);
+    const logsButton = element('button', 'secondary', '过程日志'); logsButton.type = 'button'; logsButton.addEventListener('click', () => { $('message-processing').close(); $('log-filter').value = detail.turn?.id ?? message.key; $('log-event').value = ''; $('log-level').value = ''; resetLogs(); showView('logs'); }); actions.append(logsButton);
     const triggerPage = registeredPages.find(page => page.view === 'trigger-settings');
     if (triggerPage) { const configure = element('button', 'secondary', '触发规则'); configure.type = 'button'; configure.addEventListener('click', () => { $('message-processing').close(); showView(triggerPage.id); }); actions.append(configure); }
     root.append(actions);
