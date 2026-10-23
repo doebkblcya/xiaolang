@@ -24,6 +24,22 @@ function controller(model = new FakeModel(async () => ({ role: 'assistant', cont
   return { value, model, sent, logs, observe: (seq: number, group = 100) => value.observe(message(seq, group), message => sent.push(message.seq)) };
 }
 
+test('judging has independent thinking settings and preserves the legacy fast path', async () => {
+  for (const thinking of ['off', 'low', 'high', 'max'] as const) {
+    const instance = controller(undefined, { thinking, idleMessages: 1 });
+    try {
+      instance.observe(1); await instance.value.idle();
+      const options = instance.model.options[0]!;
+      assert.equal(options.thinking, thinking !== 'off');
+      assert.equal(options.reasoningEffort, thinking === 'off' ? undefined : thinking);
+      assert.equal(options.maxOutputTokens, thinking === 'off' ? 256 : 8192);
+      assert.equal(options.timeoutMs, thinking === 'off' ? 8000 : 30000);
+      assert.deepEqual(options.stop, []);
+    } finally { await instance.value.clear(); }
+  }
+  assert.equal(triggerSettings(config()).proactive.thinking, 'off');
+});
+
 test('one quiet-group message is judged at the deadline; the count threshold triggers a single batch early', async () => {
   const first = controller(); first.observe(1); await first.value.idle();
   assert.equal(first.model.requests.length, 1); assert.equal(first.sent.length, 0);

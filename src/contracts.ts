@@ -57,7 +57,7 @@ export class VisualToolResult {
 }
 export interface Model {
   balance?(): Promise<ModelBalance>;
-  stream?(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>): Promise<ModelMessage>;
+  stream?(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>, options?: ModelOptions): Promise<ModelMessage>;
   complete(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, options?: ModelOptions): Promise<ModelMessage>;
 }
 export interface ModelBalance {

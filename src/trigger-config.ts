@@ -1,4 +1,5 @@
 import type { Config } from './config.js';
+import type { ThinkingLevel } from './contracts.js';
 export interface ProactiveSettings {
   enabled: boolean;
   excludedGroupIds: string[];
@@ -7,13 +8,14 @@ export interface ProactiveSettings {
   idleMessages: number;
   historyMessages: number;
   maxRepliesPerMinute: number;
+  thinking?: ThinkingLevel;
 }
 export const proactiveDefaults: ProactiveSettings = {
   enabled: false, excludedGroupIds: [], activeSeconds: 60, idleSeconds: 60,
-  idleMessages: 20, historyMessages: 30, maxRepliesPerMinute: 6,
+  idleMessages: 20, historyMessages: 30, maxRepliesPerMinute: 6, thinking: 'off',
 };
 export const proactiveSchema = {
-  type: 'object', additionalProperties: false, required: Object.keys(proactiveDefaults), properties: {
+  type: 'object', additionalProperties: false, required: Object.keys(proactiveDefaults).filter(key => key !== 'thinking'), properties: {
     enabled: { type: 'boolean' },
     excludedGroupIds: { type: 'array', maxItems: 1000, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 512 } },
     activeSeconds: { type: 'integer', minimum: 10, maximum: 1800 },
@@ -21,6 +23,7 @@ export const proactiveSchema = {
     idleMessages: { type: 'integer', minimum: 1, maximum: 50 },
     historyMessages: { type: 'integer', minimum: 5, maximum: 100 },
     maxRepliesPerMinute: { type: 'integer', minimum: 1, maximum: 30 },
+    thinking: { enum: ['off', 'low', 'high', 'max'] },
   },
 };
 
@@ -40,5 +43,5 @@ export function migrateProactiveConfig(raw: unknown): unknown {
 export function triggerSettings(config: Config) {
   config = migrateProactiveConfig(config) as Config;
   return structuredClone({ ...(config.trigger ?? { privateReply: true, groupMention: true, groupKeywords: true, words: config.triggerWords }),
-    proactive: config.trigger?.proactive ?? proactiveDefaults });
+    proactive: { ...proactiveDefaults, ...config.trigger?.proactive } });
 }

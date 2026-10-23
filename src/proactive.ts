@@ -174,13 +174,16 @@ export class ProactiveTrigger {
     const generation = state.generation;
     const judgingAt = Date.now();
     const controller = new AbortController(); state.judge = controller;
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]);
+    const effort = this.settings.thinking ?? 'off', thinking = effort !== 'off';
+    const timeoutMs = thinking ? 30000 : 8000;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs)]);
     const started = performance.now();
     reportBatch('proactive_judge_started', { reason: `观察 ${batch.length} 条新消息` });
     try {
       if (Date.now() - message.time > 180000) { reportBatch('proactive_skipped', { reason: '消息已经过时' }); return; }
       const response = await withUsage(this.runtime.usage, 'proactive', { scope: 'group' }, () => abortable(this.runtime.model.complete(this.messages(state, batch), [], signal,
-        { thinking: false, maxOutputTokens: 256, temperature: 0, retries: 0, stop: [] }), signal));
+        { thinking, ...(effort === 'off' ? {} : { reasoningEffort: effort }), maxOutputTokens: thinking ? 8192 : 256,
+          timeoutMs, temperature: 0, retries: 0, stop: [] }), signal));
       check(signal);
       if (generation !== state.generation || state.busy || this.clearing || Date.now() - judgingAt >= 30000) {
         reportBatch('proactive_skipped', { reason: '明确召唤已覆盖或消息过时，丢弃旧判断' }); return;

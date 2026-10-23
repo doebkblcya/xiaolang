@@ -52,14 +52,15 @@ export class DeepSeekModel implements Model {
       }
     }
   }
-  async stream(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>): Promise<ModelMessage> {
+  async stream(messages: ModelMessage[], tools: ToolSchema[], signal: AbortSignal, write: (delta: string) => Promise<void>, options?: ModelOptions): Promise<ModelMessage> {
+    const config = { ...this.config, ...options };
     let emitted = false;
     for (let attempt = 0; ; attempt++) {
       check(signal);
-      try { return await this.request(messages, tools, signal, async delta => { emitted = true; await write(delta); }, this.config, attempt + 1); }
+      try { return await this.request(messages, tools, signal, async delta => { emitted = true; await write(delta); }, config, attempt + 1); }
       catch (error) {
         check(signal);
-        if (emitted || !(error instanceof Failure) || !error.retryable || attempt >= this.config.retries) throw error;
+        if (emitted || !(error instanceof Failure) || !error.retryable || attempt >= config.retries) throw error;
         await delay(Math.min(500 * 2 ** attempt, 4000), undefined, { signal });
       }
     }

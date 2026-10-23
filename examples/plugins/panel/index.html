@@ -19,21 +19,26 @@
     <div id="notice" class="notice" role="status" hidden></div>
     <div id="settings-banner" class="settings-banner" hidden><span id="settings-banner-text">配置已保存，应用后生效。</span><button id="apply-settings" class="primary" type="button">应用配置并重启</button></div>
     <section id="overview" class="view">
-      <article class="welcome">
-        <div class="welcome-copy"><time id="today-date" class="welcome-date"></time><h2 id="hero-state">连接中</h2><div class="welcome-actions"><button class="welcome-link" data-view="plugins">插件目录 <span aria-hidden="true">↗</span></button></div></div>
-        <div class="welcome-portrait" aria-hidden="true"><div class="portrait-halo"></div><img src="/assets/xiaolang-halfbody-v1.webp" alt="" width="1086" height="1448" fetchpriority="high"></div>
-      </article>
-      <div id="home-modules" class="home-modules" hidden></div>
-      <div class="cards runtime-cards">
-        <article class="card"><span>处理中 / 排队</span><strong id="pending">—</strong><small id="completed">已完成 — 轮</small></article>
-        <article class="card"><span>本次运行</span><strong id="uptime">—</strong><small id="memory">内存 —</small></article>
-      </div>
-      <div class="overview-grid">
-        <article class="panel runtime-summary"><h2>运行状态</h2><dl class="summary"><div><dt>应用状态</dt><dd id="app-state">—</dd></div><div><dt>异常轮次</dt><dd id="failures">—</dd></div><div><dt>启用插件</dt><dd id="plugin-count">—</dd></div><div><dt>最近收到消息</dt><dd id="last-message">—</dd></div></dl></article>
+      <div class="home-stage">
+        <div class="home-overview">
+          <header class="home-heading"><time id="today-date" class="home-date"></time><h2 id="hero-state">连接中</h2><button class="link home-directory" data-view="plugins">插件目录 <span aria-hidden="true">↗</span></button></header>
+          <div id="home-modules" class="home-modules info-list" hidden></div>
+        </div>
+        <div class="home-runtime">
+          <div class="cards runtime-cards">
+            <article class="card"><span>处理中 / 排队</span><strong id="pending">—</strong><small id="completed">已完成 — 轮</small></article>
+            <article class="card"><span>本次运行</span><strong id="uptime">—</strong></article>
+            <article class="card"><span>异常轮次</span><strong id="failures">—</strong></article>
+            <article class="card"><span>启用插件</span><strong id="plugin-count">—</strong></article>
+          </div>
+          <p class="home-last-message">最近收到消息 <span id="last-message">—</span></p>
+        </div>
+        <figure class="home-portrait"><img src="/assets/xiaolang-window-v1.webp" alt="侧坐在窗台上的小狼" width="1254" height="1254" fetchpriority="high"></figure>
+        <div class="home-sill" aria-hidden="true"></div>
       </div>
       <div class="overview-grid system-grid">
-        <article class="panel"><h2>宿主机</h2><dl class="summary"><div><dt>处理器</dt><dd id="host-cpu">—</dd></div><div><dt>逻辑核心</dt><dd id="host-cores">—</dd></div><div><dt>总内存</dt><dd id="host-memory">—</dd></div><div><dt>系统 / 架构</dt><dd id="host-system">—</dd></div></dl></article>
-        <article class="panel"><h2>进程</h2><dl class="summary"><div><dt>内存</dt><dd id="process-memory">—</dd></div><div><dt>CPU 占用</dt><dd id="process-cpu">—</dd></div><div><dt>堆内存</dt><dd id="process-heap">—</dd></div><div><dt>Node.js</dt><dd id="process-node">—</dd></div><div id="container-limit-row" hidden><dt>容器内存上限</dt><dd id="container-limit">—</dd></div></dl></article>
+        <article class="panel panel-open"><h2>宿主机</h2><dl class="summary"><div><dt>处理器</dt><dd id="host-cpu">—</dd></div><div><dt>逻辑核心</dt><dd id="host-cores">—</dd></div><div><dt>总内存</dt><dd id="host-memory">—</dd></div><div><dt>系统 / 架构</dt><dd id="host-system">—</dd></div></dl></article>
+        <article class="panel panel-open"><h2>进程</h2><dl class="summary"><div><dt>内存</dt><dd id="process-memory">—</dd></div><div><dt>CPU 占用</dt><dd id="process-cpu">—</dd></div><div><dt>堆内存</dt><dd id="process-heap">—</dd></div><div><dt>Node.js</dt><dd id="process-node">—</dd></div><div id="container-limit-row" hidden><dt>容器内存上限</dt><dd id="container-limit">—</dd></div></dl></article>
       </div>
     </section>
     <section id="usage" class="view" hidden>
@@ -75,7 +80,7 @@
           <button id="conversation-more" class="link conversation-more" hidden>更多会话</button>
         </aside>
         <section class="conversation-main" aria-label="聊天时间线">
-          <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted"></p></div><div class="form-actions"><button id="conversation-summary" class="secondary" disabled>摘要</button><button id="conversation-delete" class="secondary" disabled>删除会话</button><button id="conversation-name" class="secondary" disabled>备注</button><button id="conversation-refresh" class="secondary">刷新</button></div></div>
+          <div class="conversation-heading"><div><h2 id="conversation-title">选择一个会话</h2><p id="conversation-subtitle" class="muted"></p></div><div class="form-actions"><button id="conversation-summary" class="secondary" disabled>摘要</button><button id="conversation-name" class="secondary" disabled>备注</button><button id="conversation-refresh" class="secondary">刷新</button><details class="action-menu"><summary>更多</summary><div><button id="conversation-delete" class="link" disabled>删除会话</button></div></details></div></div>
           <div class="timeline-toolbar"><button id="message-older" class="link" disabled>查看更早消息</button><span id="message-page-note" class="muted"></span><label class="filter"><input id="message-follow" type="checkbox" checked>跟随新消息</label></div>
           <button id="message-new" class="message-new secondary" hidden>有新消息 ↓</button>
           <div id="message-timeline" class="message-timeline"><p class="empty">选择一个会话</p></div>
@@ -84,17 +89,16 @@
       </article>
     </section>
     <section id="logs" class="view" hidden>
-      <article class="panel"><div class="panel-title"><div><h2>过程日志 <span id="log-count" class="count">0</span></h2></div><label class="filter"><input id="follow" type="checkbox" checked>跟随最新</label></div>
+      <article class="panel"><div class="panel-title"><div><h2>记录 <span id="log-count" class="count">0</span></h2></div><label class="filter"><input id="follow" type="checkbox" checked>跟随最新</label></div>
         <div class="log-toolbar"><input id="log-filter" type="search" placeholder="搜索日志" aria-label="筛选日志"><select id="log-event" aria-label="事件"><option value="">全部事件</option></select><select id="log-level" aria-label="级别"><option value="">全部级别</option><option value="info">信息</option><option value="warn">警告</option><option value="error">错误</option></select><button id="clear-filter" class="secondary">清除</button></div>
         <div id="log-list" class="log-list" aria-label="过程日志"><p class="empty">暂无日志</p></div><div class="pagination"><button id="log-older" class="secondary" disabled>更早</button><span id="log-status" class="muted" role="status"></span><button id="log-latest" class="secondary" hidden>最新</button></div>
       </article>
     </section>
     <section id="memories" class="view" hidden>
       <article class="panel">
-        <div class="panel-title"><div><h2>记忆库</h2></div><button id="memory-config" class="secondary">配置</button></div>
+        <div class="panel-title"><div><h2>记忆库</h2></div><div class="form-actions"><button id="memory-add" class="primary">添加记忆 <span aria-hidden="true">＋</span></button><button id="memory-config" class="secondary">配置</button><details class="action-menu"><summary>维护</summary><div><button id="memory-process" class="link" aria-label="整理聊天">整理聊天</button><button id="memory-test" class="link" aria-label="测试向量连接">测试向量连接</button><button id="memory-reindex" class="link" aria-label="重建向量索引">重建向量索引</button></div></details></div></div>
         <p id="memory-status" class="muted" role="status">正在读取…</p>
         <div class="log-toolbar"><input id="memory-search" type="search" placeholder="搜索记忆" aria-label="搜索记忆"><select id="memory-kind" aria-label="记忆类型"><option value="">全部类型</option><option value="profile">人物资料</option><option value="event">经历与计划</option></select><button id="memory-refresh" class="secondary">查询</button></div>
-        <div class="form-actions memory-actions"><button id="memory-add" class="primary">添加记忆 <span aria-hidden="true">＋</span></button><details class="action-menu"><summary>维护</summary><div><button id="memory-process" class="link" aria-label="整理聊天">整理聊天</button><button id="memory-test" class="link" aria-label="测试向量连接">测试向量连接</button><button id="memory-reindex" class="link" aria-label="重建向量索引">重建向量索引</button></div></details></div>
         <div id="memory-list" class="memory-list"></div>
         <div class="pagination"><button id="memory-latest" class="secondary">回到最新</button><button id="memory-older" class="secondary" disabled>查看更早</button></div>
       </article>
@@ -103,14 +107,13 @@
       <form id="persona-prompt-form" class="panel settings-form persona-prompt">
         <div class="panel-title"><h2>主人格</h2><span class="badge neutral">仅手动修改</span></div>
         <fieldset id="persona-prompt-fields" disabled>
-          <label class="field">System Prompt<textarea name="anchor" rows="10" required spellcheck="false"></textarea></label>
+          <label class="field">System Prompt<textarea name="anchor" rows="6" required spellcheck="false"></textarea></label>
           <details class="persona-fixed-style"><summary>固定回复风格</summary><label class="field"><span class="sr-only">固定回复风格</span><textarea name="replyStyle" rows="5" required spellcheck="false"></textarea></label></details>
         </fieldset>
         <div class="form-footer"><p id="persona-prompt-message" class="muted" role="status">正在读取…</p><div class="form-actions"><button id="persona-prompt-reset" class="link" type="button" hidden>还原</button><button id="persona-prompt-save" class="primary" type="submit" disabled>保存</button></div></div>
       </form>
-      <article class="panel"><div class="panel-title"><div><h2>表达习惯</h2></div><button id="persona-config" class="secondary">配置</button></div>
+      <article class="panel"><div class="panel-title"><div><h2>表达习惯</h2></div><div class="form-actions"><button id="persona-refresh" class="secondary">刷新</button><button id="persona-learn" class="secondary">学习一次</button><button id="persona-config" class="secondary">配置</button></div></div>
       <p id="persona-status" class="muted" role="status">正在读取…</p>
-      <div class="form-actions"><button id="persona-refresh" class="secondary">刷新</button><button id="persona-learn" class="secondary">学习一次</button></div>
       <div id="persona-list" class="memory-list"></div></article>
     </section>
     <section id="tooling" class="view" hidden>
@@ -132,11 +135,12 @@
         <fieldset class="settings-group"><legend>连接</legend><div class="form-grid">
 <label class="field">API 地址<input name="baseUrl" type="url" required placeholder="https://api.deepseek.com"></label>
 <label class="field">模型标识<input name="name" list="model-names" required maxlength="200"><datalist id="model-names"><option value="deepseek-flash"><option value="deepseek-v4-pro"></datalist></label>
-<label class="field full">API Key<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已有密钥"><small id="model-secret-state">正在读取密钥状态</small></label>
+<label class="field full">API Key<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留"><small id="model-secret-state">正在读取密钥状态</small></label>
 </div></fieldset>
 <fieldset class="settings-group"><legend>生成</legend><div class="form-grid">
 <label class="field">思考模式<select name="thinking"><option value="false">关闭</option><option value="true">开启</option></select></label>
 <label class="field">思考强度<select name="reasoningEffort"><option value="">默认</option><option value="low">低 · low</option><option value="high">高 · high</option><option value="max">最高 · max</option></select></label>
+<label class="field full">重看图片思考档位<select name="imageInspectThinking"><option value="">跟随聊天回复</option><option value="off">关闭思考</option><option value="low">低 · low</option><option value="high">高 · high</option><option value="max">最高 · max</option></select></label>
 <label class="field">采样温度<input name="temperature" type="number" min="0" max="2" step="0.05" placeholder="官方默认 1"></label>
 <label class="field">Top P<input name="topP" type="number" min="0.95" max="1" step="0.01" placeholder="官方默认 1"></label>
 <label class="field">最大输出 Token<input name="maxOutputTokens" type="number" required min="1" max="393216" step="1"></label>
@@ -156,7 +160,7 @@
         <fieldset class="settings-group"><legend>机器人</legend><div class="form-grid">
 <label class="field">AppID<input name="appId" type="text" inputmode="numeric" pattern="[0-9]{1,32}" required></label>
 <label class="field">接入环境<select name="environment"><option value="production">正式环境</option><option value="sandbox">沙箱环境</option></select></label>
-<label class="field full">AppSecret<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留已有密钥"><small id="qq-secret-state">正在读取密钥状态</small></label>
+<label class="field full">AppSecret<input name="secret" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空保留"><small id="qq-secret-state">正在读取密钥状态</small></label>
 </div></fieldset>
 <fieldset class="settings-group"><legend>消息接收</legend><div class="form-grid">
 <label class="field">群消息接收能力<select name="groupMessages"><option value="all">包含非 @ 群消息</option><option value="mentions">仅确认 @ 群消息</option></select></label>
@@ -179,6 +183,7 @@
         <label class="switch-line"><span><strong>允许主动参与群聊</strong></span><input name="proactiveEnabled" type="checkbox"></label>
         <label class="field">不主动插话的群（黑名单）<textarea name="proactiveGroups" rows="3" placeholder="每行一个 QQ 官方群 OpenID；留空则所有可接收消息的群都允许主动插话"></textarea></label>
         <div class="form-grid">
+          <label class="field full">插话判断思考档位<select name="proactiveThinking" title="关闭时保持快速判断；开启后思考与判断结果共用 8192 Token，最多等待 30 秒。"><option value="off">关闭思考</option><option value="low">低 · low</option><option value="high">高 · high</option><option value="max">最高 · max</option></select></label>
           <label class="field">活跃持续时间（秒）<input name="activeSeconds" type="number" min="10" max="1800" required></label>
           <label class="field">旁观收集时间（秒）<input name="idleSeconds" type="number" min="1" max="60" required></label>
           <label class="field">旁观提前判断条数<input name="idleMessages" type="number" min="1" max="50" required></label>

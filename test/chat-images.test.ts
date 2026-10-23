@@ -130,6 +130,7 @@ test('deleting an image source also deletes its persisted failure state', async 
 
 test('untriggered images are described immediately; multiple text followups carry references without original pixels and tools inspect the selected image', async () => {
   const options = config(); options.memory = { ...settings, imageDescriptionThinking: 'off' };
+  options.model.imageInspectThinking = 'low';
   const adapter = new FakeAdapter(), described = deferred<void>(), calls = { value: 0 };
   const background = new FakeModel(async messages => {
     const current = messages.at(-1)!;
@@ -169,6 +170,9 @@ test('untriggered images are described immediately; multiple text followups carr
     app.ctx.intake.receive(event('小狼，第二行是多少？', 3)); await app.ctx.chat.idle();
     assert.equal(calls.value, 2);
     assert.equal(adapter.sent.at(-1)!.text, '第二行是128元。');
+    assert.equal(model.options.at(-1)?.thinking, true);
+    assert.equal(model.options.at(-1)?.reasoningEffort, 'low');
+    assert.equal(model.options[0], undefined, 'normal replies retain the base model settings');
     assert.ok(app.ctx.historyReader.recent(1).items[0]!.state === 'completed');
     assert.ok(!JSON.stringify(app.ctx.store.records({ limit: 100 })).includes('base64'), 'persisted history must not contain pixels');
     app.ctx.intake.receive(event('小狼，你还记得吗？', 4)); await app.ctx.chat.idle();

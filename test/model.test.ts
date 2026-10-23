@@ -4,6 +4,22 @@ import { DeepSeekModel } from '../src/model.js';
 import { config } from './fixtures.js';
 import { validateConfig } from '../src/config.js';
 
+test('streaming accepts per-call thinking overrides without changing the next reply', async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const settings = { ...config().model, thinking: true, reasoningEffort: 'high' as const };
+  const model = new DeepSeekModel(settings, 'fake', (async (_input, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":null}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+  }) as typeof fetch);
+  const signal = new AbortController().signal;
+  await model.stream([], [], signal, async () => {}, { thinking: false });
+  await model.stream([], [], signal, async () => {});
+  assert.deepEqual(bodies[0]?.thinking, { type: 'disabled' });
+  assert.equal(bodies[0]?.reasoning_effort, undefined);
+  assert.deepEqual(bodies[1]?.thinking, { type: 'enabled' });
+  assert.equal(bodies[1]?.reasoning_effort, 'high');
+});
+
 test('model request carries tool-continuation state; thoughts stay separate from final content', async () => {
   let body: Record<string, unknown> = {};
   const fetcher = (async (_input, init) => {

@@ -118,3 +118,20 @@ test('legacy plugin settings default to low and panel saves memory/persona think
   assert.equal(boot.config.model.thinking, false); assert.equal(boot.config.character.anchor, oldCharacter.anchor);
   await boot.confirm(); assert.equal((await boot.view()).pendingRestart, false);
 });
+
+test('panel persists image inspection and proactive thinking independently while accepting old settings', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'xiaolang-call-thinking-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const cfg = config(); cfg.database = join(directory, 'chat.sqlite');
+  const path = join(directory, 'config.json'); await writeFile(path, JSON.stringify(cfg));
+  const store = await ConfigurationStore.load(path, () => {}, () => true, {});
+  const view = await store.view();
+  const saved = await store.save('model', { revision: view.revision, value: { ...cfg.model, imageInspectThinking: 'low' } });
+  const trigger = saved.trigger as Record<string, unknown>;
+  delete trigger.supported;
+  await store.save('trigger', { revision: saved.revision, value: { ...trigger, proactive: { ...trigger.proactive as Record<string, unknown>, thinking: 'max' } } });
+  const boot = await ConfigurationStore.load(path, () => {}, () => true, {});
+  assert.equal(boot.config.model.imageInspectThinking, 'low');
+  assert.equal(boot.config.model.thinking, cfg.model.thinking);
+  assert.equal(boot.config.trigger?.proactive?.thinking, 'max');
+});

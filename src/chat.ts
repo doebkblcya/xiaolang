@@ -79,9 +79,11 @@ async function runTurn(ctx: Context, config: Config, turn: Turn, signal: AbortSi
     const modelDetails = { model: config.model.name, step: step + 1, imageCount: messages.reduce((count, message) => count + (message.images?.length ?? 0), 0) };
     log(ctx, 'model_started', turn.id, 'model', modelDetails);
     let response: ModelMessage;
+    const imageThinking = reexaminingImage ? config.model.imageInspectThinking : undefined;
+    const options = imageThinking === undefined ? undefined : { thinking: imageThinking !== 'off', ...(imageThinking === 'off' ? {} : { reasoningEffort: imageThinking }) };
     try { response = await withUsage(ctx.get('usage'), reexaminingImage ? 'image_inspect' : 'chat', { turn: turn.id, step: step + 1, scope: turn.message.group ? 'group' : 'private' },
-      () => abortable(stream ? ctx.model.stream!(structuredClone(messages), tools, signal, delta => stream.write(delta))
-      : ctx.model.complete(structuredClone(messages), tools, signal), signal)); }
+      () => abortable(stream ? ctx.model.stream!(structuredClone(messages), tools, signal, delta => stream.write(delta), options)
+      : ctx.model.complete(structuredClone(messages), tools, signal, options), signal)); }
     catch (error) { log(ctx, 'model_failed', turn.id, 'model', { ...modelDetails, durationMs: elapsed(started), errorCode: code(error) }); throw error; }
     log(ctx, 'model_completed', turn.id, 'model', { ...modelDetails, durationMs: elapsed(started), toolCalls: response.tool_calls?.length ?? 0 });
     check(signal);

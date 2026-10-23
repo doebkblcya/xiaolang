@@ -1,0 +1,3 @@
+Source: user-provided Xiaolang full-body illustration.
+Edit: background extraction via ImageGen, preserving the character, pose, face, calico colors, outfit, tail and shoes.
+Output: transparent PNG and WebP for the homepage. Display uncropped using intrinsic proportions; no fade or mask.

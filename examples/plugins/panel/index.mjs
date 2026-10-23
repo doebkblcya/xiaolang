@@ -10,7 +10,7 @@ import { createAccess, readAuth, readTls, isPrivateAddress } from './security.mj
 export const name = 'xiaolang-panel';
 export const xiaolangApiVersion = 1;
 export const inject = ['xiaolangRuntime'];
-const assets = { '/assets/xiaolang-halfbody-v1.webp': ['assets/xiaolang-halfbody-v1.webp', 'image/webp'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/login.js': ['login.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
+const assets = { '/assets/xiaolang-halfbody-v1.webp': ['assets/xiaolang-halfbody-v1.webp', 'image/webp'], '/assets/xiaolang-fullbody-v1.webp': ['assets/xiaolang-fullbody-v1.webp', 'image/webp'], '/assets/xiaolang-window-v1.webp': ['assets/xiaolang-window-v1.webp', 'image/webp'], '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/login.js': ['login.js', 'text/javascript; charset=utf-8'], '/style.css': ['style.css', 'text/css; charset=utf-8'] };
 const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
   'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",

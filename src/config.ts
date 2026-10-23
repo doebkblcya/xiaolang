@@ -40,7 +40,7 @@ export interface Config {
   plugins?: PluginConfig;
   logging?: { content?: boolean; previewChars?: number; console?: boolean; format?: 'text' | 'json'; retentionDays?: number; maxRecords?: number };
   model: { baseUrl: string; name: string; thinking: boolean; timeoutMs: number; maxOutputTokens: number; retries: number;
-    temperature?: number; topP?: number; reasoningEffort?: 'low' | 'high' | 'max'; stop?: string[] };
+    temperature?: number; topP?: number; reasoningEffort?: 'low' | 'high' | 'max'; imageInspectThinking?: import('./contracts.js').ThinkingLevel; stop?: string[] };
   limits: { concurrency: number; queue: number; queueAgeMs: number; turnTimeoutMs: number; contextTokens?: number; contextChars?: number; history: number; steps: number; toolTimeoutMs: number; toolResultChars: number; replyChars: number };
 }
 const positive = { type: 'integer', minimum: 1, maximum: 86_400_000 };
@@ -84,6 +84,7 @@ const schema = {
       maxOutputTokens: { type: 'integer', minimum: 1, maximum: 393216 }, retries: { type: 'integer', minimum: 0, maximum: 3 },
       temperature: { type: 'number', minimum: 0, maximum: 2 }, topP: { type: 'number', minimum: 0.95, maximum: 1 },
       reasoningEffort: { enum: ['low', 'high', 'max'] },
+      imageInspectThinking: { enum: ['off', 'low', 'high', 'max'] },
       stop: { type: 'array', maxItems: 16, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 200 } },
     } },
     limits: { type: 'object', additionalProperties: false,

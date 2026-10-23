@@ -80,11 +80,11 @@ async function refreshHome() {
   try {
     const data = await get('/api/panel/home');
     const cards = data.items.map(item => {
-      const card = element('article', 'panel home-module'); card.dataset.home = item.id;
-      card.append(element('span', 'home-module-title', item.title), element('strong', `home-module-value ${item.tone}`, item.value));
-      if (item.detail) card.append(element('small', 'muted', item.detail));
+      const card = element('article', 'panel panel-open info-row home-module'); card.dataset.home = item.id;
+      card.append(element('span', 'home-module-title info-label', item.title), element('strong', `home-module-value info-value ${item.tone}`, item.value));
+      if (item.detail) card.append(element('small', 'muted info-detail', item.detail));
       if (item.action) {
-        const button = element('button', 'link card-link', '配置 →'); button.type = 'button';
+        const button = element('button', 'link info-action', '配置 →'); button.type = 'button';
         button.addEventListener('click', () => item.action.page ? showView(item.action.page) : openPlugin(item.action.plugin));
         card.append(button);
       }
@@ -96,7 +96,7 @@ async function refreshHome() {
     if (root.dataset.snapshot !== snapshot) { root.replaceChildren(...cards); root.dataset.snapshot = snapshot; }
     root.hidden = !cards.length;
   } catch {
-    for (const value of document.querySelectorAll('.home-module-value')) { value.textContent = '暂不可用'; value.className = 'home-module-value neutral'; }
+    for (const value of document.querySelectorAll('.home-module-value')) { value.textContent = '暂不可用'; value.className = 'home-module-value info-value neutral'; }
     for (const detail of document.querySelectorAll('.home-module small')) detail.remove();
     delete $('home-modules').dataset.snapshot;
   } finally { homeBusy = false; }
@@ -126,8 +126,6 @@ function renderStatus(status) {
   $('completed').textContent = counts ? `已完成 ${counts.completed ?? 0} 轮` : '会话存储未启用';
   const seconds = Math.floor(status.uptimeMs / 1000), minutes = Math.floor(seconds / 60), hours = Math.floor(minutes / 60);
   $('uptime').textContent = hours ? `${hours} 小时 ${minutes % 60} 分` : minutes ? `${minutes} 分 ${seconds % 60} 秒` : `${seconds} 秒`;
-  $('memory').textContent = `进程内存 ${(status.memoryBytes / 1048576).toFixed(1)} MB`;
-  $('app-state').textContent = words[status.state] ?? status.state;
   $('failures').textContent = counts ? ['failed', 'unknown', 'cancelled', 'expired'].reduce((total, key) => total + (counts[key] ?? 0), 0) : '—';
   $('last-message').textContent = status.lastMessage ? time(status.lastMessage, true) : status.intakeEnabled ? '本次启动尚无消息' : '消息接收未启用';
   const active = status.plugins.filter(plugin => plugin.state === 'active').length;
@@ -146,10 +144,10 @@ function renderPlugins(plugins = pluginCatalog) {
   $('plugin-empty').textContent = '暂无匹配插件';
   $('plugin-rows').replaceChildren(...filtered.map(plugin => {
     const card = element('button', 'plugin-card'); card.type = 'button'; card.setAttribute('aria-label', `查看插件：${plugin.title ?? plugin.id}`);
-    const head = element('div', 'plugin-card-heading'), mark = element('span', 'plugin-card-mark', plugin.kind === 'builtin' ? '◇' : '◈');
-    head.append(mark, badge(plugin.state));
+    const head = element('div', 'plugin-card-heading');
+    head.append(element('strong', '', plugin.title ?? plugin.id), badge(plugin.state));
     const foot = element('div', 'plugin-card-footer'); foot.append(element('span', '', plugin.kind === 'builtin' ? '内置' : '外挂'), element('span', '', '↗'));
-    card.append(head, element('strong', '', plugin.title ?? plugin.id), element('small', 'module', plugin.id), foot);
+    card.append(head, element('small', 'module', plugin.id), foot);
     card.addEventListener('click', () => openPlugin(plugin.id)); return card;
   }));
 }
@@ -159,11 +157,18 @@ $('plugin-source').addEventListener('change', () => renderPlugins());
 function renderLogs() {
   $('log-count').textContent = logs.length;
   const box = $('log-list'), top = box.scrollTop;
-  box.replaceChildren(...logs.map(({ entry, display }) => {
+  const open = new Set([...box.querySelectorAll('details[open]')].map(node => node.dataset.log));
+  box.replaceChildren(...logs.map(({ seq, entry, display }) => {
     const row = element('div', `log-line ${entry.level ?? 'info'}`), body = element('div');
     row.append(element('time', '', time(entry.time, true))); body.append(element('strong', '', display?.title ?? entry.label ?? entry.code));
     if (entry.preview !== undefined) body.append(element('p', 'log-preview', entry.preview));
-    if (display?.meta) body.append(element('div', 'log-meta', display.meta)); row.append(body); return row;
+    const result = [entry.reason ? reasons[entry.reason] ?? entry.reason : '', entry.errorCode, entry.durationMs === undefined ? '' : `${entry.durationMs} ms`].filter(Boolean);
+    if (result.length) body.append(element('p', 'log-result', result.join(' · ')));
+    if (display?.meta) {
+      const detail = element('details', 'log-meta'); detail.dataset.log = String(seq); detail.open = open.has(String(seq));
+      detail.append(element('summary', '', '技术信息'), element('div', 'mono', display.meta)); body.append(detail);
+    }
+    row.append(body); return row;
   }));
   if (!logs.length) box.append(element('p', 'empty', '暂无日志'));
   $('log-older').disabled = logBusy || !logBefore;
@@ -329,7 +334,7 @@ function fillSettings(data, sections = ['model', 'qq', 'trigger']) {
     if (dirtyForms.has(section)) continue;
     const form = $(`${section}-form`), values = data[section];
     if (section === 'model') {
-      for (const name of ['baseUrl', 'name', 'maxOutputTokens', 'retries', 'temperature', 'topP', 'reasoningEffort']) formValue(form, name, values[name]);
+      for (const name of ['baseUrl', 'name', 'maxOutputTokens', 'retries', 'temperature', 'topP', 'reasoningEffort', 'imageInspectThinking']) formValue(form, name, values[name]);
       formValue(form, 'thinking', String(values.thinking)); formValue(form, 'timeoutSeconds', values.timeoutMs / 1000);
       formValue(form, 'stop', (values.stop ?? []).join('\n'));
       if (data.turnTimeoutMs) $('model-budget-note').textContent = `单轮上限 ${data.turnTimeoutMs / 1000} 秒`;
@@ -342,6 +347,7 @@ function fillSettings(data, sections = ['model', 'qq', 'trigger']) {
       for (const name of ['privateReply', 'groupMention', 'groupKeywords']) form.elements.namedItem(name).checked = values[name];
       formValue(form, 'words', (values.words ?? []).join('\n'));
       form.elements.namedItem('proactiveEnabled').checked = values.proactive.enabled;
+      formValue(form, 'proactiveThinking', values.proactive.thinking ?? 'off');
       formValue(form, 'proactiveGroups', values.proactive.excludedGroupIds.join('\n'));
       for (const name of ['activeSeconds', 'idleSeconds', 'idleMessages', 'historyMessages', 'maxRepliesPerMinute']) formValue(form, name, values.proactive[name]);
       for (const control of form.elements) control.disabled = values.supported === false;
@@ -350,7 +356,7 @@ function fillSettings(data, sections = ['model', 'qq', 'trigger']) {
       continue;
     }
     formValue(form, 'secret', '');
-    $(`${section}-secret-state`).textContent = values.secretConfigured ? '已配置 · 留空保留' : '未配置';
+    $(`${section}-secret-state`).textContent = values.secretConfigured ? '已配置' : '未配置';
     formMessage(section, '');
   }
   syncThinkingFields();
@@ -382,12 +388,13 @@ for (const section of ['model', 'qq', 'trigger']) {
         maxOutputTokens: Number(control('maxOutputTokens')), timeoutMs: Number(control('timeoutSeconds')) * 1000, retries: Number(control('retries')) };
       for (const name of ['temperature', 'topP']) if (control(name) !== '') value[name] = Number(control(name));
       if (control('reasoningEffort')) value.reasoningEffort = control('reasoningEffort');
+      if (control('imageInspectThinking')) value.imageInspectThinking = control('imageInspectThinking');
       if (lines(control('stop')).length) value.stop = lines(control('stop'));
     } else if (section === 'qq') value = { appId: control('appId').trim(), environment: control('environment'), groupMessages: control('groupMessages'),
       connectTimeoutMs: Number(control('connectTimeoutSeconds')) * 1000, groupIds: lines(control('groupIds')) };
     else value = { privateReply: form.elements.namedItem('privateReply').checked, groupMention: form.elements.namedItem('groupMention').checked,
       groupKeywords: form.elements.namedItem('groupKeywords').checked, words: [...new Set(lines(control('words')))],
-      proactive: { enabled: form.elements.namedItem('proactiveEnabled').checked, excludedGroupIds: [...new Set(lines(control('proactiveGroups')))],
+      proactive: { enabled: form.elements.namedItem('proactiveEnabled').checked, thinking: control('proactiveThinking'), excludedGroupIds: [...new Set(lines(control('proactiveGroups')))],
         ...Object.fromEntries(['activeSeconds', 'idleSeconds', 'idleMessages', 'historyMessages', 'maxRepliesPerMinute'].map(name => [name, Number(control(name))])) } };
     const button = form.querySelector('button[type="submit"]'); button.disabled = true;
     try {
@@ -925,6 +932,23 @@ let conversationItems = [], currentConversation, conversationNext, conversationR
 let timelineLoading;
 let chatLoading = false, conversationFilterVersion = 0, timelineVersion = 0, namingConversation;
 function conversationLabel(item) { return item.alias || (item.scope === 'group' && item.name === `群聊 ${item.recipient}` ? `群聊 · ${item.recipient.slice(0, 12)}` : item.name); }
+// Display known QQ inline tokens without changing the stored text or prompt.
+const qqInlineToken = /<@!?([A-Za-z0-9_-]{1,128})>|<faceType=\d+,faceId="(\d+)"(?:,ext="[^"<>\r\n]{0,8192}")?>/g;
+function readablePreview(text) {
+  return (text ?? '').replace(qqInlineToken, (_, user, face) => face !== undefined ? '[表情]' : user === 'all' ? '@全体成员' : '@用户');
+}
+function appendMessageText(root, text, item) {
+  let offset = 0;
+  for (const match of (text ?? '').matchAll(qqInlineToken)) {
+    root.append(document.createTextNode(text.slice(offset, match.index)));
+    const mention = item?.segments?.find(part => part.type === 'mention' && part.userId === match[1]);
+    const label = match[2] !== undefined ? '[表情]' : match[1] === 'all' ? '@全体成员' : `@${mention?.self ? '小狼' : mention?.name ?? '用户'}`;
+    const token = element('span', match[2] !== undefined ? 'message-face' : 'message-mention', label);
+    token.title = match[2] !== undefined ? `表情 ${match[2]}` : `用户 ID：${match[1]}`;
+    root.append(token); offset = match.index + match[0].length;
+  }
+  root.append(document.createTextNode((text ?? '').slice(offset)));
+}
 function setConversationHeading(item) {
   $('conversation-title').textContent = conversationLabel(item);
   $('conversation-subtitle').textContent = `${item.scope === 'group' ? '群聊' : '私聊'} · ${item.messages} 条消息`; $('conversation-title').title = item.recipient;
@@ -971,7 +995,7 @@ function renderConversations() {
   $('conversation-list').replaceChildren(...conversationItems.map(item => {
     const button = element('button', `conversation-item${item.id === currentConversation?.id ? ' selected' : ''}`); button.type = 'button';
     if (item.id === currentConversation?.id) button.setAttribute('aria-current', 'true');
-    button.append(element('small', 'muted', item.scope === 'group' ? '群聊' : '私聊'), element('strong', '', conversationLabel(item)), element('span', 'conversation-preview', item.preview || '（非文字消息）'));
+    button.append(element('small', 'muted', item.scope === 'group' ? '群聊' : '私聊'), element('strong', '', conversationLabel(item)), element('span', 'conversation-preview', readablePreview(item.preview) || '（非文字消息）'));
     button.addEventListener('click', () => { selectConversation(item).catch(() => { $('conversation-message').textContent = '读取会话失败，请重试。'; }); }); return button;
   }));
   if (!conversationItems.length) $('conversation-list').append(element('p', 'empty', '暂无匹配会话'));
@@ -1021,8 +1045,11 @@ function externalLink(label, url) {
 function renderMessageSegments(segments, root, item, counter = { image: 0 }, depth = 0) {
   if (depth > 5) return;
   for (const part of segments ?? []) {
-    if (part.type === 'text') root.append(document.createTextNode(part.text));
-    else if (part.type === 'mention') root.append(element('span', 'message-mention', part.all ? '@全体成员' : `@${part.self ? '小狼' : part.name ?? part.userId}`));
+    if (part.type === 'text') appendMessageText(root, part.text, item);
+    else if (part.type === 'mention') {
+      const mention = element('span', 'message-mention', part.all ? '@全体成员' : `@${part.self ? '小狼' : part.name ?? '用户'}`);
+      mention.title = `用户 ID：${part.userId}`; root.append(mention);
+    }
     else if (part.type === 'image') {
       counter.image++;
       const image = item.images?.find(image => image.imageId === `img_${item.seq}_${counter.image}`);
@@ -1101,7 +1128,7 @@ async function openMessageProcessing(conversation, seq) {
     if (detail.logs && (!detail.logs.persistent || detail.logs.degraded)) process.append(element('p', 'muted', '当前日志未完整持久化'));
     root.append(process);
     const platform = element('details', 'message-process-records'); platform.append(element('summary', '', '消息与平台信息'));
-    platform.append(element('pre', 'message-metadata', JSON.stringify({ seq: message.seq, sender: message.sender, messageId: message.id, ...message.metadata,
+    platform.append(element('pre', 'message-metadata', JSON.stringify({ seq: message.seq, sender: message.sender, messageId: message.id, text: message.text, segments: message.segments, ...message.metadata,
       platform: detail.platform ? { connection: detail.platform.connection, present: detail.platform.present ?? '未知', push: detail.platform.push ?? '未知', receive: detail.platform.receive ?? '未知', role: detail.platform.role ?? '未知' } : '暂不可用' }, null, 2)));
     root.append(platform);
     const actions = element('div', 'form-actions message-process-actions');
@@ -1261,13 +1288,15 @@ function money(value, currency = 'CNY') {
   return symbol + amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(amount) < 1 ? 4 : 2 });
 }
 function cacheRate(row) { return row.cacheInput > 0 ? `${(row.cacheHit / row.cacheInput * 100).toFixed(1)}%` : '—'; }
+const usageRequestHeadings = ['时间', '功能 / 模型', '状态', '预估花费', 'Token', '耗时'];
 function usageTable(headings, rows) {
   const table = element('table', 'usage-table'), head = element('thead'), tr = element('tr'), body = element('tbody');
-  for (const heading of headings) tr.append(element('th', '', heading));
+  table.setAttribute('role', 'table'); head.setAttribute('role', 'rowgroup'); body.setAttribute('role', 'rowgroup'); tr.setAttribute('role', 'row');
+  for (const heading of headings) { const cell = element('th', '', heading); cell.scope = 'col'; tr.append(cell); }
   head.append(tr); table.append(head, body);
   for (const values of rows) {
-    const row = element('tr');
-    for (const value of values) { const cell = element('td'); cell.append(value instanceof Node ? value : document.createTextNode(String(value))); row.append(cell); }
+    const row = element('tr'); row.setAttribute('role', 'row');
+    for (const [index, value] of values.entries()) { const cell = element('td'); cell.setAttribute('role', 'cell'); cell.dataset.label = headings[index] ?? ''; cell.append(value instanceof Node ? value : document.createTextNode(String(value))); row.append(cell); }
     body.append(row);
   }
   if (!rows.length) { const row = element('tr'), cell = element('td', 'empty', '暂无调用记录'); cell.colSpan = headings.length; row.append(cell); body.append(row); }
@@ -1337,6 +1366,7 @@ function renderUsageTrend() {
   }
   const key = usageTrend === 'cost' ? 'estimatedCost' : 'total', maximum = Math.max(0.000001, ...days.map(row => Number(row[key]) || 0));
   const chart = element('div', 'usage-chart'); chart.style.setProperty('--usage-days', days.length);
+  chart.classList.toggle('usage-chart-single', days.length === 1);
   function selectDay(row) {
     $('usage-day-detail').textContent = `${row.day} · ${money(row.estimatedCost)} · ${numberText(row.total)} Token · ${row.calls} 次${row.unpriced ? ` · ${row.unpriced} 次未估价` : ''}`;
     for (const node of chart.children) node.classList.toggle('selected', node.dataset.day === row.day);
@@ -1413,13 +1443,13 @@ async function refreshUsage(reset = true, more = false) {
       const body = container.querySelector('tbody'), existing = new Set([...body.children].map(row => row.dataset.usageId));
       const added = page.items.filter(row => !existing.has(String(row.id)));
       if (added.length) {
-        const extra = usageTable([], added.map(usageRecord));
+        const extra = usageTable(usageRequestHeadings, added.map(usageRecord));
         [...extra.querySelector('tbody').children].forEach((row, index) => { row.dataset.usageId = added[index].id; body.append(row); });
       }
       usageNext = page.next;
     } else if (reset || !container.querySelector('tbody') || !container.dataset.expanded) {
       const open = new Set([...container.querySelectorAll('tr[data-usage-id]')].filter(row => row.querySelector('details')?.open).map(row => row.dataset.usageId));
-      container.replaceChildren(usageTable(['时间', '功能 / 模型', '状态', '预估花费', 'Token', '耗时'], page.items.map(usageRecord)));
+      container.replaceChildren(usageTable(usageRequestHeadings, page.items.map(usageRecord)));
       [...container.querySelector('tbody').children].forEach((row, index) => { if (page.items[index]) { row.dataset.usageId = page.items[index].id; const detail = row.querySelector('details'); if (detail) detail.open = open.has(row.dataset.usageId) || (usageIssue && usageRevealIssue && index === 0); } });
       container.dataset.expanded = ''; usageNext = page.next;
     }
