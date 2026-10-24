@@ -67,7 +67,10 @@ async function loadPanel() {
   try {
     const registration = await get('/api/panel'); registeredPages = registration.pages; detailDeclarations = registration.details;
     $('plugin-navigation').replaceChildren(...registeredPages.map(page => {
-      const button = element('button', 'nav'), mark = element('span', 'nav-page-mark'); mark.setAttribute('aria-hidden', 'true');
+      const button = element('button', 'nav'), mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      for (const [name, value] of Object.entries({ viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.65', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) mark.setAttribute(name, value);
+      const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      shape.setAttribute('d', 'M5 3.5h14v17H5zM9 8h6M9 12h6M9 16h3'); mark.append(shape);
       button.type = 'button'; button.dataset.view = page.id; button.append(mark, document.createTextNode(page.title));
       button.addEventListener('click', () => showView(page.id)); return button;
     }));
@@ -295,6 +298,8 @@ async function poll() {
 }
 
 const settingsErrors = {
+  model_output_truncated: '生成达到上限，结果未保存。', model_timeout: '模型请求超时。', turn_timeout: '本轮处理超时。', model_network: '模型连接异常。',
+  model_empty_response: '模型未返回有效内容。', model_invalid_json: '模型返回格式异常。', model_http_429: '模型请求过于频繁。', cancelled: '处理已中断。',
   data_busy: '小狼正在处理消息或发送提醒，请稍后再删。', message_not_found: '这条消息已经不存在，请刷新。', invalid_delete_request: '删除请求无效，请刷新后重试。',
   conversation_conflict: '会话备注已被修改，请关闭窗口重新编辑。', invalid_conversation_request: '备注最多 80 字，不能包含换行。', conversation_not_found: '会话已不存在，请刷新列表。',
   persona_rate_limited: '已达到学习冷却时间或每日上限。', persona_not_enough_messages: '本批用户消息不足，继续聊天后再学习。', persona_catalog_full: '表达习惯已达上限，后续只更新已有习惯。', persona_busy: '正在学习，请稍后刷新。', invalid_persona_result: '本次学习结果未通过检查，没有修改已有习惯。',
@@ -310,6 +315,18 @@ const settingsErrors = {
   plugin_required: '该插件没有可保存的启停配置。', plugin_not_configurable: '插件尚未声明可编辑的配置。', invalid_plugin_config: '插件配置不符合声明的格式，请检查。', plugin_not_found: '插件不存在，请刷新列表。',
   settings_write_failed: '配置未保存成功，请检查数据目录权限。', invalid_settings_request: '配置格式不正确，请重新读取后重试。',
 };
+function statusError(id, codes) {
+  const status = $(id), errors = [...new Set(codes.filter(Boolean))];
+  let details = $(id + '-error');
+  if (!details) {
+    details = element('details', 'status-error technical-details'); details.id = id + '-error';
+    details.append(element('summary', '', '技术信息'), element('code'));
+    status.after(details);
+  }
+  details.hidden = !errors.length;
+  const text = errors.join('\n'); if (details.lastElementChild.textContent !== text) details.lastElementChild.textContent = text;
+  if (errors.length) status.append(element('span', 'status-problem', ' · ' + errors.map(code => settingsErrors[code] ?? '处理异常').join(' · ')));
+}
 async function settingsRequest(path, body) {
   const response = await fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(7000),
     ...(body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Xiaolang-Token': settings.writeToken }, body: JSON.stringify(body) }) });
@@ -646,8 +663,9 @@ async function refreshMemory() {
     if (memoryBefore) params.set('before', memoryBefore);
     const data = await get(`/api/memory?${params}`), state = data.status;
     memoryNext = data.next; $('memory-older').disabled = !data.next;
-    const vector = state.vectorState === 'ready' ? '混合检索可用' : state.vectorState === 'missing_key' ? '未配置百炼密钥 · 当前仅关键词检索' : `向量异常 · 当前使用关键词检索（${state.vectorError}）`;
-    $('memory-status').textContent = `${state.enabled ? '已启用' : '已停用'} · ${state.total} 条记忆 · ${state.indexed} 已索引 · ${state.summaries} 份摘要${state.vectorState === 'ready' ? '' : ` · ${vector}`}${state.processing ? ' · 正在整理聊天' : ''}${state.extractionError ? ` · 整理异常：${state.extractionError}` : ''}`;
+    const vector = state.vectorState === 'ready' ? '混合检索可用' : state.vectorState === 'missing_key' ? '未配置百炼密钥 · 当前仅关键词检索' : '当前使用关键词检索';
+    $('memory-status').textContent = `${state.enabled ? '已启用' : '已停用'} · ${state.total} 条记忆 · ${state.indexed} 已索引 · ${state.summaries} 份摘要${state.vectorState === 'ready' ? '' : ` · ${vector}`}${state.processing ? ' · 正在整理聊天' : ''}`;
+    statusError('memory-status', [state.extractionError, state.vectorState === 'error' ? state.vectorError : null]);
     $('memory-list').replaceChildren(...data.items.map(item => {
       const card = element('button', 'memory-card'); card.type = 'button';
       card.append(element('span', 'badge neutral', item.kind === 'profile' ? '人物资料' : '经历与计划'), element('p', '', item.content), element('small', 'muted', `${item.pinned ? '已置顶 · ' : ''}重要度 ${item.importance} · ${time(item.updated, true)} · ${item.sources.length} 条来源`));
@@ -884,7 +902,8 @@ let editingStyle;
 async function refreshPersona() {
   try {
     const data = await get('/api/persona'), state = data.status;
-    $('persona-status').textContent = `${state.enabled ? '学习已开启' : '学习已关闭'} · ${state.active}/${state.total} 条启用 · 今日 ${state.dailyCalls}/${state.maxDailyCalls} 次${state.processing ? ' · 正在学习' : ''}${state.error ? ` · ${settingsErrors[state.error] ?? state.error}` : ''}`;
+    $('persona-status').textContent = `${state.enabled ? '学习已开启' : '学习已关闭'} · ${state.active}/${state.total} 条启用 · 今日 ${state.dailyCalls}/${state.maxDailyCalls} 次${state.processing ? ' · 正在学习' : ''}`;
+    statusError('persona-status', [state.error]);
     $('persona-list').replaceChildren(...data.items.map(item => {
       const card = element('button', 'memory-card'); card.type = 'button';
       card.append(element('strong', '', item.scene), element('p', '', item.rule), element('small', 'muted', `${item.enabled ? '启用' : '停用'} · 版本 ${item.version} · ${item.examples.length} 组真人示例`));
