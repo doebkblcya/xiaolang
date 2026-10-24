@@ -193,7 +193,10 @@ export const chatPlugin: Plugin.Object<Config> = {
       const settle = async (error: unknown) => {
         const failure = reason === 'proactive' && code(error) === 'cancelled' && !controller.signal.aborted && ctx.trigger.current?.(message) === false ? 'proactive_superseded' : code(error);
         const state = error instanceof Failure && error.unknownOutcome ? 'unknown' : failure === 'queue_expired' ? 'expired' : ['cancelled', 'proactive_superseded'].includes(failure) ? 'cancelled' : 'failed';
-        try { for (const target of turns) if (!completed.has(target.id)) ctx.store.state(target.id, state === 'unknown' && !attempted.has(target.id) ? 'cancelled' : state, state === 'unknown' && !attempted.has(target.id) ? 'proactive_batch_interrupted' : failure); }
+        try { for (const target of turns) if (!completed.has(target.id)) {
+          const unsent = state === 'unknown' && target.id !== turn.id && !attempted.has(target.id);
+          ctx.store.state(target.id, unsent ? 'cancelled' : state, unsent ? 'proactive_batch_interrupted' : failure);
+        } }
         catch { log(ctx, 'state_persistence_failed', turn.id); }
         if (failure === 'proactive_superseded') for (const target of turns) if (!completed.has(target.id)) log(ctx, 'proactive_skipped', target.id, 'trigger', { ...messageLog(target.message), reason: '明确召唤已覆盖或目标消息过时', batchId: plan?.id });
         log(ctx, failure, turn.id, 'error', { errorCode: failure, durationMs: elapsed(queuedAt), state, level: 'error' });
