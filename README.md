@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <strong>简体中文</strong> · <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <strong>会聊天，会记事，也会适时接话的伙伴。</strong>
 </p>
 <p align="center">
