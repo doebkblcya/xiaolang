@@ -1,14 +1,16 @@
 # QQ 官方接口能力核对与修复清单
 
-核对日期：2026-10-23（北京时间）。项目基线：`6f0c2fd`；当前使用 `@tencent-connect/qqbot-nodejs 1.0.5`。
+接口核对日期：2026-10-23（北京时间）；实现状态复核：2026-10-24。项目基线：`6f0c2fd`；当前使用 `@tencent-connect/qqbot-nodejs 1.0.5`。
 
-本次对照当前 QQ 官方网站能力目录、167 个接口／事件／协议文档页面、已安装 SDK 源码和小狼实现。未发送 QQ 消息、调用真实模型或执行群管理操作，未核验当前 AppID 的全部权限。核对时此前暂停的本地改动尚未提交或部署；当前实施结果见第 7 节。
+以下保留 2026-10-23 核对时的差距与修复依据，R01～R15 已实现；这不是当前仍缺少 15 项能力的待办清单。最新业务与部署状态见[实现进度](../实现进度.md)。
+
+当时对照 QQ 官方网站能力目录、167 个接口／事件／协议文档页面、已安装 SDK 源码和小狼实现。未发送 QQ 消息、调用真实模型或执行群管理操作，未核验当前 AppID 的全部权限。核对时此前暂停的本地改动尚未提交或部署；当前实施结果见第 7 节。
 
 结论：现有群聊／单聊的文字收发、图片理解、发送回执和持久化已经工作，但消息内容和平台元数据没有完整映射。下面列出 **12 项基础接入修复／补充、3 项聊天页面补充**；官方其他能力作为独立扩展目录，不自动纳入本轮开发。
 
 逐项参考：[官方接口核对索引](QQ官方接口核对索引.md)，包含 47 个生成 HTTP 接口入口、22 个生成事件入口以及频道／协议参考页面。这些是目录入口数量，不是机器人已获授权的能力数量。
 
-## 1. 官方能力全景与当前覆盖
+## 1. 官方能力全景与核对时覆盖（历史基线）
 
 | 能力领域 | 官方提供什么 | 小狼现状 | 本轮处理建议 |
 | --- | --- | --- | --- |
@@ -48,7 +50,7 @@
 
 消息字段依据：[单聊事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_message_create.html)、[群 @ 事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html)、[群全量事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)、[结构化卡片](https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/type/ark.html)。
 
-代码依据：[QQ 适配器](/Users/doebk/Code/xiaolang/src/adapters/qq-official.ts:15)、[内部归一化及模型文本](/Users/doebk/Code/xiaolang/src/messages.ts:25)、[存储去重](/Users/doebk/Code/xiaolang/src/store.ts:79)、[SDK 引用中间件](https://github.com/tencent-connect/qqbot-nodejs/blob/main/src/middleware/quote-ref.ts)。
+代码依据：[QQ 适配器](../../src/adapters/qq-official.ts#L15)、[内部归一化及模型文本](../../src/messages.ts#L25)、[存储去重](../../src/store.ts#L79)、[SDK 引用中间件](https://github.com/tencent-connect/qqbot-nodejs/blob/main/src/middleware/quote-ref.ts)。
 
 R07 不意味着全量保存原始事件。`message_scene.ext` 还可能带 `auth_token`，不应进入日志、模型输入或面板；身份字段缺失时保留未知，不把不同 OpenID 自动合并为同一人，也不把群角色自动等同小狼管理员。
 
@@ -66,7 +68,7 @@ R07 不意味着全量保存原始事件。`message_scene.ext` 还可能带 `aut
 
 状态依据：[机器人群内状态](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_bot_state.get.html)、[单聊主动消息关闭](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/c2c_msg_reject.html)、[群通知关闭](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_msg_reject.html)。
 
-代码依据：[流式发送参数](/Users/doebk/Code/xiaolang/src/adapters/qq-official.ts:144)、[普通与主动发送](/Users/doebk/Code/xiaolang/src/adapters/qq-official.ts:164)、[发送分段策略](/Users/doebk/Code/xiaolang/src/output.ts:35)、[SDK HTTP 处理](/Users/doebk/Code/xiaolang/node_modules/@tencent-connect/qqbot-nodejs/src/protocol/api/api-client.ts:113)。
+代码依据：[流式发送参数](../../src/adapters/qq-official.ts#L144)、[普通与主动发送](../../src/adapters/qq-official.ts#L164)、[发送分段策略](../../src/output.ts#L35)、[SDK HTTP 处理](../../node_modules/@tencent-connect/qqbot-nodejs/src/protocol/api/api-client.ts#L113)。
 
 ## 3. 聊天记录页：补齐后台可观察信息
 
@@ -78,7 +80,7 @@ R07 不意味着全量保存原始事件。`message_scene.ext` 还可能带 `aut
 
 R13、R14 是小狼本身的展示与关联缺口，不是 QQ 官方新增能力。R15 已有历史分页接口，现状不是数据库只保存 50 条。内容搜索本轮不列为必要项。
 
-代码依据：[聊天页](/Users/doebk/Code/xiaolang/examples/plugins/panel/app.js:756)、[插话批次](/Users/doebk/Code/xiaolang/src/proactive.ts:163)、[图片理解与描述缓存](/Users/doebk/Code/xiaolang/src/chat-images.ts:42)。
+代码依据：[聊天页](../../examples/plugins/panel/app.js#L756)、[插话批次](../../src/proactive.ts#L163)、[图片理解与描述缓存](../../src/chat-images.ts#L42)。
 
 ## 4. 官方已有、当前未接，但本轮不强制添加
 
@@ -119,8 +121,8 @@ QQ 适配插件负责平台字段、标识和协议；宿主消息契约保留�
 
 上述内容记录核对阶段的待办和边界，当前实施结果见第 7 节。
 
-## 7. 本轮实现状态（2026-10-23）
+## 7. 本轮实现状态（2026-10-24 复核）
 
-R01～R15 已实现并部署 NAS，待用户实际使用验收。宿主镜像为 `5eaeceb`，面板包含 `96d30d4` 的轮次日志补充；构建与发布通过，配置及既有聊天记录保持不变。消息归一化沿用 SDK 已解析的索引，完整嵌套结构从 SDK 保留的原始事件读取；没有启用另一份短期 LRU 取代现有持久消息库。R07 使用平台索引辅助去重，只有同一消息 ID 明确对应不同索引时才派生新键，保留旧数据兼容。
+R01～R15 已实现并部署 NAS，待用户实际使用验收。首次部署宿主镜像为 `5eaeceb`，面板当时包含 `96d30d4` 的轮次日志补充；此处是本轮首次交付记录，最新镜像与外挂版本以[实现进度](../实现进度.md)为准；构建与发布通过，配置及既有聊天记录保持不变。消息归一化沿用 SDK 已解析的索引，完整嵌套结构从 SDK 保留的原始事件读取；没有启用另一份短期 LRU 取代现有持久消息库。R07 使用平台索引辅助去重，只有同一消息 ID 明确对应不同索引时才派生新键，保留旧数据兼容。
 
 R08 通过固定版本 SDK 的构建补丁补齐业务响应和追踪信息；R10 的私聊时效继续保守为 5 分钟，没有声称已实测 60 分钟。R11 已接关系事件及可选缓存查询，无权限仍显示未知。本轮不包含第 4 节的可选扩展，旧消息与未知平台字段的限制仍按第 5 节执行。

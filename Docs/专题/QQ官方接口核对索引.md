@@ -1,8 +1,10 @@
 # QQ 官方接口核对索引
 
-核对日期：2026-10-23。用于对应[能力核对与修复清单](QQ官方接口能力核对与修复清单.md)。
+接口核对日期：2026-10-23；实现状态整理：2026-10-24。用于对应[能力核对与修复清单](QQ官方接口能力核对与修复清单.md)。
 
-本索引列出当前官方导航中已读取的生成接口／事件入口，以及频道扩展文档。仅表示文档与代码静态核对，不表示用当前 AppID 实际调用成功；同类旧版／新版入口可能并存，不能把页面数量当能力数量。
+R01～R15 已实现。表中 R 编号对应的接入应与[修复清单第 7 节](QQ官方接口能力核对与修复清单.md#7-本轮实现状态2026-10-24-复核)一起阅读；其他“未接”仍表示可选扩展，不表示已取得账号权限。
+
+本索引列出核对时官方导航中已读取的生成接口／事件入口，以及频道扩展文档。仅表示文档与代码静态核对，不表示用当前 AppID 实际调用成功；同类旧版／新版入口可能并存，不能把页面数量当能力数量。
 
 ## HTTP 接口
 
@@ -23,7 +25,7 @@
 | [群聊富媒体预上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_id_upload_prepare.post.html) | 未接；可选扩展 |
 | [入群申请审批](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_approval_join_request_member_openid.post.html) | 未接；可选扩展 |
 | [群成员批量移除](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_batch_remove_members.post.html) | 未接；可选扩展 |
-| [获取机器人群内状态](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_bot_state.get.html) | 未接；R11，受白名单权限限制 |
+| [获取机器人群内状态](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_bot_state.get.html) | 已接可选缓存查询；R11，仍受白名单权限限制 |
 | [群聊富媒体上传](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_files.post.html) | 未接；可选扩展 |
 | [获取群基本信息](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_info.get.html) | 已接群名缓存；其他字段未提供 |
 | [入群申请列表拉取](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_groups_group_openid_join_request_list.get.html) | 未接；可选扩展 |
