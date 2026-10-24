@@ -13,11 +13,17 @@
   <img src="assets/readme/feature-badges.en.svg" alt="Cordis plugins · Hybrid memory · Self-learning · Proactive conversation" width="658">
 </p>
 
+<p align="center">
+  <a href="#features">Features</a> · <a href="#plugins">Plugins</a> · <a href="#preview">Preview</a> · <a href="#quick-start">Quick start</a>
+</p>
+
 ## 🐾 Meet Xiaolang
 
 Xiaolang is a calico cat girl with a cool demeanor and a stubborn streak—and a self-hosted conversational companion whose capabilities you can mix and match.
 
 She follows the flow of a conversation, remembers people and moments worth keeping, and learns more natural ways to express herself from real exchanges. While listening, she can also decide when a topic is worth joining.
+
+<a name="features"></a>
 
 ## ✨ More than questions and answers
 
@@ -25,53 +31,64 @@ She follows the flow of a conversation, remembers people and moments worth keepi
   <tr>
     <td width="50%" valign="top">
       <h3>🧠 Remember what matters</h3>
-      <p>Recent messages, conversation summaries, and long-term memories keep conversations connected. Keyword and semantic retrieval bring relevant people and events back into view.</p>
-      <p><sub>Hybrid keyword and vector search · Traceable sources · Editable and deletable</sub></p>
+      <p>Connect conversations through recent messages, summaries, and long-term memory. Find relevant people and events with keyword and vector search.</p>
     </td>
     <td width="50%" valign="top">
-      <h3>🌱 Learn how to express herself</h3>
-      <p>Learn context, tone, and timing from real conversations, gradually developing more natural expression habits.</p>
-      <p><sub>Stable core persona · Separate learning process · Adjustable and reversible</sub></p>
+      <h3>🌱 Learn to express herself</h3>
+      <p>Learn tone and timing from real conversations. Her core persona stays stable and remains yours to edit.</p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3>💬 Join in at the right moment</h3>
+      <h3>💬 Know when to join in</h3>
       <p>Respond to direct calls, or listen to shared conversations and decide whether to participate—and which messages to answer.</p>
-      <p><sub>Individual and batch decisions · Multiple reply targets · Adjustable pacing</sub></p>
     </td>
     <td width="50%" valign="top">
       <h3>🧰 Act when needed</h3>
       <p>Understand images, search, calculate, and schedule reminders. Extend these capabilities through MCP, Skills, and your own plugins.</p>
-      <p><sub>Unified tool calls · Permission controls · Inspectable results</sub></p>
     </td>
   </tr>
 </table>
 
+<a name="plugins"></a>
+
 ## 🧩 Build your Xiaolang with plugins
 
-**Plugins are how Xiaolang is organized.** Built with TypeScript and Cordis, the project connects adapters, models, triggers, memory, persona, tools, and the management panel through services. Cordis manages their dependencies and lifecycles.
+**Built with TypeScript and Cordis.** Adapters, models, memory, learning, tools, and the panel work together as plugins. Cordis manages their services, dependencies, and lifecycles.
 
 <p align="center">
-  <img src="assets/readme/plugin-architecture.en.svg" alt="Replaceable chat adapters and models, with memory, persona, tools, and the panel connected through Cordis services" width="100%">
+  <img src="assets/readme/plugin-architecture.en.svg" alt="Xiaolang connects replaceable adapters and models with memory, learning, tools, and the panel through Cordis" width="100%">
 </p>
 
-The project maintains the main feature plugins and provides a default combination including the official QQ bot adapter and DeepSeek models. Use these as provided, or implement and maintain replacements against the same service contracts:
+- **Swap adapters**: choose your chat platform and reuse the conversation and message processing services.
+- **Swap models**: connect your preferred model service through a model plugin.
+- **Combine capabilities**: enable, disable, or extend plugins as needed. Disabling preserves their data.
+- **Let plugins shape the interface**: plugins provide settings, homepage modules, and dedicated management pages.
 
-- **Swap adapters**: let an adapter handle platform connections and message delivery while reusing the conversation orchestration.
-- **Swap models**: let a model plugin handle the provider and credentials, and choose the service that suits you.
-- **Combine capabilities**: enable, disable, or extend memory, learning, tools, and reminders as needed. Disabling a plugin preserves its data.
-- **Let plugins shape the interface**: plugins can supply settings, homepage modules, and dedicated management pages, all presented by the panel.
+The project maintains the main feature plugins. The official QQ bot adapter and DeepSeek are the default combination; you can implement replacements against the same service contracts.
 
-The host and external plugins are delivered separately. Updating an external plugin compatible with the current host interface only requires replacing the plugin and restarting. New adapters and capabilities can reuse the existing scheduling, storage, logging, usage tracking, and message delivery services.
+<a name="preview"></a>
 
-## 🎛️ See what happens behind the scenes
+## 🎛️ Interface preview
 
-A dedicated management panel brings together chat history, memory, learning, model usage, process logs, and plugin settings:
+Trace quotes, image descriptions, and reply states in chat history. Track tokens, estimated costs, and cache hits on the model usage page.
 
-| Understand conversations | Track consumption | Manage each capability |
-| :--- | :--- | :--- |
-| Follow quotes, image descriptions, reply states, and processing records from each message. | View token counts, estimated costs, cache hits, and account balances where supported. | Configure the plugin responsible; complex features can provide their own full page. |
+<p align="center">
+  <img src="assets/readme/panel-chat.jpg" alt="Chat history: conversation list, quoted messages, and reply states, shown with sample data" width="100%">
+</p>
+
+<details>
+<summary>View model usage</summary>
+
+<p align="center">
+  <img src="assets/readme/panel-usage.jpg" alt="Model usage: balance, estimated costs, tokens, cache hits, and cost breakdown, shown with sample data" width="100%">
+</p>
+
+</details>
+
+<sub>Screenshots use sample data. The panel is currently in Chinese.</sub>
+
+<a name="quick-start"></a>
 
 ## 🚀 Get started
 
@@ -153,6 +170,6 @@ After deployment, set her persona in the panel and enable proactive conversation
 
 <p align="center"><strong>Shape her everyday life, your way.</strong></p>
 
-Prefer a quieter companion? Disable proactive conversation. Want her to participate more? Adjust the decision pacing. Her core persona, model reasoning settings, tool permissions, and reminders remain under your control.
+Adjust how often she joins in, set her persona, and choose model reasoning settings, tool permissions, and reminders.
 
 Data stays in your deployment environment; conversations and background processing call the model services you configure. Xiaolang is evolving, and her capabilities can grow with your plugin choices.
