@@ -131,8 +131,9 @@ export class ProactiveTrigger {
   }
   private input(state: GroupState, batch: Message[], candidates: { seq: number; text: string }[]): ModelMessage[] {
     const last = batch.at(-1)!, ids = new Set(batch.map(message => message.seq));
-    const body = { now: new Date().toISOString(), group: last.group, botId: last.account,
-      mode: state.fast.has(batch[0]!.seq) ? 'active' : 'idle', pending: [...ids], candidates, recent: [] as { seq: number; text: string }[] };
+    // Stable identity and chronological reference precede each batch's changing candidates and clock.
+    const body = { botId: last.account, group: last.group, recent: [] as { seq: number; text: string }[],
+      candidates, pending: [...ids], mode: state.fast.has(batch[0]!.seq) ? 'active' : 'idle', now: new Date().toISOString() };
     if (textTokens(JSON.stringify(body)) > 6000) throw new Failure('proactive_candidate_too_long');
     for (const row of this.runtime.history(last, this.settings.historyMessages).reverse()) {
       if (row.seq > last.seq || ids.has(row.seq)) continue;

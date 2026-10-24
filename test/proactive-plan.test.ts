@@ -37,6 +37,9 @@ test('a batch selects non-last and multiple targets, generates once and sends to
     if (messages[0]?.content?.startsWith('你负责判断QQ群聊天')) {
       judgments++;
       const input = JSON.parse(messages[1]!.content!);
+      const body = messages[1]!.content!;
+      assert.ok(body.indexOf('"recent"') < body.indexOf('"candidates"'));
+      assert.ok(body.indexOf('"candidates"') < body.indexOf('"now"'));
       assert.deepEqual(input.pending, [1, 2, 3]); assert.equal(input.candidates.length, 3);
       assert.ok(input.candidates[0].text.includes('第一件事'));
       assert.ok(!input.recent.some((row: { seq: number }) => input.pending.includes(row.seq)));
