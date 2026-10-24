@@ -27,7 +27,7 @@ export class SqliteStore implements Store {
       CREATE TABLE IF NOT EXISTS chat_sessions (session TEXT PRIMARY KEY,id TEXT NOT NULL UNIQUE,alias TEXT NOT NULL DEFAULT '',version INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS turns (
         id TEXT PRIMARY KEY, message_key TEXT NOT NULL UNIQUE, state TEXT NOT NULL,
-        reason TEXT NOT NULL, code TEXT, draft TEXT, protocol TEXT, updated INTEGER NOT NULL
+        reason TEXT NOT NULL, code TEXT, draft TEXT, protocol TEXT, updated INTEGER NOT NULL, plan TEXT
       );
       CREATE TABLE IF NOT EXISTS sends (
         turn_id TEXT NOT NULL REFERENCES turns(id), part INTEGER NOT NULL,
@@ -49,6 +49,7 @@ export class SqliteStore implements Store {
     if (!this.db.prepare('PRAGMA table_info(chat_sessions)').all().some(column => column.name === 'display_name')) {
       this.db.exec("ALTER TABLE chat_sessions ADD COLUMN display_name TEXT NOT NULL DEFAULT ''");
     }
+    if (!this.db.prepare('PRAGMA table_info(turns)').all().some(column => column.name === 'plan')) this.db.exec('ALTER TABLE turns ADD COLUMN plan TEXT');
     if (!this.db.prepare('PRAGMA table_info(sends)').all().some(column => column.name === 'reference')) this.db.exec('ALTER TABLE sends ADD COLUMN reference TEXT');
     if (!this.db.prepare('PRAGMA table_info(sends)').all().some(column => column.name === 'receipt_data')) this.db.exec('ALTER TABLE sends ADD COLUMN receipt_data TEXT');
     this.db.exec("CREATE INDEX IF NOT EXISTS messages_platform_index ON messages(session,json_extract(payload,'$.metadata.index')); CREATE INDEX IF NOT EXISTS sends_reference ON sends(reference);");
@@ -124,11 +125,11 @@ export class SqliteStore implements Store {
       return data.protocol;
     });
   }
-  createTurn(message: Message, reason: string): Turn {
-    const id = randomUUID();
-    this.db.prepare('INSERT INTO turns(id,message_key,state,reason,updated) VALUES (?,?,\'queued\',?,?)')
-      .run(id, message.key, reason, Date.now());
-    return { id, message, reason };
+  createTurn(message: Message, reason: string, plan?: Turn['plan']): Turn {
+    const id = plan?.replies[0]?.seq === message.seq ? plan.id : randomUUID();
+    this.db.prepare('INSERT INTO turns(id,message_key,state,reason,updated,plan) VALUES (?,?,\'queued\',?,?,?)')
+      .run(id, message.key, reason, Date.now(), plan ? JSON.stringify(plan) : null);
+    return { id, message, reason, ...(plan ? { plan } : {}) };
   }
   state(id: string, state: TurnState, code?: string): void {
     this.db.prepare('UPDATE turns SET state=?,code=?,updated=? WHERE id=?').run(state, code ?? null, Date.now(), id);
@@ -259,7 +260,7 @@ export class SqliteStore implements Store {
         WHERE session=? AND direction='in' AND json_extract(payload,'$.sender')=?
         AND trim(json_extract(payload,'$.name'))!='' AND json_extract(payload,'$.name')!=json_extract(payload,'$.sender')
         ORDER BY seq DESC LIMIT 1`).get(conversation.session, message.sender)?.name : undefined;
-      return { seq: Number(row.seq), direction: incoming ? 'in' : 'out', time: incoming ? message.time : Number(payload.sentAt ?? row.updated ?? message.time),
+      return { ...(incoming ? { key: message.key } : {}), seq: Number(row.seq), direction: incoming ? 'in' : 'out', time: incoming ? message.time : Number(payload.sentAt ?? row.updated ?? message.time),
         sender: incoming ? message.sender : message.account, name: incoming ? String(knownName ?? message.name) : '小狼',
         text: incoming ? message.text : String(payload.text ?? ''), segments: incoming ? message.segments : [],
         kind: incoming ? 'message' : String(row.key).startsWith('reminder:') ? 'reminder' : 'reply',
@@ -278,14 +279,14 @@ export class SqliteStore implements Store {
     const input = message.text;
     const reply = delivered?.text ?? '';
     const trim = (text: string) => Array.from(text).slice(0, maximum).join('');
-    return { id: String(row.id), seq: Number(row.seq), state: String(row.state), reason: String(row.reason),
+    return { ...(row.plan ? { plan: JSON.parse(String(row.plan)) as Turn['plan'] } : {}), id: String(row.id), seq: Number(row.seq), state: String(row.state), reason: String(row.reason),
       errorCode: row.code === null ? null : String(row.code), received: message.time, updated: Number(row.updated),
       scope: message.group ? 'group' : 'private', sender: message.name, group: message.group,
       input: trim(input), reply: trim(reply), inputTruncated: Array.from(input).length > maximum, replyTruncated: Array.from(reply).length > maximum };
   }
   recent(limit = 25, before?: number, failures = false): ReturnType<HistoryReader['recent']> {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || (before !== undefined && (!Number.isSafeInteger(before) || before < 1))) throw new Failure('invalid_history_query');
-    const rows = this.db.prepare(`SELECT t.id,t.state,t.reason,t.code,t.updated,m.seq,m.payload,o.payload AS delivered
+    const rows = this.db.prepare(`SELECT t.id,t.state,t.reason,t.code,t.updated,t.plan,m.seq,m.payload,o.payload AS delivered
       FROM turns t JOIN messages m ON m.key=t.message_key LEFT JOIN messages o ON o.key='reply:'||t.id
       WHERE (? IS NULL OR m.seq<?) AND (?=0 OR t.state IN ('failed','unknown','expired','cancelled'))
       ORDER BY m.seq DESC LIMIT ?`).all(before ?? null, before ?? null, failures ? 1 : 0, limit + 1);
@@ -293,7 +294,7 @@ export class SqliteStore implements Store {
     return { items, next: rows.length > limit ? items.at(-1)!.seq : null };
   }
   detail(id: string): TurnDetail | undefined {
-    const row = this.db.prepare(`SELECT t.id,t.state,t.reason,t.code,t.updated,m.seq,m.payload,o.payload AS delivered
+    const row = this.db.prepare(`SELECT t.id,t.state,t.reason,t.code,t.updated,t.plan,m.seq,m.payload,o.payload AS delivered
       FROM turns t JOIN messages m ON m.key=t.message_key LEFT JOIN messages o ON o.key='reply:'||t.id WHERE t.id=?`).get(id);
     if (!row) return;
     return { ...this.view(row, 10000),

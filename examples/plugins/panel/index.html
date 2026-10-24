@@ -176,6 +176,7 @@
         <div class="trigger-switches">
           <label class="switch-line"><span><strong>私聊默认回复</strong></span><input name="privateReply" type="checkbox"></label>
           <label class="switch-line"><span><strong>群聊 @ 触发</strong></span><input name="groupMention" type="checkbox"></label>
+          <label class="switch-line"><span><strong>引用回复小狼</strong></span><input name="groupReply" type="checkbox"></label>
           <label class="switch-line"><span><strong>群聊触发词</strong></span><input name="groupKeywords" type="checkbox"></label>
         </div>
         <label class="field">触发词<textarea name="words" rows="5" placeholder="每行一个，例如：小狼"></textarea></label>
@@ -183,7 +184,7 @@
         <label class="switch-line"><span><strong>允许主动参与群聊</strong></span><input name="proactiveEnabled" type="checkbox"></label>
         <label class="field">不主动插话的群（黑名单）<textarea name="proactiveGroups" rows="3" placeholder="每行一个 QQ 官方群 OpenID；留空则所有可接收消息的群都允许主动插话"></textarea></label>
         <div class="form-grid">
-          <label class="field full">插话判断思考档位<select name="proactiveThinking" title="关闭时保持快速判断；开启后思考与判断结果共用 8192 Token，最多等待 30 秒。"><option value="off">关闭思考</option><option value="low">低 · low</option><option value="high">高 · high</option><option value="max">最高 · max</option></select></label>
+          <label class="field full">插话判断思考档位<select name="proactiveThinking" title="关闭时保持快速判断；开启后思考与判断结果共用 8192 Token，最多等待 30 秒；关闭思考时限时 8 秒，输出预算按候选数适度预留。"><option value="off">关闭思考</option><option value="low">低 · low</option><option value="high">高 · high</option><option value="max">最高 · max</option></select></label>
           <label class="field">活跃持续时间（秒）<input name="activeSeconds" type="number" min="10" max="1800" required></label>
           <label class="field">旁观收集时间（秒）<input name="idleSeconds" type="number" min="1" max="60" required></label>
           <label class="field">旁观提前判断条数<input name="idleMessages" type="number" min="1" max="50" required></label>

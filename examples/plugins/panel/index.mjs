@@ -134,7 +134,19 @@ export function createHandler(runtime, configuration, options = {}) {
       }
       if (conversationRoute) {
         if (conversationRoute[2]) return send(405, { error: 'method_not_allowed' });
-        if (conversationRoute[1]) return send(200, await required('history', 'store').timeline(conversationRoute[1], integer(url.searchParams.get('before'), undefined)));
+        if (conversationRoute[1]) {
+          const page = await required('history', 'store').timeline(conversationRoute[1], integer(url.searchParams.get('before'), undefined));
+          try {
+            const decisions = options.logs?.latest?.(page.items.filter(item => item.key).map(item => item.key),
+              ['proactive_observing', 'proactive_judge_started', 'proactive_decided', 'proactive_skipped', 'proactive_judge_failed']) ?? [];
+            const byMessage = new Map(decisions.map(item => [item.entry.messageId, item.entry]));
+            for (const item of page.items) if (byMessage.has(item.key)) {
+              const entry = byMessage.get(item.key);
+              item.decision = { code: entry.code, state: entry.state, targetSeq: entry.targetSeq, batchId: entry.batchId };
+            }
+          } catch { /* Log service remains optional. */ }
+          return send(200, page);
+        }
         return send(200, await required('history', 'store').conversations(url.searchParams.get('q') ?? '', url.searchParams.get('scope') ?? '', integer(url.searchParams.get('before'), undefined)));
       }
       if (personaRoute) {

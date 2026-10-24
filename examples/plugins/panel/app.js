@@ -9,7 +9,7 @@ const words = { connected: '已连接', disconnected: '已断开', starting: '�
 words.connecting = '连接中';
 const reasons = { private: '私聊默认回复', mention: '@机器人', keyword: '命中触发词', no_trigger: '未触发回复', duplicate: '重复消息', own_message: '机器人自身消息', group_not_allowed: '群不在白名单', chat_disabled: '聊天已停用', invalid_message: '格式无效', account_mismatch: '账号不匹配' };
 const viewTitles = { overview: '主页', chats: '聊天记录', logs: '过程日志', usage: '模型用量', 'model-settings': '回复模型', 'qq-settings': 'QQ 接入', memories: '聊天与记忆', persona: '人设与学习', tooling: '工具与行动', reminders: '定时提醒', plugins: '插件' };
-Object.assign(reasons, { proactive: '主动插话', no_trigger: '未命中直接触发条件' });
+Object.assign(reasons, { proactive_superseded: '已被明确召唤覆盖或目标消息过时', quote: '引用回复小狼', proactive: '主动插话', no_trigger: '未命中直接触发条件' });
 const dateFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const timeFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 let logs = [], cursor = 0, busy = false, selected, runStarted;
@@ -243,6 +243,7 @@ async function openDetail(id) {
     const body = $('detail-body'), meta = element('div', 'detail-meta');
     meta.append(badge(detail.state), element('span', '', time(detail.received, true)), element('span', '', reasons[detail.reason] ?? detail.reason));
     body.replaceChildren(meta, element('p', 'mono', `轮次 ${detail.id}`));
+    if (detail.plan) body.append(detailSection('插话目标', detail.plan.replies.map(reply => `消息 ${reply.seq}：${reply.reason}`).join('\n') + `\n上下文截至 ${detail.plan.through}；共用生成轮次 ${detail.plan.id}`));
     if (detail.errorCode) body.append(element('p', 'error-box', `失败原因：${detail.errorCode}。发送结果未知时不会自动重发，请核对 QQ。`));
     body.append(detailSection(`收到消息${detail.inputTruncated ? '（已截断）' : ''}`, detail.input || '（非文字消息）'));
     body.append(detailSection(`已确认回复${detail.replyTruncated ? '（已截断）' : ''}`, detail.reply || '尚无已确认发送的回复', 'reply'));
@@ -251,12 +252,12 @@ async function openDetail(id) {
       for (const send of detail.sends) { const row = element('div', 'send-line'); row.append(element('span', 'muted', send.kind === 'feedback' ? '故障提示 ' : `第 ${send.part} 段 `), badge(send.state), element('p', '', send.text)); if (send.receipt) row.append(element('div', 'mono', `回执 ${send.receipt}`)); section.append(row); }
       body.append(section);
     }
-    try { const recall = await get(`/api/memory-recalls/${encodeURIComponent(id)}`);
+    try { const recall = await get(`/api/memory-recalls/${encodeURIComponent(detail.plan?.id ?? id)}`);
       if (selected === id && (recall.items?.length || recall.summary)) body.append(detailSection('本轮使用的记忆与摘要', [recall.summary ? `摘要：${recall.summary}` : '', ...(recall.items ?? []).map(item => `${item.content}\n记忆 ${item.id} · 来源 ${item.sources.join(', ')}`)].filter(Boolean).join('\n\n')));
     } catch { /* Older server versions may not expose memories. */ }
     if (detail.tools.length) body.append(detailSection('工具调用', detail.tools.map(tool => `${tool.name} · ${words[tool.state] ?? tool.state}`).join('\n')));
     try {
-      const usage = await get(`/api/usage?range=all&turn=${encodeURIComponent(id)}`);
+      const usage = await get(`/api/usage?range=all&turn=${encodeURIComponent(detail.plan?.id ?? id)}`);
       if (selected === id) body.append(detailSection('本轮 API 用量', usage.summary.calls ? [
         `合计 ${numberText(usage.summary.total)} Token · ${usage.summary.calls} 次请求${usage.summary.unknown ? ` · ${usage.summary.unknown} 次用量未知` : ''}`,
         ...usage.byPurpose.map(row => `${usageNames[row.purpose] ?? row.purpose}：输入 ${numberText(row.input)}，输出 ${numberText(row.output)}，合计 ${numberText(row.total)} Token`),
@@ -298,6 +299,7 @@ async function poll() {
 }
 
 const settingsErrors = {
+  proactive_reply_invalid: '多目标回复格式异常，未发送。', proactive_candidate_too_long: '消息超过插话判断预算。',
   model_output_truncated: '生成达到上限，结果未保存。', model_timeout: '模型请求超时。', turn_timeout: '本轮处理超时。', model_network: '模型连接异常。',
   model_empty_response: '模型未返回有效内容。', model_invalid_json: '模型返回格式异常。', model_http_429: '模型请求过于频繁。', cancelled: '处理已中断。',
   data_busy: '小狼正在处理消息或发送提醒，请稍后再删。', message_not_found: '这条消息已经不存在，请刷新。', invalid_delete_request: '删除请求无效，请刷新后重试。',
@@ -361,7 +363,7 @@ function fillSettings(data, sections = ['model', 'qq', 'trigger']) {
       for (const control of form.elements) control.disabled = values.supported === false;
     }
     if (section === 'trigger') {
-      for (const name of ['privateReply', 'groupMention', 'groupKeywords']) form.elements.namedItem(name).checked = values[name];
+      for (const name of ['privateReply', 'groupMention', 'groupReply', 'groupKeywords']) form.elements.namedItem(name).checked = values[name];
       formValue(form, 'words', (values.words ?? []).join('\n'));
       form.elements.namedItem('proactiveEnabled').checked = values.proactive.enabled;
       formValue(form, 'proactiveThinking', values.proactive.thinking ?? 'off');
@@ -409,7 +411,7 @@ for (const section of ['model', 'qq', 'trigger']) {
       if (lines(control('stop')).length) value.stop = lines(control('stop'));
     } else if (section === 'qq') value = { appId: control('appId').trim(), environment: control('environment'), groupMessages: control('groupMessages'),
       connectTimeoutMs: Number(control('connectTimeoutSeconds')) * 1000, groupIds: lines(control('groupIds')) };
-    else value = { privateReply: form.elements.namedItem('privateReply').checked, groupMention: form.elements.namedItem('groupMention').checked,
+    else value = { privateReply: form.elements.namedItem('privateReply').checked, groupMention: form.elements.namedItem('groupMention').checked, groupReply: form.elements.namedItem('groupReply').checked,
       groupKeywords: form.elements.namedItem('groupKeywords').checked, words: [...new Set(lines(control('words')))],
       proactive: { enabled: form.elements.namedItem('proactiveEnabled').checked, thinking: control('proactiveThinking'), excludedGroupIds: [...new Set(lines(control('proactiveGroups')))],
         ...Object.fromEntries(['activeSeconds', 'idleSeconds', 'idleMessages', 'historyMessages', 'maxRepliesPerMinute'].map(name => [name, Number(control(name))])) } };
@@ -1116,6 +1118,14 @@ async function locateMessage(seq) {
   }
   if (node) { node.scrollIntoView({ block: 'center', behavior: 'smooth' }); node.classList.add('message-highlight'); setTimeout(() => node.classList.remove('message-highlight'), 1800); }
 }
+function decisionLabel(decision) {
+  if (!decision) return '未触发回复';
+  if (decision.code === 'proactive_skipped') return '已跳过';
+  if (decision.code === 'proactive_judge_failed') return '判断异常';
+  if (decision.code === 'proactive_observing') return '等待判断';
+  if (decision.code === 'proactive_judge_started') return '判断中';
+  return { selected: '被选中回复', unselected: '本批未选中', silent: '无需插话', speak: '本批决定接话' }[decision.state] ?? '已判断';
+}
 async function openMessageProcessing(conversation, seq) {
   messageSelection = { conversation, seq };
   const version = ++messageRequest, root = $('message-processing-body');
@@ -1127,12 +1137,12 @@ async function openMessageProcessing(conversation, seq) {
     const message = detail.message, records = detail.logs?.items ?? [];
     const meta = element('div', 'detail-meta'); meta.append(element('strong', '', message.name), element('span', '', time(message.time, true)), badge(detail.turn?.state ?? 'no_trigger'));
     root.replaceChildren(meta);
-    const direct = records.filter(item => item.entry.code === 'trigger_unmatched' || item.entry.code === 'trigger_matched').at(-1)?.entry;
+    const direct = records.filter(item => item.entry.code === 'trigger_unmatched' || item.entry.code === 'trigger_matched' && item.entry.reason !== 'proactive').at(-1)?.entry;
     const decision = records.filter(item => ['proactive_observing', 'proactive_judge_started', 'proactive_decided', 'proactive_skipped', 'proactive_judge_failed'].includes(item.entry.code)).at(-1)?.entry;
     const facts = element('div', 'message-facts');
     const fact = (label, value) => { facts.append(element('span', 'muted', label), element('span', '', value)); };
     fact('直接触发', detail.turn && detail.turn.reason !== 'proactive' ? reasons[detail.turn.reason] ?? detail.turn.reason : direct?.reason ? reasons[direct.reason] ?? direct.reason : '未保存直接判断记录');
-    if (decision) fact('最近插话判断', [decision.state === 'silent' ? '保持沉默' : decision.state === 'speak' ? '本批决定接话' : decision.label, decision.reason, ...(decision.fields ?? []).map(field => `${field.label}：${field.value}`)].filter(Boolean).join(' · '));
+    if (decision) fact('最近插话判断', [decisionLabel(decision), decision.reason, ...(decision.fields ?? []).map(field => `${field.label}：${field.value}`)].filter(Boolean).join(' · '));
     else if (!detail.turn) fact('处理原因', records.findLast(item => item.entry.code === 'message_ignored')?.entry.reason === 'chat_disabled' ? '聊天链路已停用' : '未保存插话判断记录');
     root.append(facts);
     if (detail.images?.length) for (const image of detail.images) root.append(detailSection(`图片描述 · ${image.imageId}`, imageDescription(image)));
@@ -1151,6 +1161,10 @@ async function openMessageProcessing(conversation, seq) {
       platform: detail.platform ? { connection: detail.platform.connection, present: detail.platform.present ?? '未知', push: detail.platform.push ?? '未知', receive: detail.platform.receive ?? '未知', role: detail.platform.role ?? '未知' } : '暂不可用' }, null, 2)));
     root.append(platform);
     const actions = element('div', 'form-actions message-process-actions');
+    if (decision?.targetSeq && decision.targetSeq !== message.seq) {
+      const locate = element('button', 'secondary', `定位回复目标 ${decision.targetSeq}`); locate.type = 'button';
+      locate.addEventListener('click', () => { $('message-processing').close(); locateMessage(decision.targetSeq); }); actions.append(locate);
+    }
     if (detail.turn) { const turn = element('button', 'secondary', '回复详情'); turn.type = 'button'; turn.addEventListener('click', () => { $('message-processing').close(); openDetail(detail.turn.id); }); actions.append(turn); }
     const logsButton = element('button', 'secondary', '过程日志'); logsButton.type = 'button'; logsButton.addEventListener('click', () => { $('message-processing').close(); $('log-filter').value = detail.turn?.id ?? message.key; $('log-event').value = ''; $('log-level').value = ''; resetLogs(); showView('logs'); }); actions.append(logsButton);
     const triggerPage = registeredPages.find(page => page.view === 'trigger-settings');
@@ -1184,7 +1198,7 @@ function renderTimeline() {
     article.append(meta, bubble);
     if (item.direction === 'out' && item.parts?.length > 1) for (const part of item.parts.slice(1)) article.append(element('div', 'message-bubble', part));
     if (item.direction === 'in') {
-      const conversation = currentConversation.id, button = element('button', 'link timeline-detail', item.turn ? `详情 · ${words[item.turn.state] ?? item.turn.state}` : '未触发回复');
+      const conversation = currentConversation.id, button = element('button', 'link timeline-detail', item.turn ? `详情 · ${words[item.turn.state] ?? item.turn.state}` : decisionLabel(item.decision));
       button.type = 'button'; button.title = '查看触发原因与处理记录'; button.addEventListener('click', () => openMessageProcessing(conversation, item.seq)); article.append(button);
     } else if (item.turn) {
       const button = element('button', 'link timeline-detail', `详情 · ${words[item.turn.state] ?? item.turn.state}`); button.type = 'button'; button.addEventListener('click', () => openDetail(item.turn.id)); article.append(button);

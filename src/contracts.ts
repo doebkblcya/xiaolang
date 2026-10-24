@@ -82,7 +82,8 @@ export interface Adapter {
 export interface SendReceipt { id: string; reference?: string; timestamp?: string; remaining?: number }
 export interface PushTarget { platform: string; account: string; scope: 'private' | 'group'; recipient: string }
 export type TurnState = 'queued' | 'running' | 'sending' | 'completed' | 'failed' | 'cancelled' | 'unknown' | 'expired';
-export interface Turn { id: string; message: Message; reason: string }
+export interface ReplyPlan { id: string; through: number; replies: { seq: number; reason: string }[] }
+export interface Turn { id: string; message: Message; reason: string; plan?: ReplyPlan }
 export interface SendRecord { part: number; text: string; state: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown'; platformId?: string }
 export interface Store {
   pushDelivered?(source: number, execution: string, text: string, receipt: string, time: number, reference?: string): void;
@@ -91,7 +92,7 @@ export interface Store {
   record(seq: number): ChatRecord | undefined;
   admit(message: Message): Message | undefined;
   history(message: Message, limit: number): ModelMessage[];
-  createTurn(message: Message, reason: string): Turn;
+  createTurn(message: Message, reason: string, plan?: ReplyPlan): Turn;
   state(id: string, state: TurnState, code?: string): void;
   draft(id: string, text: string, protocol: ModelMessage[]): void;
   prepareSend(id: string, parts: string[]): void;
@@ -156,10 +157,12 @@ export interface Scheduler {
 }
 export interface Trigger {
   match(message: Message): string | undefined;
-  observe?(message: Message, dispatch: (message: Message, reason: string) => void): void;
+  observe?(message: Message, dispatch: (message: Message, reason: string, plan?: ReplyPlan) => void): void;
   queued?(message: Message, reason: string): void;
   settled?(message: Message, replied: boolean): void;
   current?(message: Message): boolean;
+  begin?(message: Message): AbortSignal | undefined;
+  beforeReply?(message: Message, signal: AbortSignal): Promise<void>;
   idle?(): Promise<void>;
   clear?(): Promise<void>;
 }
@@ -219,12 +222,14 @@ export interface Log {
   state?: string; errorCode?: string; receipt?: string;
   usageId?: number; purpose?: string; provider?: string; attempt?: number;
   imageCount?: number;
+  batchId?: string; targetSeq?: number; contextThrough?: number;
   inputTokens?: number; outputTokens?: number; totalTokens?: number; cachedTokens?: number; reasoningTokens?: number;
 }
 export interface TurnView {
   id: string; seq: number; state: string; reason: string; errorCode: string | null;
   received: number; updated: number; scope: 'private' | 'group'; sender: string; group?: string;
   input: string; reply: string; inputTruncated: boolean; replyTruncated: boolean;
+  plan?: ReplyPlan;
 }
 export interface TurnDetail extends TurnView {
   sends: { part: number; kind?: 'reply' | 'feedback'; text: string; state: string; receipt: string | null }[];
@@ -235,6 +240,7 @@ export interface ConversationView {
   platform: string; account: string; lastSeq: number; preview: string; messages: number;
 }
 export interface TimelineItem {
+  key?: string;
   seq: number; direction: 'in' | 'out'; time: number; sender: string; name: string;
   text: string; segments: Segment[]; kind: 'message' | 'reply' | 'reminder'; parts?: string[];
   turn?: { id: string; state: string; reason: string }; feedback?: { text: string; state: string };

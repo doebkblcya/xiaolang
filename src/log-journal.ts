@@ -50,6 +50,19 @@ export class LogJournal {
   }
   invalidate() { this.recent = []; if (!this.persistent) this.db?.exec('DELETE FROM process_logs'); this.generation = randomUUID(); }
   close() { this.db?.close(); this.db = undefined; }
+  latest(messageIds: string[], events: string[]): LogItem[] {
+    if (messageIds.length > 50 || messageIds.some(id => !/^[a-f0-9]{64}$/.test(id)) || events.length > 20 || events.some(code => !/^[a-z_]+$/.test(code))) throw new Failure('invalid_log_query');
+    if (!messageIds.length || !events.length) return [];
+    if (this.db) try {
+      const rows = this.db.prepare(`SELECT id,body FROM process_logs WHERE id IN (
+        SELECT MAX(id) FROM process_logs WHERE json_extract(body,'$.messageId') IN (SELECT value FROM json_each(?))
+        AND json_extract(body,'$.code') IN (SELECT value FROM json_each(?)) GROUP BY json_extract(body,'$.messageId'))`).all(JSON.stringify(messageIds), JSON.stringify(events));
+      return rows.map(row => ({ seq: Number(row.id), entry: JSON.parse(String(row.body)) as Log }));
+    } catch { this.failed(); }
+    const selected = new Map<string, LogItem>();
+    for (const item of this.recent) if (messageIds.includes(item.entry.messageId ?? '') && events.includes(item.entry.code)) selected.set(item.entry.messageId!, item);
+    return structuredClone([...selected.values()]);
+  }
   events() {
     if (this.db) {
       const events = this.db.prepare(`SELECT json_extract(p.body,'$.code') code,json_extract(p.body,'$.label') label,c.n count

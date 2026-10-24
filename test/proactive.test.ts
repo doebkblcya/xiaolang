@@ -15,7 +15,7 @@ function message(seq: number, group = 100, text = `消息${seq}`) {
   const value = normalize(event(text, seq, group), new FakeAdapter(), [])!;
   return { ...value, seq };
 }
-function controller(model = new FakeModel(async () => ({ role: 'assistant', content: '{"reply":false,"addressed":false,"reason":"群友在互相聊天"}' })), overrides = {}) {
+function controller(model = new FakeModel(async () => ({ role: 'assistant', content: '{"replies":[]}' })), overrides = {}) {
   const sent: number[] = [], logs: Log[] = [];
   const value = new ProactiveTrigger({ ...proactiveDefaults, enabled: true, idleSeconds: 0.04, idleMessages: 3, ...overrides }, {
     model, persona: '小狼', history: message => [{ seq: message.seq, session: message.session, direction: 'in', message, text: message.text }],
@@ -72,7 +72,7 @@ test('activation is group-local, expires without participation, and a new summon
   const instance = controller(new FakeModel(async () => { started.resolve(); return late.promise; }), { idleMessages: 1 });
   instance.observe(1); await started.promise;
   instance.value.queued(message(2), 'mention');
-  late.resolve({ role: 'assistant', content: '{"reply":true,"addressed":true,"reason":"接话"}' });
+  late.resolve({ role: 'assistant', content: '{"replies":[{"seq":1,"reason":"接话"}]}' });
   await instance.value.idle();
   assert.equal(instance.sent.length, 0);
   instance.value.settled(message(2), true);
@@ -91,10 +91,10 @@ test('ordinary new messages cannot starve pending participation; failures stay s
   const started = deferred(), late = deferred<ModelMessage>(); let count = 0;
   const instance = controller(new FakeModel(async () => {
     if (!count++) { started.resolve(); return late.promise; }
-    return { role: 'assistant', content: '{"reply":false,"addressed":false,"reason":"话题已经转移"}' };
+    return { role: 'assistant', content: '{"replies":[]}' };
   }), { idleMessages: 1 });
   instance.observe(1); await started.promise; instance.observe(2);
-  late.resolve({ role: 'assistant', content: '{"reply":true,"addressed":true,"reason":"旧话题"}' });
+  late.resolve({ role: 'assistant', content: '{"replies":[{"seq":1,"reason":"旧话题"}]}' });
   await instance.value.idle();
   assert.deepEqual(instance.sent, [1]); assert.equal(instance.model.requests.length, 2);
   assert.equal(instance.value.current(message(1)), true);
@@ -119,9 +119,9 @@ test('an unmentioned follow-up is judged promptly, reuses normal delivery, and c
     if (messages[0]?.content?.includes('你负责判断QQ群聊天')) {
       judgments++; assert.equal(tools.length, 0);
       assert.ok(messages[1]?.content?.includes('修好了吗'));
-      return { role: 'assistant', content: '{"reply":true,"addressed":true,"reason":"正在回应小狼的问题"}' };
+      return { role: 'assistant', content: JSON.stringify({ replies: [{ seq: JSON.parse(messages[1]!.content!).pending[0], reason: '回应小狼的问题' }] }) };
     }
-    if (messages.at(-1)?.content?.includes('你正在自主参与群聊')) {
+    if (messages.some(message => message.content?.includes('你正在自主参与群聊'))) {
       assert.ok(!tools.some(tool => tool.function.name === 'sensitive_write'));
       return { role: 'assistant', content: '那就好！' };
     }
@@ -154,25 +154,25 @@ test('short judging overrides neither mutate reply model settings nor inherit st
   assert.deepEqual(bodies[1].thinking, { type: 'enabled' }); assert.deepEqual(bodies[1].stop, ['结束']);
 });
 
-test('only genuine direct continuations renew activity; incidental interjections cannot keep a group active', async t => {
-  for (const addressed of [false, true]) {
+test('autonomous replies never renew activation, even when the selected message continues a conversation', async t => {
+  {
     const start = Date.now();
     t.mock.timers.enable({ apis: ['Date'], now: start });
-    const instance = controller(new FakeModel(async () => ({ role: 'assistant', content: JSON.stringify({ reply: true, addressed, reason: '判断结果' }) })), { activeSeconds: 60, idleMessages: 1 });
+    const instance = controller(new FakeModel(async messages => ({ role: 'assistant', content: JSON.stringify({ replies: [{seq: JSON.parse(messages[1]!.content!).pending[0], reason: '判断结果'}] }) })), { activeSeconds: 60, idleMessages: 1 });
     instance.value.queued(message(1), 'mention'); instance.value.settled(message(1), true);
     t.mock.timers.setTime(start + 59000);
     instance.value.observe(message(2), value => { instance.value.queued(value, 'proactive'); instance.value.settled(value, true); });
     await instance.value.idle();
     t.mock.timers.setTime(start + 61000);
     instance.observe(3); await instance.value.idle();
-    assert.equal(JSON.parse(instance.model.requests.at(-1)![1]!.content!).mode, addressed ? 'active' : 'idle');
-    assert.ok(instance.logs.some(entry => entry.reason?.includes(addressed ? '刷新活跃时间' : '不延长活跃时间')));
+    assert.equal(JSON.parse(instance.model.requests.at(-1)![1]!.content!).mode, 'idle');
+    assert.ok(instance.logs.some(entry => entry.reason?.includes('不延长激活时间')));
     await instance.value.clear(); t.mock.timers.reset();
   }
 });
 
 test('the queue deadline starts after the idle judgement, not before the configured observation window', async () => {
-  const instance = controller(new FakeModel(async () => ({ role: 'assistant', content: '{"reply":true,"addressed":false,"reason":"有值得补充的内容"}' })));
+  const instance = controller(new FakeModel(async () => ({ role: 'assistant', content: '{"replies":[{"seq":1,"reason":"可以补充内容"}]}' })));
   const pending = { ...message(1), time: Date.now() - 60000 };
   instance.value.observe(pending, value => instance.sent.push(value.seq));
   await instance.value.idle(); assert.deepEqual(instance.sent, [1]); assert.equal(instance.value.current(pending), true);

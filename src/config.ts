@@ -32,7 +32,7 @@ export interface Config {
   triggerWords: string[];
   groupIds: string[];
   chatEnabled: boolean;
-  trigger?: { privateReply: boolean; groupMention: boolean; groupKeywords: boolean; words: string[]; proactive?: ProactiveSettings };
+  trigger?: { privateReply: boolean; groupMention: boolean; groupReply?: boolean; groupKeywords: boolean; words: string[]; proactive?: ProactiveSettings };
   output?: { mode: 'normal' | 'streaming' };
   memory?: MemoryConfig;
   tooling?: ToolingConfig;
@@ -56,7 +56,7 @@ const schema = {
     triggerWords: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 100 } },
     groupIds: { type: 'array', maxItems: 1000, uniqueItems: true, items: identifier }, chatEnabled: { type: 'boolean' },
     trigger: { type: 'object', additionalProperties: false, required: ['privateReply', 'groupMention', 'groupKeywords', 'words'], properties: {
-      privateReply: { type: 'boolean' }, groupMention: { type: 'boolean' }, groupKeywords: { type: 'boolean' },
+      privateReply: { type: 'boolean' }, groupMention: { type: 'boolean' }, groupReply: { type: 'boolean' }, groupKeywords: { type: 'boolean' },
       words: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 100 } },
       proactive: proactiveSchema,
     } },

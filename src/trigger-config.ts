@@ -43,5 +43,5 @@ export function migrateProactiveConfig(raw: unknown): unknown {
 export function triggerSettings(config: Config) {
   config = migrateProactiveConfig(config) as Config;
   return structuredClone({ ...(config.trigger ?? { privateReply: true, groupMention: true, groupKeywords: true, words: config.triggerWords }),
-    proactive: { ...proactiveDefaults, ...config.trigger?.proactive } });
+    groupReply: config.trigger?.groupReply ?? true, proactive: { ...proactiveDefaults, ...config.trigger?.proactive } });
 }
