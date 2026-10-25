@@ -945,6 +945,7 @@ $('persona-learn').addEventListener('click', async event => {
 async function loadSupplementVersions() {
   try {
     const data = await get('/api/persona/supplement'); $('persona-versions').replaceChildren();
+    if (!supplementDirty) $('persona-supplement-message').textContent = '';
     for (const version of data.versions) {
       const box = element('div', 'detail-section');
       box.append(element('p', 'muted', `版本 ${version.version}${version.updated ? ` · ${time(version.updated, true)}` : ''}`), element('p', 'persona-version-text', version.text || '空白补充'));
@@ -962,7 +963,7 @@ async function loadSupplementVersions() {
         }); box.append(button);
       } $('persona-versions').append(box);
     }
-  } catch (error) { $('persona-supplement-message').textContent = error.message; }
+  } catch (error) { $('persona-supplement-message').textContent = error.message; $('persona-versions').replaceChildren(element('p', 'muted', '历史版本暂时无法读取')); }
 }
 $('persona-version-details').addEventListener('toggle', () => { if ($('persona-version-details').open) loadSupplementVersions(); });
 

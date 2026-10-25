@@ -63,7 +63,7 @@ export function createHandler(runtime, configuration, options = {}) {
       const recallRoute = /^\/api\/memory-recalls\/([a-f0-9-]{36})$/.exec(url.pathname);
       const compactionRoute = /^\/api\/memory-compactions\/([a-f0-9-]{36})$/.exec(url.pathname);
       const pluginRoute = /^\/api\/plugins\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname);
-      const personaRoute = /^\/api\/persona(?:\/(learn|mutate|[a-f0-9-]{36}))?$/.exec(url.pathname);
+      const personaRoute = /^\/api\/persona(?:\/(learn|mutate|supplement|[a-f0-9-]{36}))?$/.exec(url.pathname);
       const conversationRoute = /^\/api\/conversations(?:\/([a-f0-9]{64})(?:\/(name))?)?$/.exec(url.pathname);
       const summaryRoute = /^\/api\/conversations\/([a-f0-9]{64})\/summary$/.exec(url.pathname);
       const messageRoute = /^\/api\/conversations\/([a-f0-9]{64})\/messages\/([1-9][0-9]*)$/.exec(url.pathname);
@@ -77,7 +77,7 @@ export function createHandler(runtime, configuration, options = {}) {
           request.resume?.(); return send(403, { error: 'write_authorization_required' });
         }
         if (request.headers['content-type'] !== 'application/json') { request.resume?.(); return send(415, { error: 'json_required' }); }
-        const input = await readJson(request, pluginRoute ? 131072 : 16384);
+        const input = await readJson(request, pluginRoute || personaRoute?.[1] === 'mutate' ? 131072 : 16384);
         if (deleteData) return send(200, await required('history', 'store').deleteData(input));
         if (conversationRoute) {
           if (!conversationRoute[1] || conversationRoute[2] !== 'name') return send(405, { error: 'method_not_allowed' });

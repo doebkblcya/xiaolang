@@ -118,7 +118,7 @@ test('panel Key protects pages and APIs, uses an opaque HTTPS session and revoke
   const handle = module.createHandler({ status: () => ({ state: 'ready' }) }, {
     view: () => ({ revision: 'one' }), save: () => { writes++; return { revision: 'two' }; },
   }, { allowedHosts: [host], auth: { keyHash: createHash('sha256').update(key).digest('hex') },
-    persona: { list: () => ({ items: [], status: {} }), learn: async () => { learned++; } },
+    persona: { list: () => ({ document: { text: '' }, status: {} }), detail: (id: string) => ({ id, text: '', versions: [{ version: 1, text: '' }] }), mutate: (input: { text: string }) => ({ text: input.text }), learn: async () => { learned++; } },
     reminders: { list: () => ({ items: [], total: 0 }), cancel: () => { cancelled++; return { state: 'cancelled' }; } } });
   async function request(url: string, method = 'GET', body?: unknown, headers: Record<string, string> = {}, encrypted = true) {
     let status = 0, text = '', outputHeaders: Record<string, string> = {};
@@ -129,7 +129,7 @@ test('panel Key protects pages and APIs, uses an opaque HTTPS session and revoke
     return { status, text, headers: outputHeaders, json: () => JSON.parse(text) };
   }
   assert.ok((await request('/')).text.includes('访问验证'));
-  for (const path of ['/api/status', '/api/settings', '/api/turns', '/api/memory', '/api/reminders', '/api/persona', '/app.js']) assert.equal((await request(path)).status, 401);
+  for (const path of ['/api/status', '/api/settings', '/api/turns', '/api/memory', '/api/reminders', '/api/persona', '/api/persona/supplement', '/app.js']) assert.equal((await request(path)).status, 401);
   const post = { origin: `https://${host}`, 'content-type': 'application/json' };
   assert.equal((await request('/api/auth/session', 'POST', { key }, { ...post, origin: 'https://evil.example' })).status, 403);
   assert.equal((await request('/api/auth/session', 'POST', { key }, post, false)).status, 403);
@@ -143,6 +143,11 @@ test('panel Key protects pages and APIs, uses an opaque HTTPS session and revoke
   assert.equal((await request('/api/status', 'GET', undefined, { cookie })).status, 200);
   assert.ok((await request('/', 'GET', undefined, { cookie })).text.includes('plugin-navigation'));
   const settings = (await request('/api/settings', 'GET', undefined, { cookie })).json();
+  const supplement = await request('/api/persona/supplement', 'GET', undefined, { cookie });
+  assert.equal(supplement.status, 200); assert.equal(supplement.json().versions[0].version, 1);
+  const longSupplement = '猫'.repeat(6000);
+  const saved = await request('/api/persona/mutate', 'POST', { action: 'update', version: 1, text: longSupplement, enabled: true }, { ...post, cookie, 'x-xiaolang-token': settings.writeToken });
+  assert.equal(saved.status, 200); assert.equal(saved.json().text, longSupplement);
   assert.equal((await request('/api/settings/model', 'POST', {}, { ...post, cookie })).status, 403);
   assert.equal((await request('/api/settings/model', 'POST', {}, { ...post, cookie, 'x-xiaolang-token': settings.writeToken })).status, 200);
   assert.equal(writes, 1);
