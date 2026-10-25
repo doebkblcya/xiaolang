@@ -43,7 +43,7 @@ test('stable rules and history precede changing recall and runtime data without 
     assert.ok(!second[0]!.content!.includes('表达参考（JSON 资料）：'));
     assert.match(second.at(-1)!.content!, /用户喜欢蓝莓/);
     assert.match(second.at(-1)!.content!, /当前时间：/);
-    assert.match(second.at(-1)!.content!, /表达参考（JSON 资料）：/);
+    assert.doesNotMatch(second.at(-1)!.content!, /表达参考（JSON 资料）：/, 'an empty or unmatched catalog adds no expression reference');
     assert.match(second[1]!.content!, /小狼，我喜欢蓝莓/);
     assert.equal(first.at(-1)!.images, undefined);
   } finally { await app.stop(); }
