@@ -15,14 +15,8 @@ export interface MemoryWrite {
   operation?: 'add' | 'update' | 'supersede';
 }
 export interface MemoryVersion { item: MemoryItem; change: 'baseline' | 'add' | 'update' | 'supersede' | 'correct'; usable: boolean }
-const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
-export function words(text: string): string[] {
-  const clean = text.normalize('NFKC').toLowerCase();
-  const tokens = [...segmenter.segment(clean)].filter(p => p.isWordLike).map(p => p.segment);
-  // Bigrams let short Chinese names and phrases match even when the dictionary segments differently.
-  for (const part of clean.match(/[\p{Script=Han}]+/gu) ?? []) for (let i = 0; i + 1 < part.length; i++) tokens.push(part.slice(i, i + 2));
-  return [...new Set(tokens)].slice(0, 300);
-}
+import { words, retrievalWords } from './text-terms.js';
+export { words } from './text-terms.js';
 function tokens(text: string): string { return words(text).join(' '); }
 function unpack(row: Record<string, unknown>): MemoryItem {
   return { id: String(row.id), content: String(row.content), kind: row.kind as MemoryItem['kind'],
@@ -116,27 +110,40 @@ export class MemoryRepository {
     return rows.map(unpack);
   }
   lexical(query: string, limit = 30): MemoryItem[] {
-    const search = words(query).slice(0, 40).map(w => `"${w.replaceAll('"', '""')}"`).join(' OR ');
+    const search = retrievalWords(query).slice(0, 40).map(w => `"${w.replaceAll('"', '""')}"`).join(' OR ');
     if (!search) return [];
     return this.db.prepare(`SELECT m.* FROM memory_fts f JOIN memory_items m ON m.id=f.id WHERE memory_fts MATCH ? AND m.deleted=0 ORDER BY bm25(memory_fts) LIMIT ?`).all(search, limit).map(unpack);
   }
   semantic(vector: number[], limit = 30): MemoryItem[] {
+    return this.semanticMatches(vector, limit).map(match => match.item);
+  }
+  private semanticMatches(vector: number[], limit = 30): { item: MemoryItem; similarity: number }[] {
     if (this.vectorError) return [];
     const rows = this.db.prepare('SELECT id,distance FROM memory_vec WHERE embedding MATCH ? AND k=? ORDER BY distance').all(new Uint8Array(new Float32Array(vector).buffer), limit);
-    return rows.filter(row => Number(row.distance) < 0.85).flatMap(row => this.get(String(row.id)) ?? []);
+    return rows.flatMap(row => {
+      const similarity = 1 - Number(row.distance), item = this.get(String(row.id));
+      return item && similarity >= (this.config.recallMinSimilarity ?? 0.55) ? [{ item, similarity }] : [];
+    });
   }
-  candidates(query: string, people: string[], vector?: number[]): MemoryItem[] {
-    const lexical = this.lexical(query), semantic = vector ? this.semantic(vector) : [];
-    const profiles = this.db.prepare(`SELECT * FROM memory_items WHERE deleted=0 AND kind='profile' AND
+  candidates(query: string, people: string[], vector?: number[], purpose: 'recall' | 'extraction' = 'recall'): MemoryItem[] {
+    const primary = query.split('\n')[0] ?? '', primaryWords = new Set(retrievalWords(primary));
+    const lexical = this.lexical(query), semantic = retrievalWords(query).length && vector ? this.semanticMatches(vector) : [];
+    const semanticScores = new Map(semantic.map(match => [match.item.id, match.similarity]));
+    const profiles = this.db.prepare(`SELECT * FROM memory_items WHERE deleted=0 AND (kind='profile' OR ?='extraction') AND
       (pinned=1 OR EXISTS(SELECT 1 FROM json_each(memory_items.people) p JOIN json_each(?) wanted ON p.value=wanted.value))
-      ORDER BY pinned DESC,importance DESC LIMIT 15`).all(JSON.stringify([...new Set(people)])).map(unpack);
+      ORDER BY pinned DESC,importance DESC,updated DESC LIMIT 15`).all(purpose, JSON.stringify([...new Set(people)])).map(unpack);
     const pinned = this.db.prepare('SELECT * FROM memory_items WHERE deleted=0 AND pinned=1 ORDER BY importance DESC LIMIT 10').all().map(unpack);
+    // Being the speaker's profile is a ranking hint, not permission to inject every fact about them.
+    const profileQuestion = purpose === 'extraction' || /我是谁|我叫|关于我|我的(?:资料|偏好|情况)|你(?:还)?(?:记得|知道|了解)我|who am i|what.*(?:about me|my preferences)/i.test(primary);
     const scores = new Map<string, { item: MemoryItem; score: number }>();
-    for (const [weight, items] of [[1, lexical], [1, semantic], [0.45, profiles], [0.6, pinned]] as const) items.forEach((item, i) => {
+    for (const [weight, items] of [[1, lexical], [1, semantic.map(match => match.item)], [0.45, profileQuestion ? profiles : []], [0.6, pinned]] as const) items.forEach((item, i) => {
       if (item.validUntil && Date.parse(item.validUntil) < Date.now()) return;
       const age = Math.max(0, (Date.now() - item.updated) / 86400000);
       const decay = item.pinned || item.importance >= 4 ? 1 : 1 / (1 + age / 90);
-      const bonus = 1 + item.importance * 0.06 + (item.people.some(p => people.includes(p)) ? 0.15 : 0);
+      const overlap = retrievalWords(item.content).filter(term => primaryWords.has(term)).length;
+      const strength = semanticScores.get(item.id);
+      const bonus = 1 + item.importance * 0.06 + (item.people.some(p => people.includes(p)) ? 0.15 : 0)
+        + (overlap ? Math.min(0.6, overlap * 0.2) : 0) + (strength === undefined ? 0 : Math.max(0, strength - 0.55));
       const old = scores.get(item.id);
       scores.set(item.id, { item, score: (old?.score ?? 0) + weight / (60 + i + 1) * bonus * decay });
     });

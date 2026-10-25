@@ -904,11 +904,11 @@ let editingStyle;
 async function refreshPersona() {
   try {
     const data = await get('/api/persona'), state = data.status;
-    $('persona-status').textContent = `${state.enabled ? '学习已开启' : '学习已关闭'} · ${state.active}/${state.total} 条启用 · 今日 ${state.dailyCalls}/${state.maxDailyCalls} 次${state.processing ? ' · 正在学习' : ''}`;
+    $('persona-status').textContent = `${state.enabled ? '学习已开启' : '学习已关闭'} · ${state.active}/${state.total} 条可用 · 今日 ${state.dailyCalls}/${state.maxDailyCalls} 次${state.processing ? ' · 正在学习' : ''}`;
     statusError('persona-status', [state.error]);
     $('persona-list').replaceChildren(...data.items.map(item => {
       const card = element('button', 'memory-card'); card.type = 'button';
-      card.append(element('strong', '', item.scene), element('p', '', item.rule), element('small', 'muted', `${item.enabled ? '启用' : '停用'} · 版本 ${item.version} · ${item.examples.length} 组真人示例`));
+      card.append(element('strong', '', item.scene), element('p', '', item.rule), element('small', 'muted', `${item.unavailableReason ?? (item.enabled ? '可用' : '停用')} · 版本 ${item.version} · ${item.usableExamples ?? item.examples.length} 组有效示例`));
       card.addEventListener('click', () => openStyle(item.id).catch(() => notice('无法读取学习详情，请刷新后重试。'))); return card;
     }));
     if (!data.items.length) $('persona-list').append(element('p', 'empty', '暂无表达习惯'));

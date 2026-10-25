@@ -227,8 +227,8 @@ test('compaction waits for 200 records, keeps pending text, then preserves the r
     assert.ok(result!.context.includes('骑行计划'));
     const summaryIndex = background.requests.findIndex(messages => messages[0]!.content!.startsWith('将旧摘要'));
     assert.equal(background.options[summaryIndex]?.thinking, true); assert.equal(background.options[summaryIndex]?.reasoningEffort, 'high');
-    assert.equal(background.options[summaryIndex]?.maxOutputTokens, 32768);
-    assert.equal(background.options[summaryIndex]?.timeoutMs, 180000); assert.equal(background.options[summaryIndex]?.retries, 0);
+    assert.equal(background.options[summaryIndex]?.maxOutputTokens, 8192);
+    assert.equal(background.options[summaryIndex]?.timeoutMs, 60000); assert.equal(background.options[summaryIndex]?.retries, 0);
     assert.equal(result!.history.length, 5);
     const record = app.ctx.memory.summary!(message.session).compactions![0]!;
     assert.equal(record.count, 195); assert.equal(record.afterCount, 5); assert.equal(record.state, 'completed');

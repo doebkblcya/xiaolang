@@ -13,8 +13,8 @@ import type { Message, ThinkingLevel } from '../src/contracts.js';
 import { config, event, FakeAdapter, FakeModel, deferred } from './fixtures.js';
 import { writeFile, rm } from 'node:fs/promises';
 
-function setup(model = new FakeModel(), path = ':memory:', level: ThinkingLevel = 'low') {
-  const cfg = config(); cfg.database = path; cfg.character = { ...personaDefaults, learningThinking: level };
+function setup(model = new FakeModel(), path = ':memory:', level: ThinkingLevel = 'low', excludedUserIds: string[] = []) {
+  const cfg = config(); cfg.database = path; cfg.character = { ...personaDefaults, learningThinking: level, excludedUserIds };
   const ctx = new Context(), store = new SqliteStore(path); ctx.provide('store', store);
   let now = 1800000000000;
   const learning = new PersonaLearning(ctx, cfg, model, () => now);
@@ -30,7 +30,7 @@ test('learning is a separate batch request; anchor stays fixed and grounded refe
   try {
     s.addPairs(); await s.learning.learn();
     assert.equal(model.requests.length, 1);
-    assert.deepEqual(model.options[0], { thinking: true, reasoningEffort: 'low', maxOutputTokens: 8192, retries: 0, stop: [] });
+    assert.deepEqual(model.options[0], { thinking: true, reasoningEffort: 'low', maxOutputTokens: 4096, retries: 0, stop: [] });
     const data = s.learning.list() as { items: { id: string; version: number }[] };
     assert.equal(data.items.length, 1);
     const prompt = s.learning.prompt(s.store.record(1)!.message);
@@ -132,7 +132,42 @@ test('expression learning honors its own off/high/max setting while keeping the 
       s.addPairs(); await s.learning.learn();
       assert.equal(model.options[0]?.thinking, level !== 'off');
       assert.equal(model.options[0]?.reasoningEffort, level === 'off' ? undefined : level);
-      assert.equal(model.options[0]?.maxOutputTokens, 8192);
+      assert.equal(model.options[0]?.maxOutputTokens, level === 'off' ? 2048 : 8192);
     } finally { await s.close(); }
   }
+});
+
+
+test('unrelated questions receive no learned rule; relevant questions still reuse grounded examples', async () => {
+  const s = setup(new FakeModel(async () => answer([style()])));
+  try {
+    s.addPairs(); await s.learning.learn();
+    assert.equal(s.learning.promptParts(s.add('隔壁楼房租便宜五百')).reference, '');
+    assert.match(s.learning.promptParts(s.add('小狼你真厉害')).reference, /短句接住夸奖/);
+  } finally { await s.close(); }
+});
+
+test('a source blacklist excludes new material and makes existing bot-grounded rules ineligible without deletion', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'xiaolang-persona-blocklist-')), path = join(root, 'chat.sqlite');
+  let s = setup(new FakeModel(async () => answer([style()])), path);
+  try {
+    s.addPairs(); await s.learning.learn(); await s.close();
+    const learner = new FakeModel(async () => answer([style(5,6,7,8)]));
+    s = setup(learner, path, 'low', ['B']);
+    const rows = (s.learning.list() as { items: { eligible: boolean; unavailableReason: string }[] }).items;
+    assert.equal(rows.length, 1); assert.equal(rows[0]!.eligible, false);
+    assert.equal(rows[0]!.unavailableReason, '学习来源已排除'); assert.equal(s.learning.status().active, 0);
+    assert.equal(s.learning.promptParts(s.store.record(1)!.message).reference, '');
+    s.addPairs(); s.advance(); await s.learning.learn();
+    const input = JSON.parse(learner.requests[0]!.at(-1)!.content!);
+    assert.ok(input.conversation.every((row: { user: string }) => row.user !== 'B'));
+    assert.equal((s.learning.list() as { items: unknown[] }).items.length, 1);
+  } finally { await s.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test('two replies to the same prompt cannot count as two independent learning examples', async () => {
+  const candidate = { ...style(), examples: [{prompt:1, reply:2}, {prompt:1, reply:4}] };
+  const s = setup(new FakeModel(async () => answer([candidate])));
+  try { s.addPairs(); await s.learning.learn(); assert.equal((s.learning.list() as {items: unknown[]}).items.length, 0); }
+  finally { await s.close(); }
 });
