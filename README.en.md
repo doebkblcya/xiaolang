@@ -173,3 +173,7 @@ After deployment, set her persona in the panel and enable proactive conversation
 Adjust how often she joins in, set her persona, and choose model reasoning settings, tool permissions, and reminders.
 
 Data stays in your deployment environment; conversations and background processing call the model services you configure. Xiaolang is evolving, and her capabilities can grow with your plugin choices.
+
+## License
+
+Licensed under the [MIT License](LICENSE). Third-party dependencies and resources retain their own licenses.

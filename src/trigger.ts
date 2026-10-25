@@ -12,6 +12,7 @@ export const triggerPlugin: Plugin.Object<Config> = {
     const settings = triggerSettings(config);
     const proactive = new ProactiveTrigger(settings.proactive, { model: ctx.model, persona: config.persona, usage: ctx.get('usage'),
       history: (message, limit) => ctx.store.records({ session: message.session, before: message.seq + 1, limit }),
+      repliesAfter: message => ctx.store.records({ session: message.session, limit: 100 }),
       record: seq => ctx.store.record(seq),
       imageContext: message => ctx.get('memory')?.imageContext?.(message) ?? '', report: entry => emitLog(ctx, entry) });
     ctx.effect(() => () => proactive.clear());

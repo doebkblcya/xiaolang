@@ -77,3 +77,22 @@ test('the live judging path preserves complete candidates and reports history re
     assert.ok(logs.some(entry => entry.fields?.some(field => field.label === '历史参考预算' && field.value === proactiveHistoryBudget)));
   } finally { await trigger.clear(); }
 });
+
+test('judgement sees replies sent after a waiting candidate without treating later incoming messages as candidates', async () => {
+  const model = new FakeModel(async () => ({ role: 'assistant', content: '{"replies":[]}' }));
+  const candidate = message(41, 'README 和 License 补齐了就更像样');
+  const trigger = new ProactiveTrigger({ ...proactiveDefaults, enabled: true, idleMessages: 1 }, {
+    model, persona: '小狼', history: () => [record(40, '评价一下开源精神')],
+    repliesAfter: () => [record(39, '旧回复', 'out'), record(42, '开源精神不错。', 'out'),
+      record(43, '后来收到的话'), record(44, '别的群回复', 'out')].map(row => row.seq === 44 ? { ...row, session: 'other' } : row),
+    imageContext: () => '', report: () => {},
+  });
+  try {
+    trigger.observe(candidate, () => {}); await trigger.idle();
+    const input = JSON.parse(model.requests[0]![1]!.content!);
+    assert.deepEqual(input.alreadyReplied, [{ seq: 42, text: '开源精神不错。' }]);
+    assert.deepEqual(input.candidates.map((row: { seq: number }) => row.seq), [41]);
+    assert.deepEqual(input.pending, [41]);
+    assert.ok(!input.recent.some((row: { seq: number }) => row.seq > 41));
+  } finally { await trigger.clear(); }
+});
