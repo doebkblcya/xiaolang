@@ -26,6 +26,20 @@ export const cleanup: DataCleanup = {
       const row = db.prepare("SELECT payload FROM persona_state WHERE key='learning'").get();
       if (row) { const state = JSON.parse(String(row.payload)); state.revision++; db.prepare("UPDATE persona_state SET payload=? WHERE key='learning'").run(JSON.stringify(state)); }
     }
+    if (exists('persona_document') && seqs.size) {
+      const row = db.prepare('SELECT payload FROM persona_document WHERE id=1').get();
+      const document = row ? JSON.parse(String(row.payload)) : undefined;
+      const related = (value: { sources?: number[] }) => value.sources?.some(seq => seqs.has(seq));
+      if (exists('persona_document_versions')) for (const version of db.prepare('SELECT version,payload FROM persona_document_versions').all()) {
+        if (related(JSON.parse(String(version.payload)))) db.prepare('DELETE FROM persona_document_versions WHERE version=?').run(Number(version.version));
+      }
+      // A whole-text revision may blend sources, so partial string deletion cannot reliably erase derived material.
+      if (document && related(document)) {
+        const next = { ...document, text: '', sources: [], version: document.version + 1, updated: Date.now() };
+        db.prepare('UPDATE persona_document SET payload=? WHERE id=1').run(JSON.stringify(next));
+        if (exists('persona_document_versions')) db.prepare('INSERT INTO persona_document_versions VALUES (?,?,?)').run(next.version, JSON.stringify(next), 'source_deleted');
+      }
+    }
     if (exists('persona_suppressed')) for (const seq of seqs) db.prepare('DELETE FROM persona_suppressed WHERE seq=?').run(seq);
   },
 };

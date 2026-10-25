@@ -112,9 +112,16 @@
         </fieldset>
         <div class="form-footer"><p id="persona-prompt-message" class="muted" role="status">正在读取…</p><div class="form-actions"><button id="persona-prompt-reset" class="link" type="button" hidden>还原</button><button id="persona-prompt-save" class="primary" type="submit" disabled>保存</button></div></div>
       </form>
-      <article class="panel"><div class="panel-title"><div><h2>表达习惯</h2></div><div class="form-actions"><button id="persona-refresh" class="secondary">刷新</button><button id="persona-learn" class="secondary">学习一次</button><button id="persona-config" class="secondary">配置</button></div></div>
-      <p id="persona-status" class="muted" role="status">正在读取…</p>
-      <div id="persona-list" class="memory-list"></div></article>
+      <form id="persona-supplement-form" class="panel settings-form persona-prompt">
+        <div class="panel-title"><h2>学习补充</h2><div class="form-actions"><button id="persona-learn" class="link" type="button">学习一次</button><button id="persona-config" class="link" type="button">配置</button></div></div>
+        <p id="persona-status" class="muted" role="status">正在读取…</p>
+        <fieldset id="persona-supplement-fields" disabled>
+          <label class="field"><span class="sr-only">学习补充文本</span><textarea name="text" rows="12" maxlength="6000" spellcheck="false" placeholder="自学习将在这里逐步完善小狼的表达。"></textarea></label>
+          <label class="filter"><input name="enabled" type="checkbox">回复时参考</label>
+        </fieldset>
+        <div class="form-footer"><p id="persona-supplement-message" class="muted" role="status"></p><div class="form-actions"><button id="persona-refresh" class="link" type="button">刷新</button><button id="persona-supplement-reset" class="link" type="button" hidden>还原</button><button id="persona-supplement-save" class="primary" type="submit" disabled>保存</button></div></div>
+        <details id="persona-version-details" class="persona-fixed-style"><summary>历史版本</summary><div id="persona-versions"></div></details>
+      </form>
     </section>
     <section id="tooling" class="view" hidden>
       <div class="tooling-header"><div class="tooling-tabs" role="group" aria-label="工具视图"><button type="button" data-tool-tab="catalog" aria-pressed="true">工具目录 <span id="tool-count" class="count">—</span></button><button type="button" data-tool-tab="activity" aria-pressed="false">执行记录</button></div><div class="form-actions"><button id="tool-access" class="link" type="button" hidden>管理员设置</button><button id="tool-refresh" class="secondary" type="button">刷新</button></div></div>
@@ -210,15 +217,6 @@
       <label class="filter"><input name="pinned" type="checkbox">置顶保留</label>
     </div><p id="memory-form-message" class="muted" role="status"></p><div class="form-actions"><button id="memory-forget" type="button" class="secondary">删除这条记忆</button><button type="submit" class="primary">保存记忆</button></div></form>
     <div id="memory-history"></div><div id="memory-sources"></div>
-  </dialog>
-  <dialog id="persona-detail"><div class="dialog-head"><h2>表达习惯</h2><button id="close-persona" class="secondary">关闭</button></div>
-    <form id="persona-form"><div class="form-grid">
-      <label class="field full">适用情境<input name="scene" required maxlength="80"></label>
-      <label class="field full">表达建议<textarea name="rule" rows="3" required maxlength="200"></textarea></label>
-      <label class="field full">情境关键词（每行一个）<textarea name="keywords" rows="3"></textarea></label>
-      <label class="filter"><input name="enabled" type="checkbox">在回复中参考这条习惯</label>
-    </div><p id="persona-message" class="muted" role="status"></p><div class="form-actions"><button id="persona-delete" class="secondary" type="button">彻底删除</button><button class="primary" type="submit">保存</button></div></form>
-    <div id="persona-versions"></div><div id="persona-sources"></div>
   </dialog>
   <dialog id="conversation-name-dialog"><div class="dialog-head"><h2>会话备注</h2><button id="close-conversation-name" class="secondary">关闭</button></div>
     <form id="conversation-name-form"><label class="field">备注名称<input name="alias" maxlength="80" autocomplete="off"></label><p id="conversation-name-message" class="muted" role="status"></p><button type="submit" class="primary">保存备注</button></form>

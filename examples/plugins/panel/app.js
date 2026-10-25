@@ -304,8 +304,8 @@ const settingsErrors = {
   model_empty_response: '模型未返回有效内容。', model_invalid_json: '模型返回格式异常。', model_http_429: '模型请求过于频繁。', cancelled: '处理已中断。',
   data_busy: '小狼正在处理消息或发送提醒，请稍后再删。', message_not_found: '这条消息已经不存在，请刷新。', invalid_delete_request: '删除请求无效，请刷新后重试。',
   conversation_conflict: '会话备注已被修改，请关闭窗口重新编辑。', invalid_conversation_request: '备注最多 80 字，不能包含换行。', conversation_not_found: '会话已不存在，请刷新列表。',
-  persona_rate_limited: '已达到学习冷却时间或每日上限。', persona_not_enough_messages: '本批用户消息不足，继续聊天后再学习。', persona_catalog_full: '表达习惯已达上限，后续只更新已有习惯。', persona_busy: '正在学习，请稍后刷新。', invalid_persona_result: '本次学习结果未通过检查，没有修改已有习惯。',
-  persona_conflict: '这条习惯已被修改，请重新打开。', invalid_persona_request: '表达习惯字段不正确，请检查内容与关键词。', persona_not_found: '这条习惯已不存在。', persona_disabled: '后台学习尚未开启。',
+  persona_rate_limited: '已达到学习冷却时间或每日上限。', persona_not_enough_messages: '本批用户消息不足，继续聊天后再学习。', persona_catalog_full: '表达习惯已达上限，后续只更新已有习惯。', persona_busy: '正在学习，请稍后刷新。', invalid_persona_result: '本次学习结果未通过检查，原补充保持不变。',
+  persona_conflict: '学习补充已有新版本，草稿已保留；请刷新并核对后重试。', invalid_persona_request: '学习补充格式不正确或超过长度上限。', persona_not_found: '找不到这份学习补充。', persona_disabled: '后台学习尚未开启。',
   reminder_not_found: '这条提醒已不存在，请刷新列表。', invalid_reminder_request: '提醒参数不正确。', reminders_unavailable: '定时提醒服务暂时不可用。',
   memory_conflict: '记忆已更新，请关闭详情重新读取后再修改。', invalid_memory_request: '记忆字段填写不正确，请检查内容、用户ID或有效期。', memory_not_found: '这条记忆已不存在。', memory_disabled: '记忆功能尚未启用，请先在插件配置中开启并应用。', embedding_key_missing: '尚未配置百炼 API Key。', embedding_http_401: '百炼鉴权失败，请检查 API Key 和业务空间地址。', embedding_http_403: '百炼未授权此模型，请检查模型权限和地址。', embedding_http_404: '百炼地址或模型标识不正确。', embedding_network: '向量服务暂时无法连接或请求超时。', settings_conflict: '配置已被其他页面修改，请重新读取后再保存。', settings_busy: '配置正在保存或应用，请稍后重试。',
   chat_busy: '小狼正在处理消息，请等回复结束后再应用。已保存的配置不会丢失。', no_pending_settings: '没有需要应用的新配置。',
@@ -900,54 +900,71 @@ personaPromptForm.addEventListener('submit', async event => {
   finally { personaPromptBusy = false; $('persona-prompt-fields').disabled = false; syncPersonaPrompt(); }
 });
 
-let editingStyle;
+let supplementData, supplementDirty = false, supplementBusy = false, supplementLoading = false;
+const supplementForm = $('persona-supplement-form');
+function syncSupplement() {
+  supplementDirty = !!supplementData && (supplementForm.elements.text.value !== supplementData.text || supplementForm.elements.enabled.checked !== supplementData.enabled);
+  $('persona-supplement-save').disabled = supplementBusy || !supplementData || !supplementDirty;
+  $('persona-supplement-reset').hidden = !supplementDirty;
+  $('persona-supplement-reset').disabled = supplementBusy;
+}
+function fillSupplement(document) {
+  supplementData = document; supplementForm.elements.text.value = document.text; supplementForm.elements.enabled.checked = document.enabled;
+  $('persona-supplement-fields').disabled = false; syncSupplement();
+}
 async function refreshPersona() {
+  if (supplementLoading) return; supplementLoading = true;
   try {
     const data = await get('/api/persona'), state = data.status;
-    $('persona-status').textContent = `${state.enabled ? '学习已开启' : '学习已关闭'} · ${state.active}/${state.total} 条可用 · 今日 ${state.dailyCalls}/${state.maxDailyCalls} 次${state.processing ? ' · 正在学习' : ''}`;
+    $('persona-status').textContent = `${state.enabled ? '学习已开启' : '学习已关闭'} · 今日 ${state.dailyCalls}/${state.maxDailyCalls} 次${state.processing ? ' · 正在学习' : ''}${state.chars ? ` · 版本 ${state.version}` : ''}${state.chars && !state.available ? ' · 当前补充未启用或来源不可用' : ''}`;
     statusError('persona-status', [state.error]);
-    $('persona-list').replaceChildren(...data.items.map(item => {
-      const card = element('button', 'memory-card'); card.type = 'button';
-      card.append(element('strong', '', item.scene), element('p', '', item.rule), element('small', 'muted', `${item.unavailableReason ?? (item.enabled ? '可用' : '停用')} · 版本 ${item.version} · ${item.usableExamples ?? item.examples.length} 组有效示例`));
-      card.addEventListener('click', () => openStyle(item.id).catch(() => notice('无法读取学习详情，请刷新后重试。'))); return card;
-    }));
-    if (!data.items.length) $('persona-list').append(element('p', 'empty', '暂无表达习惯'));
-  } catch { $('persona-status').textContent = '暂时无法读取学习记录。'; }
+    if (!supplementDirty && !supplementBusy) fillSupplement(data.document);
+  } catch { $('persona-status').textContent = '暂时无法读取学习补充。'; }
+  finally { supplementLoading = false; }
 }
-async function openStyle(id) {
-  editingStyle = await get(`/api/persona/${encodeURIComponent(id)}`);
-  const form = $('persona-form'), item = editingStyle;
-  form.elements.scene.value = item.scene; form.elements.rule.value = item.rule; form.elements.keywords.value = item.keywords.join('\n'); form.elements.enabled.checked = item.enabled;
-  $('persona-message').textContent = '';
-  $('persona-sources').replaceChildren(...item.sources.map(source => detailSection(`原文 ${source.seq} · ${source.name} · ${source.group ? `群 ${source.group}` : '私聊'}`, source.text)));
-  $('persona-versions').replaceChildren(element('h3', '', '最近版本'));
-  for (const version of item.versions) {
-    const box = element('div', 'detail-section'); box.append(element('p', '', `版本 ${version.version} · ${version.scene}：${version.rule}`));
-    if (version.version !== item.version) {
-      const button = element('button', 'secondary', '恢复此版本'); button.type = 'button';
-      button.addEventListener('click', async () => {
-        try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/mutate', { action: 'rollback', id, version: item.version, targetVersion: version.version }); await openStyle(id); await refreshPersona(); }
-        catch (error) { $('persona-message').textContent = error.message; }
-      }); box.append(button);
-    } $('persona-versions').append(box);
-  }
-  if (!$('persona-detail').open) $('persona-detail').showModal();
-}
-$('persona-config').addEventListener('click', () => { const owner = personaOwner(); if (owner) openPlugin(owner); });
-$('persona-refresh').addEventListener('click', () => { refreshPersona(); loadPersonaPrompt(); });
-$('close-persona').addEventListener('click', () => $('persona-detail').close());
-$('persona-learn').addEventListener('click', async () => {
-  try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/learn', {}); $('persona-status').textContent = '已提交学习'; }
-  catch (error) { $('persona-status').textContent = error.message; }
-});
-$('persona-form').addEventListener('submit', async event => {
-  event.preventDefault(); const form = event.currentTarget;
+supplementForm.addEventListener('input', () => { syncSupplement(); $('persona-supplement-message').textContent = supplementDirty ? '有未保存的修改' : ''; });
+$('persona-supplement-reset').addEventListener('click', () => { if (supplementData) fillSupplement(supplementData); $('persona-supplement-message').textContent = ''; refreshPersona(); });
+supplementForm.addEventListener('submit', async event => {
+  event.preventDefault(); if (!supplementData || supplementBusy || !supplementDirty) return;
+  supplementBusy = true; syncSupplement(); $('persona-supplement-fields').disabled = true;
   try {
     if (!settings) await loadSettings();
-    await settingsRequest('/api/persona/mutate', { action: 'update', id: editingStyle.id, version: editingStyle.version, scene: form.elements.scene.value.trim(), rule: form.elements.rule.value.trim(), keywords: form.elements.keywords.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean), enabled: form.elements.enabled.checked });
-    $('persona-detail').close(); await refreshPersona();
-  } catch (error) { $('persona-message').textContent = error.message; }
+    const result = await settingsRequest('/api/persona/mutate', { action: 'update', version: supplementData.version, text: supplementForm.elements.text.value, enabled: supplementForm.elements.enabled.checked });
+    fillSupplement(result); $('persona-supplement-message').textContent = '已保存';
+  } catch (error) { $('persona-supplement-message').textContent = error.message; }
+  finally { supplementBusy = false; $('persona-supplement-fields').disabled = false; syncSupplement(); }
 });
+$('persona-config').addEventListener('click', () => { const owner = personaOwner(); if (owner) openPlugin(owner); });
+$('persona-refresh').addEventListener('click', () => { refreshPersona(); loadPersonaPrompt(); if ($('persona-version-details').open) loadSupplementVersions(); });
+$('persona-learn').addEventListener('click', async event => {
+  event.target.disabled = true;
+  try { if (!settings) await loadSettings(); await settingsRequest('/api/persona/learn', {}); $('persona-supplement-message').textContent = '已提交学习'; refreshPersona(); }
+  catch (error) { $('persona-supplement-message').textContent = error.message; }
+  finally { event.target.disabled = false; }
+});
+async function loadSupplementVersions() {
+  try {
+    const data = await get('/api/persona/supplement'); $('persona-versions').replaceChildren();
+    for (const version of data.versions) {
+      const box = element('div', 'detail-section');
+      box.append(element('p', 'muted', `版本 ${version.version}${version.updated ? ` · ${time(version.updated, true)}` : ''}`), element('p', 'persona-version-text', version.text || '空白补充'));
+      if (version.version !== data.version) {
+        const button = element('button', 'link', '恢复此版本'); button.type = 'button';
+        button.addEventListener('click', async () => {
+          if (supplementDirty) { $('persona-supplement-message').textContent = '请先保存或还原当前草稿'; return; }
+          button.disabled = true; supplementBusy = true; $('persona-supplement-fields').disabled = true; syncSupplement();
+          try {
+            if (!settings) await loadSettings();
+            const result = await settingsRequest('/api/persona/mutate', { action: 'rollback', version: data.version, targetVersion: version.version });
+            fillSupplement(result); $('persona-supplement-message').textContent = '已恢复'; await refreshPersona(); await loadSupplementVersions();
+          } catch (error) { $('persona-supplement-message').textContent = error.message; }
+          finally { button.disabled = false; supplementBusy = false; $('persona-supplement-fields').disabled = false; syncSupplement(); }
+        }); box.append(button);
+      } $('persona-versions').append(box);
+    }
+  } catch (error) { $('persona-supplement-message').textContent = error.message; }
+}
+$('persona-version-details').addEventListener('toggle', () => { if ($('persona-version-details').open) loadSupplementVersions(); });
 
 let conversationItems = [], currentConversation, conversationNext, conversationRows = [], messageNext;
 let timelineLoading;
@@ -1299,11 +1316,7 @@ $('conversation-delete').addEventListener('click', async event => {
   try { await eraseStoredData({ kind: 'conversation', id: currentConversation.id }); await resetChatsAfterDelete(); }
   catch (error) { $('conversation-message').textContent = error.message; event.target.disabled = false; }
 });
-$('persona-delete').addEventListener('click', async () => {
-  if (!editingStyle || !confirm('彻底删除这条表达习惯、全部版本和示例关联？无法恢复。原始聊天记录仍保留。')) return;
-  try { await eraseStoredData({ kind: 'persona', id: editingStyle.id, version: editingStyle.version }); $('persona-detail').close(); await refreshPersona(); }
-  catch (error) { $('persona-message').textContent = error.message; }
-});
+
 
 let usageUpdated = 0, usageNext, usageBusy = false, usageKey = '';
 let usagePage, usageTrend = 'cost', usageDistribution = 'purpose', usageBalanceBusy = false, usageBalanceUpdated = 0;
