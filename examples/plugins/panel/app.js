@@ -1322,7 +1322,21 @@ $('conversation-delete').addEventListener('click', async event => {
 let usageUpdated = 0, usageNext, usageBusy = false, usageKey = '';
 let usagePage, usageTrend = 'cost', usageDistribution = 'purpose', usageBalanceBusy = false, usageBalanceUpdated = 0;
 let usageIssue = '', usageRevealIssue = false;
-function usageQuery() { return new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value, issue: usageIssue }); }
+function usageQuery() {
+  const query = new URLSearchParams({ range: $('usage-range').value, purpose: $('usage-purpose').value, provider: $('usage-provider').value, issue: usageIssue });
+  if ($('usage-range').value === 'custom') { query.set('dateFrom', $('usage-date-from').value); query.set('dateTo', $('usage-date-to').value); }
+  return query;
+}
+function syncUsageDates() {
+  const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10), custom = $('usage-range').value === 'custom';
+  for (const side of ['from', 'to']) {
+    $(`usage-date-${side}-field`).hidden = !custom;
+    const input = $(`usage-date-${side}`); input.max = today; if (!input.value) input.value = today;
+  }
+  $('usage-date-from').max = $('usage-date-to').value || today;
+  $('usage-date-to').min = $('usage-date-from').value;
+}
+
 function selectUsagePurpose(purpose) {
   $('usage-purpose').value = purpose; usageNext = undefined;
   refreshUsage();
@@ -1407,7 +1421,8 @@ function renderUsageTrend() {
   if (!usagePage) return;
   const source = new Map(usagePage.daily.map(row => [row.day, row])), days = [];
   const end = Math.floor((usagePage.to + 8 * 3600000) / 86400000) * 86400000;
-  const start = Math.max(Math.floor((usagePage.from + 8 * 3600000) / 86400000) * 86400000, end - 30 * 86400000);
+  const first = usagePage.range === 'all' ? (usagePage.firstRecorded ?? usagePage.to) : usagePage.from;
+  const start = Math.floor((first + 8 * 3600000) / 86400000) * 86400000;
   for (let date = start; date <= end; date += 86400000) {
     const day = new Date(date).toISOString().slice(0, 10); days.push(source.get(day) ?? { day, total: 0, calls: 0, estimatedCost: 0, unpriced: 0 });
   }
@@ -1460,6 +1475,7 @@ async function refreshUsage(reset = true, more = false) {
   $('usage-clear-purpose').hidden = !$('usage-purpose').value;
   void refreshUsageBalance();
   if (usageBusy) { if (reset) usageKey = ''; return; }
+  if ($('usage-range').value === 'custom' && (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test($('usage-date-from').value) || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test($('usage-date-to').value) || $('usage-date-from').value > $('usage-date-to').value)) { $('usage-note').textContent = '请选择有效的起止日期'; return; }
   const query = usageQuery();
   const key = query.toString(); if (more && usageNext) query.set('before', usageNext);
   usageBusy = true;
@@ -1469,7 +1485,7 @@ async function refreshUsage(reset = true, more = false) {
     if (key !== currentKey) return;
     usageKey = key; usagePage = page;
     const summary = page.summary;
-    $('usage-period').textContent = ({ today: '今日', '7d': '近 7 天', '30d': '近 30 天', all: '累计' })[page.range];
+    $('usage-period').textContent = ({ today: '今日', yesterday: '昨日', '7d': '近 7 天', '30d': '近 30 天', all: '累计', custom: $('usage-date-from').value === $('usage-date-to').value ? $('usage-date-from').value : `${$('usage-date-from').value} 至 ${$('usage-date-to').value}` })[page.range];
     $('usage-cost').textContent = money(summary.estimatedCost);
     $('usage-cost-coverage').textContent = summary.unpriced ? `${numberText(summary.priced)} 次已估价 · ${numberText(summary.unpriced)} 次未估价` : `${numberText(summary.calls)} 次请求`;
     $('usage-total').textContent = numberText(summary.total); $('usage-input').textContent = `输入 ${numberText(summary.input)}`; $('usage-output').textContent = `输出 ${numberText(summary.output)}`;
@@ -1503,7 +1519,7 @@ async function refreshUsage(reset = true, more = false) {
     if (more) container.dataset.expanded = '1';
     if (usageRevealIssue) { usageRevealIssue = false; $('usage-request-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     $('usage-more').hidden = !usageNext; usageUpdated = Date.now(); $('usage-updated').textContent = `更新于 ${time(usageUpdated)}`;
-  } catch { $('usage-note').textContent = '用量读取失败，请刷新重试'; usageUpdated = Date.now(); }
+  } catch (error) { $('usage-note').textContent = error.message.includes('invalid_usage_query') ? '请检查日期，结束不能早于开始，范围最多一年且不能晚于今天' : '用量读取失败，请刷新重试'; usageUpdated = Date.now(); }
   finally {
     usageBusy = false;
     const keyNow = usageQuery().toString();
@@ -1511,7 +1527,8 @@ async function refreshUsage(reset = true, more = false) {
   }
 }
 for (const [value, title] of Object.entries(usageNames)) { const option = element('option', '', title); option.value = value; $('usage-purpose').append(option); }
-for (const id of ['usage-range', 'usage-purpose', 'usage-provider']) $(id).addEventListener('change', () => refreshUsage());
+for (const id of ['usage-range', 'usage-purpose', 'usage-provider', 'usage-date-from', 'usage-date-to']) $(id).addEventListener('change', () => { syncUsageDates(); refreshUsage(); });
+syncUsageDates();
 $('usage-clear-purpose').addEventListener('click', () => selectUsagePurpose(''));
 $('refresh-usage').addEventListener('click', () => { usageBalanceUpdated = 0; refreshUsage(); });
 $('usage-more').addEventListener('click', () => { if (usageKey) refreshUsage(false, true); });

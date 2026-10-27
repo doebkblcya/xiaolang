@@ -44,7 +44,9 @@
     <section id="usage" class="view" hidden>
       <article class="panel usage-controls">
         <div class="toolbar usage-filters">
-          <label>时间范围<select id="usage-range"><option value="today">今天</option><option value="7d">最近 7 天</option><option value="30d">最近 30 天</option><option value="all">全部记录</option></select></label>
+          <label>时间范围<select id="usage-range"><option value="today">今天</option><option value="yesterday">昨天</option><option value="7d">最近 7 天</option><option value="30d">最近 30 天</option><option value="all">全部记录</option><option value="custom">自定义日期</option></select></label>
+          <label id="usage-date-from-field" hidden>开始日期<input id="usage-date-from" type="date" aria-label="用量开始日期"></label>
+          <label id="usage-date-to-field" hidden>结束日期<input id="usage-date-to" type="date" aria-label="用量结束日期"></label>
           <label>功能<select id="usage-purpose"><option value="">全部功能</option></select></label>
           <label>服务<select id="usage-provider"><option value="">全部服务</option><option value="deepseek">DeepSeek</option><option value="bailian">百炼向量</option></select></label>
           <button id="refresh-usage" class="secondary" type="button">刷新</button><span id="usage-updated" class="muted"></span>

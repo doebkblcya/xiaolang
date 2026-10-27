@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { UsageMeter, withUsage } from '../src/usage.js';
+import { UsageMeter, withUsage, usageWindow } from '../src/usage.js';
 import { DeepSeekModel } from '../src/model.js';
 import { BailianEmbeddings } from '../src/embedding.js';
 import { memoryDefaults } from '../src/memory-config.js';
@@ -72,4 +72,22 @@ test('usage persists across restart, marks unfinished attempts unknown, and reje
   const second = new UsageMeter(path); t.after(() => second.close());
   const view = second.view(); assert.equal(view.summary.calls, 1); assert.equal(view.items[0]!.state, 'interrupted'); assert.equal(view.summary.unknown, 1);
   for (const query of [{ purpose: 'bad' }, { range: 'year' }, { provider: 'unknown' }, { before: -1 }]) assert.throws(() => second.view(query), { code: 'invalid_usage_query' });
+});
+
+
+test('calendar date filters use Beijing boundaries and include every request on the chosen day', t => {
+  const now=Date.parse('2026-10-27T12:34:56+08:00');
+  t.mock.timers.enable({apis:['Date'],now});
+  const start=Date.parse('2026-10-26T00:00:00+08:00');
+  assert.deepEqual(usageWindow({range:'yesterday'},now),{from:start,to:start+86400000-1});
+  assert.deepEqual(usageWindow({range:'custom',dateFrom:'2026-10-26',dateTo:'2026-10-26'},now),usageWindow({range:'yesterday'},now));
+  const meter=new UsageMeter(':memory:');t.after(()=>meter.close());
+  for(const stamp of [start-1,start,start+86400000-1,start+86400000]) {
+    const meta={provider:'deepseek' as const,model:'deepseek-flash',kind:'chat' as const};
+    const id=meter.begin(meta,{purpose:'chat'},stamp);meter.finish(id,meta,undefined,stamp,{prompt_tokens:10,completion_tokens:2,total_tokens:12,prompt_cache_hit_tokens:0});
+  }
+  const page=meter.view({range:'custom',dateFrom:'2026-10-26',dateTo:'2026-10-26'});
+  assert.equal(page.summary.calls,2);assert.equal(page.items.length,2);assert.equal(page.daily.length,1);assert.equal(page.daily[0]!.day,'2026-10-26');assert.equal(page.summary.total,24);
+  assert.equal(meter.view({range:'yesterday'}).summary.estimatedCost,page.summary.estimatedCost);
+  for(const query of [{range:'custom',dateFrom:'2026-02-30',dateTo:'2026-03-01'}, {range:'custom',dateFrom:'2026-10-27',dateTo:'2026-10-26'}, {range:'custom',dateFrom:'2026-10-26'}, {range:'custom',dateFrom:'2026-10-26',dateTo:'2026-10-28'}])assert.throws(()=>meter.view(query),{code:'invalid_usage_query'});
 });

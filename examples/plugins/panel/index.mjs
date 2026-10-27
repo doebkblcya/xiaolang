@@ -195,7 +195,7 @@ export function createHandler(runtime, configuration, options = {}) {
           intakeEnabled: !!options.intake, memoryBytes: process.memoryUsage().rss });
       }
       if (url.pathname === '/api/usage/balance') return send(200, await options.model?.balance?.() ?? { state: 'unsupported' });
-      if (url.pathname === '/api/usage') return options.usage ? send(200, options.usage.view({ range: url.searchParams.get('range') ?? 'today',
+      if (url.pathname === '/api/usage') return options.usage ? send(200, options.usage.view({ range: url.searchParams.get('range') ?? 'today', dateFrom: url.searchParams.get('dateFrom') ?? '', dateTo: url.searchParams.get('dateTo') ?? '',
         purpose: url.searchParams.get('purpose') ?? '', provider: url.searchParams.get('provider') ?? '', turn: url.searchParams.get('turn') ?? '',
         issue: url.searchParams.get('issue') ?? '',
         compaction: url.searchParams.get('compaction') ?? '',

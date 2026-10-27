@@ -378,3 +378,5 @@ dialog::backdrop{background:#54402e44;backdrop-filter:blur(5px)}.dialog-head{dis
 .status-error code{display:block;margin-top:7px;color:var(--muted);overflow-wrap:anywhere;white-space:pre-wrap}
 
 .persona-version-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8}#persona-supplement-form textarea{min-height:280px}#persona-versions:empty::after{content:"暂无历史版本";color:var(--muted)}
+
+.usage-filters input[type=date]{width:155px;min-height:40px}#usage-cost{overflow-wrap:anywhere}.usage-spend>span:first-child{line-height:1.6}

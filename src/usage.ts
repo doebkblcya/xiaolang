@@ -55,7 +55,7 @@ export async function meterRequest<T>(meta: RequestMeta, work: (capture: (body: 
   }
 }
 
-export interface UsageQuery { range?: string; purpose?: string; provider?: string; turn?: string; compaction?: string; issue?: string; before?: number }
+export interface UsageQuery { range?: string; dateFrom?: string; dateTo?: string; purpose?: string; provider?: string; turn?: string; compaction?: string; issue?: string; before?: number }
 const aggregate = `COUNT(*) calls, COALESCE(SUM(CASE WHEN state IN ('failed','interrupted') THEN 1 ELSE 0 END),0) failures,
   COALESCE(SUM(CASE WHEN kind!='web' AND total_tokens IS NULL THEN 1 ELSE 0 END),0) unknown,
   COALESCE(SUM(CASE WHEN total_tokens IS NOT NULL THEN 1 ELSE 0 END),0) metered,
@@ -68,6 +68,27 @@ const aggregate = `COUNT(*) calls, COALESCE(SUM(CASE WHEN state IN ('failed','in
   COALESCE(SUM(CASE WHEN kind='chat' AND input_tokens>0 AND cached_tokens BETWEEN 0 AND input_tokens THEN cached_tokens ELSE 0 END),0) cacheHit,
   COALESCE(SUM(CASE WHEN kind='chat' AND input_tokens>0 AND cached_tokens BETWEEN 0 AND input_tokens THEN input_tokens ELSE 0 END),0) cacheInput,
   COALESCE(SUM(CASE WHEN kind='chat' AND input_tokens>0 AND (cached_tokens IS NULL OR cached_tokens<0 OR cached_tokens>input_tokens) THEN 1 ELSE 0 END),0) cacheUnknown`;
+
+/** Inclusive calendar-day windows in Asia/Shanghai, independent of the host timezone. */
+export function usageWindow(query: UsageQuery, now = Date.now()) {
+  const range = query.range ?? 'today', dayMs = 86400000;
+  const midnight = Math.floor((now + 8 * 3600000) / dayMs) * dayMs - 8 * 3600000;
+  if (!['today', 'yesterday', '7d', '30d', 'all', 'custom'].includes(range)) throw new Failure('invalid_usage_query');
+  if (range !== 'custom') {
+    if (query.dateFrom || query.dateTo) throw new Failure('invalid_usage_query');
+    return { from: range === 'all' ? 0 : midnight - (range === 'yesterday' ? 1 : range === '7d' ? 6 : range === '30d' ? 29 : 0) * dayMs,
+      to: range === 'yesterday' ? midnight - 1 : now };
+  }
+  const parse = (value: string | undefined) => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Failure('invalid_usage_query');
+    const stamp = Date.parse(value + 'T00:00:00+08:00');
+    if (!Number.isFinite(stamp) || stamp < 0 || new Date(stamp + 8 * 3600000).toISOString().slice(0, 10) !== value) throw new Failure('invalid_usage_query');
+    return stamp;
+  };
+  const from = parse(query.dateFrom), last = parse(query.dateTo);
+  if (from > last || last > midnight || last - from >= 366 * dayMs) throw new Failure('invalid_usage_query');
+  return { from, to: Math.min(now, last + dayMs - 1) };
+}
 
 export class UsageMeter {
   private db: DatabaseSync;
@@ -121,19 +142,18 @@ export class UsageMeter {
   }
   view(query: UsageQuery = {}) {
     const range = query.range ?? 'today', purpose = query.purpose ?? '', provider = query.provider ?? '', turn = query.turn ?? '', issue = query.issue ?? '', compaction = query.compaction ?? '';
-    if (!['today', '7d', '30d', 'all'].includes(range) || (purpose && !usagePurposes.includes(purpose as UsagePurpose))
+    if (!['today', 'yesterday', '7d', '30d', 'all', 'custom'].includes(range) || (purpose && !usagePurposes.includes(purpose as UsagePurpose))
       || (provider && !['deepseek', 'bailian'].includes(provider)) || (turn && !/^[a-f0-9-]{36}$/.test(turn))
       || !['', 'failed', 'unknown'].includes(issue)
       || (compaction && !/^[a-f0-9-]{36}$/.test(compaction))
       || (query.before !== undefined && (!Number.isSafeInteger(query.before) || query.before < 1))) throw new Failure('invalid_usage_query');
-    const now = Date.now(), midnight = Math.floor((now + 8 * 3600000) / 86400000) * 86400000 - 8 * 3600000;
-    const from = range === 'all' ? 0 : midnight - (range === '7d' ? 6 : range === '30d' ? 29 : 0) * 86400000;
+    const { from, to } = usageWindow(query);
     const where = 'started>=? AND started<=? AND (?=\'\' OR purpose=?) AND (?=\'\' OR provider=?) AND (?=\'\' OR turn_id=?) AND (?=\'\' OR compaction_id=?)';
-    const args = [from, now, purpose, purpose, provider, provider, turn, turn, compaction, compaction];
+    const args = [from, to, purpose, purpose, provider, provider, turn, turn, compaction, compaction];
     const summary = this.db.prepare(`SELECT ${aggregate} FROM usage_calls WHERE ${where}`).get(...args)!;
     const byPurpose = this.db.prepare(`SELECT purpose,${aggregate} FROM usage_calls WHERE ${where} GROUP BY purpose ORDER BY total DESC,calls DESC`).all(...args);
     const byModel = this.db.prepare(`SELECT provider,model,${aggregate} FROM usage_calls WHERE ${where} GROUP BY provider,model ORDER BY total DESC`).all(...args);
-    const daily = this.db.prepare(`SELECT date(started/1000,'unixepoch','+8 hours') day,${aggregate} FROM usage_calls WHERE ${where} GROUP BY day ORDER BY day DESC LIMIT 31`).all(...args);
+    const daily = this.db.prepare(`SELECT date(started/1000,'unixepoch','+8 hours') day,${aggregate} FROM usage_calls WHERE ${where} GROUP BY day ORDER BY day DESC`).all(...args);
     // Issues narrow the request list only; the overview remains scoped to time / purpose / provider.
     const itemWhere = where + (issue === 'failed' ? " AND state IN ('failed','interrupted')" : issue === 'unknown' ? " AND kind!='web' AND total_tokens IS NULL" : '');
     const matched = Number(this.db.prepare(`SELECT COUNT(*) count FROM usage_calls WHERE ${itemWhere}`).get(...args)!.count);
@@ -141,7 +161,7 @@ export class UsageMeter {
       turn_id turn,step,scope,state,error_code errorCode,request_id requestId,input_tokens input,output_tokens output,total_tokens total,
       cached_tokens cached,reasoning_tokens reasoning,estimated_cost estimatedCost,pricing_version pricingVersion,compaction_id compaction FROM usage_calls WHERE ${itemWhere} AND id<? ORDER BY id DESC LIMIT 51`).all(...args, query.before ?? Number.MAX_SAFE_INTEGER);
     const next = items.length > 50 ? Number(items[49]!.id) : null;
-    return { range, from, to: now, timezone: 'Asia/Shanghai', firstRecorded: this.db.prepare('SELECT MIN(started) time FROM usage_calls').get()!.time ?? null,
+    return { range, from, to, timezone: 'Asia/Shanghai', firstRecorded: this.db.prepare('SELECT MIN(started) time FROM usage_calls').get()!.time ?? null,
       pricing, summary, byPurpose, byModel, daily, issue, matched, items: items.slice(0, 50).map(row => {
         row.pricePeriod = row.estimatedCost !== null ? pricePeriod(Number(row.started)) : null; return row;
       }), next };

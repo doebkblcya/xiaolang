@@ -39,7 +39,7 @@ test('the full saved summary, including its tail, reaches the next prompt withou
 
 test('oversized summaries never advance the cursor or discard original history', async () => {
   const cfg=config();cfg.chatEnabled=false;cfg.memory={...memoryDefaults,enabled:true};
-  const background=new FakeModel(async m=>({role:'assistant',content:m[0]!.content!.startsWith('将旧摘要')?'长'.repeat(3201):'{"memories":[]}'}));
+  const background=new FakeModel(async m=>({role:'assistant',content:(m[0]!.content!.startsWith('将旧摘要')||m[0]!.content!.startsWith('压缩这份'))?'长'.repeat(3201):'{"memories":[]}'}));
   const app=await createApp(cfg,{adapter:new FakeAdapter(),model:new FakeModel(),memoryModel:background});
   try {
     for(let i=1;i<=201;i++)app.ctx.intake.receive(event('聊天'+i,i));
@@ -70,4 +70,25 @@ test('an overfull turn resumes at the first committed prefix while later compact
     assert.ok(calls>=2);assert.ok(result.history.length>5);assert.ok(result.history.length<60);
     assert.ok(contextSize(result.history,cfg.limits)+contextSize(result.parts!.summary,cfg.limits)+1000<budget);
   } finally { first.resolve({role:'assistant',content:'摘要'});later.resolve({role:'assistant',content:'完整摘要'});await app.stop(); }
+});
+
+
+test('a too-long summary is shortened once using only its draft before saving the compacted prefix', async () => {
+  const cfg=config();cfg.chatEnabled=false;cfg.memory={...memoryDefaults,enabled:true};
+  let summaries=0,repairs=0;
+  const background=new FakeModel(async messages=>{
+    if(messages[0]!.content!.startsWith('将旧摘要')) { summaries++;return {role:'assistant',content:'长'.repeat(3201)}; }
+    if(messages[0]!.content!.startsWith('压缩这份')) { repairs++;assert.equal(messages[1]!.content,'长'.repeat(3201));return {role:'assistant',content:'保留关键事实与未完成事项。'}; }
+    return {role:'assistant',content:'{"memories":[]}'};
+  });
+  const app=await createApp(cfg,{adapter:new FakeAdapter(),model:new FakeModel(),memoryModel:background});
+  try {
+    for(let i=1;i<=201;i++)app.ctx.intake.receive(event('聊天'+i,i));
+    const message=app.ctx.store.records({limit:1})[0]!.message,turn={id:randomUUID(),message,reason:'test'};
+    const memory=app.ctx.memory as ChatMemory,prepared=(await memory.prepare(turn,new AbortController().signal))!;
+    await memory.compact(turn,prepared,{used:contextSize(prepared.history,cfg.limits)+1000,budget:80000,overhead:1000},new AbortController().signal);
+    for(let i=0;i<20&&!memory.summary(message.session).summary;i++)await new Promise<void>(resolve=>setImmediate(resolve));
+    assert.equal(memory.summary(message.session).summary!.body,'保留关键事实与未完成事项。');
+    assert.equal(summaries,1);assert.equal(repairs,1);assert.equal(app.ctx.store.records({limit:500}).length,201);
+  } finally { await app.stop(); }
 });
